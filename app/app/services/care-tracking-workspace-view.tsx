@@ -119,9 +119,9 @@ export function careNextStepAction(relationshipId: string, nextStep: PatientCare
 function noActionLabel(nextStep: Extract<PatientCareNextStep, { type: "NONE" }>): string {
   switch (nextStep.reason) {
     case "READ_ONLY":
-      return "ดูข้อมูลได้อย่างเดียว";
+      return "ดูอย่างเดียว";
     case "PROGRAM_NOT_MANAGEABLE":
-      return "ไม่มีสิทธิ์จัดการรอบบริการ";
+      return "ดูอย่างเดียว";
     case "NO_ACTION":
       return "ไม่มีขั้นตอนที่ต้องทำต่อ";
   }
@@ -370,7 +370,7 @@ function CareTrackingPagination({ state, result }: { state: ServicesUrlState; re
 
 function scopeLabel(scope: CareTrackingScopeOption): string {
   return scope.access === "NETWORK"
-    ? `${scope.hospitalName} (ลูกข่ายของ${scope.parentHospitalName} · อ่านอย่างเดียว)`
+    ? `${scope.hospitalName} (ลูกข่ายของ${scope.parentHospitalName} · ดูอย่างเดียว)`
     : scope.hospitalName;
 }
 
@@ -388,7 +388,7 @@ function EmptyState({ state, result }: { state: ServicesUrlState; result: CareTr
         <>
           <p className="font-semibold text-text">ยังไม่มีผู้ป่วยที่ต้องจัดบริการในโรงพยาบาลนี้</p>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            ผู้ป่วยที่จบโปรแกรมหรือสิ้นสุดการดูแลแล้วจะแสดงเมื่อเลือก &ldquo;แสดงผู้ป่วยที่จบโปรแกรม/สิ้นสุดการดูแล&rdquo;
+            เลือก &ldquo;แสดงผู้ป่วยที่จบโปรแกรม/สิ้นสุดการดูแล&rdquo; เพื่อดูผู้ป่วยที่จบแล้ว
           </p>
         </>
       ) : (
@@ -418,7 +418,6 @@ export function CareTrackingWorkspaceView({
           { label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedScope.hospitalId)}` },
           { label: "จัดบริการ" },
         ]}
-        description="ติดตามความคืบหน้าและเริ่มขั้นตอนถัดไปของผู้ป่วยแต่ละคน"
         title="จัดบริการ"
       />
 
@@ -443,13 +442,10 @@ export function CareTrackingWorkspaceView({
             <p className="mt-2 text-lg font-semibold text-brand-strong">{scopeLabel(selectedScope)}</p>
           )}
           {selectedScope.access === "NETWORK" ? (
-            <Alert className="mt-4" variant="info">
-              <p className="font-semibold">ข้อมูลลูกข่าย (อ่านอย่างเดียว)</p>
-              <p className="mt-1">
-                เปิดดูผ่านเครือข่ายของ{selectedScope.parentHospitalName} ดูความคืบหน้าได้อย่างเดียว
-                แก้ไขหรือบันทึกข้อมูลไม่ได้ และทุกการเปิดดูจะถูกบันทึกไว้
-              </p>
-            </Alert>
+            <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-text-muted">
+              <StatusBadge variant="neutral">ดูอย่างเดียว</StatusBadge>
+              <span className="break-words">ผ่านเครือข่ายของ{selectedScope.parentHospitalName} · การเปิดดูถูกบันทึก</span>
+            </p>
           ) : null}
         </Panel>
 
@@ -485,7 +481,7 @@ export function CareTrackingWorkspaceView({
             </label>
           </Form>
           <p className="mt-2 text-xs leading-5 text-text-subtle">
-            พิมพ์ชื่อบางส่วนได้ ส่วน HN ต้องตรงกับข้อมูลในโรงพยาบาลที่เลือก เปลี่ยนตัวเลือกแล้วกดค้นหาเพื่อใช้ตัวกรอง
+            ชื่อพิมพ์บางส่วนได้ HN ต้องตรงทั้งหมด กดค้นหาเพื่อใช้ตัวกรอง
           </p>
           {errorMessage ? (
             <Alert className="mt-5" variant="danger">

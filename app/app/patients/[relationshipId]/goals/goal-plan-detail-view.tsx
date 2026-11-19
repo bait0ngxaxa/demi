@@ -261,10 +261,6 @@ export function GoalPlanDetailView({
               {isProgramRoute ? "สร้างแผนรอบใหม่" : "สร้างแผนสุขภาพรอบใหม่"}
             </Link>
           </div>
-        ) : scope.kind === "program" ? (
-          <Alert variant="neutral">
-            โปรแกรมนี้จบแล้วหรือบัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลใหม่ แต่ประวัติแผนสุขภาพยังอ่านได้
-          </Alert>
         ) : null}
 
         <div className="flex flex-col gap-3 sm:flex-row">

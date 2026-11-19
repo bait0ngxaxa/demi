@@ -71,7 +71,7 @@ export function PatientResponsibleOsmSection({
           </Alert>
         ) : state.status === "RESTRICTED" ? (
           <Alert className="mt-4" role="status" variant="info">
-            บัญชีนี้ไม่มีสิทธิ์ดูข้อมูล อสม. ผู้รับผิดชอบของผู้ป่วยรายนี้ กรุณาติดต่อแอดมินโรงพยาบาล
+            ดูข้อมูล อสม. ผู้รับผิดชอบไม่ได้ ติดต่อแอดมินโรงพยาบาล
           </Alert>
         ) : (
           <Alert className="mt-4" role="alert" variant="warning">

@@ -314,7 +314,7 @@ describe("round stepper (SR-D7)", () => {
     expect(locked).not.toContain("/followups/new");
 
     const readOnly = renderDetail(1, "VITALS", {}, false);
-    expect(readOnly).toContain("ไม่มีสิทธิ์บันทึก");
+    expect(readOnly).not.toContain("ไม่มีสิทธิ์");
     expect(readOnly).not.toContain("<form");
   });
 });

@@ -37,13 +37,13 @@ export function ProgramRoundsOverviewView({
           { href: programPath, label: "รายละเอียดโปรแกรม" },
           { label: "การจัดบริการรายครั้ง" },
         ]}
-        description={`ผู้ป่วย: ${overview.patientDisplayName} · ทำทีละครั้งตามลำดับ ปรับรายการในแผนได้ และจบครั้งนี้ได้เมื่อทำแล้วอย่างน้อย 1 รายการ รายการที่เหลือจะบันทึกเป็นยังไม่ได้ทำเมื่อจบบริการ เพิ่มครั้งบริการหลังครั้งที่ 6 ได้ถึง 12 ครั้ง`}
+        description={`ผู้ป่วย: ${overview.patientDisplayName} · ทำทีละครั้งตามลำดับ`}
         title="การจัดบริการรายครั้ง"
       />
 
       <div className="space-y-6 pt-8">
         {overview.programStatus === "COMPLETED" ? (
-          <Alert variant="neutral">โปรแกรมนี้จบแล้ว ครั้งต่าง ๆ อยู่ในประวัติแบบอ่านอย่างเดียว</Alert>
+          <Alert variant="neutral">โปรแกรมนี้จบแล้ว</Alert>
         ) : null}
 
         <ol className="grid gap-4 md:grid-cols-2">
@@ -83,7 +83,7 @@ export function ProgramRoundsOverviewView({
         </Panel>
 
         <p className="text-sm leading-6 text-text-muted">
-          เมื่อมีรายการที่ทำแล้วอย่างน้อย 1 รายการ กด “จบบริการครั้งที่ n” เมื่อจบแล้วครั้งนั้นเป็นแบบอ่านอย่างเดียว
+          จบบริการครั้งนั้นได้เมื่อทำแล้วอย่างน้อย 1 รายการ
         </p>
 
         <Link className={buttonClassName({ variant: "secondary" })} href={programPath}>

@@ -138,6 +138,7 @@ describe("Patient Baseline page workflow", () => {
     const page = await PatientBaselinePage({ params: Promise.resolve({ relationshipId }) });
 
     expect(containsString(page, "ยังไม่มีข้อมูลตั้งต้น")).toBe(true);
-    expect(containsString(page, "ไม่มีสิทธิ์บันทึกข้อมูลตั้งต้น")).toBe(true);
+    // COPY-DISTILL R5: read-only is the absence of a record action, not a permission sentence.
+    expect(containsString(page, "ไม่มีสิทธิ์บันทึกข้อมูลตั้งต้น")).toBe(false);
   });
 });

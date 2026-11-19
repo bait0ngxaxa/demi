@@ -304,7 +304,7 @@ export function CompleteRoundControl({
       }
       confirmation={{
         title: `จบบริการครั้งที่ ${target.roundNumber} หรือไม่`,
-        description: "เมื่อจบแล้ว ข้อมูลของครั้งนี้จะเป็นแบบอ่านอย่างเดียว แก้ไข เพิ่ม หรือยกเลิกการข้ามไม่ได้อีก",
+        description: "จบแล้วแก้ไข เพิ่ม หรือยกเลิกการข้ามในครั้งนี้ไม่ได้",
         details: <div className="space-y-3">{(["DONE", "SKIPPED", "TODO"] as const).map((status) => <div key={status}><h3 className="font-semibold">{status === "DONE" ? "ทำแล้ว" : status === "SKIPPED" ? "ข้ามแล้ว" : "ยังไม่ได้ทำเมื่อจบบริการ"} ({steps.filter((step) => step.status === status).length})</h3><ul className="list-disc pl-5">{steps.filter((step) => step.status === status).map((step) => <li key={step.planItemId ?? step.code}>{step.label}</li>)}</ul></div>)}<p>รายการในแผนที่ยังไม่ได้ทำจะถูกบันทึกเป็น “ยังไม่ได้ทำเมื่อจบบริการ” ต้องมีอย่างน้อยหนึ่งรายการที่ทำแล้วจึงจะจบได้ และไม่จำเป็นต้องจัดการทุกรายการก่อนจบ</p></div>,
         confirmLabel: `จบบริการครั้งที่ ${target.roundNumber}`,
       }}

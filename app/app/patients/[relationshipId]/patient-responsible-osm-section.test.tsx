@@ -52,7 +52,7 @@ describe("Patient responsible OSM section", () => {
 
   it.each([
     ["UNAVAILABLE", "ยืนยันผู้รับผิดชอบปัจจุบันไม่ได้"],
-    ["RESTRICTED", "ไม่มีสิทธิ์ดูข้อมูล อสม. ผู้รับผิดชอบ"],
+    ["RESTRICTED", "ดูข้อมูล อสม. ผู้รับผิดชอบไม่ได้"],
     ["NETWORK_RESTRICTED", "มุมมองเครือข่ายนี้ไม่แสดงข้อมูล อสม."],
     ["ERROR", "โหลดข้อมูล อสม. ผู้รับผิดชอบไม่สำเร็จ"],
   ] as const)("renders the distinct %s state", (status, message) => {

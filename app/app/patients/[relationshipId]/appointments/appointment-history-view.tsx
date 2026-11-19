@@ -84,7 +84,7 @@ function AppointmentHistoryRow({
               ).displayName}
             </p>
             <p className="mt-1 text-sm leading-6 text-text-muted">
-              OSM ณ เวลาสร้างนัด: {item.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
+              อสม. ตอนสร้างนัด: {item.osmAtCreationDisplayName ?? "ไม่มีข้อมูล"}
             </p>
             <OneOffVisitNote visible={item.isOneOffVisit} />
             {item.currentAcknowledgement ? (
@@ -112,7 +112,7 @@ function AppointmentHistoryRow({
             </dd>
           </div>
           <div>
-            <dt className="text-text-muted">รายละเอียดและการดำเนินการที่มีสิทธิ์</dt>
+            <dt className="text-text-muted">รายละเอียด</dt>
             <dd className="mt-1 font-semibold text-brand-strong">เปิดรายละเอียดนัดหมาย</dd>
           </div>
         </dl>

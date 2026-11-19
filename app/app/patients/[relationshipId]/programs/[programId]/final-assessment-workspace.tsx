@@ -133,14 +133,9 @@ function FinalAssessmentForm({
           บันทึกค่าดิบของ Final Assessment
         </h3>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-          กรอกเฉพาะค่าที่มีอยู่สำหรับโปรแกรมนี้ อย่างน้อย 1 รายการ ข้อมูลนี้จะถูกบันทึกเป็นข้อมูลอ่านอย่างเดียว
+          กรอกค่าที่มี อย่างน้อย 1 รายการ บันทึกแล้วแก้ไขไม่ได้
         </p>
       </div>
-
-      <Alert className="mt-5" variant="info">
-        ค่าที่แสดงเป็นค่าดิบที่บันทึกไว้สำหรับโปรแกรมนี้ ระบบยังไม่แปลผลทางคลินิกหรือคำนวณผลลัพธ์อัตโนมัติ
-        หน่วยที่แสดงเป็นป้ายกำกับปัจจุบันของต้นแบบเท่านั้น
-      </Alert>
 
       <form action={action} className="mt-6" onSubmit={submitPreservingInput(action)} ref={formRef}>
         <input
@@ -232,19 +227,11 @@ function FinalAssessmentReadOnlyView({
           <h3 className="text-lg font-semibold tracking-[-0.02em] text-text">
             ข้อมูล Final Assessment ที่บันทึกไว้
           </h3>
-          <p className="mt-2 text-sm leading-6 text-text-muted">
-            รายการนี้เป็นข้อมูลอ่านอย่างเดียวและผูกกับโปรแกรมนี้โดยตรง
-          </p>
         </div>
         <StatusBadge variant={programStatus === "COMPLETED" ? "neutral" : "info"}>
-          {programStatus === "COMPLETED" ? "ประวัติอ่านอย่างเดียว" : "บันทึกแล้ว · อ่านอย่างเดียว"}
+          {programStatus === "COMPLETED" ? "จบโปรแกรมแล้ว" : "บันทึกแล้ว"}
         </StatusBadge>
       </div>
-
-      <Alert className="mt-5" variant="info">
-        ค่าที่แสดงเป็นค่าดิบที่บันทึกไว้สำหรับโปรแกรมนี้ ระบบยังไม่แปลผลทางคลินิกหรือคำนวณผลลัพธ์อัตโนมัติ
-        หน่วยที่แสดงเป็นป้ายกำกับปัจจุบันของต้นแบบเท่านั้น
-      </Alert>
 
       <dl className="mt-6 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
         {measurementDefinitions.map((measurement) => (
@@ -276,10 +263,6 @@ function FinalAssessmentReadOnlyView({
           <dt className="text-sm text-text-muted">สถานะโปรแกรม</dt>
           <dd className="mt-1 font-semibold text-text">{statusLabel(programStatus)}</dd>
         </div>
-        <div>
-          <dt className="text-sm text-text-muted">สิทธิ์การแก้ไข</dt>
-          <dd className="mt-1 font-semibold text-text">อ่านอย่างเดียว</dd>
-        </div>
       </dl>
     </Panel>
   );
@@ -304,23 +287,19 @@ function FinalAssessmentAbsenceView({
           </p>
         </div>
         <StatusBadge variant={programStatus === "COMPLETED" ? "neutral" : "info"}>
-          {programStatus === "COMPLETED" ? "ประวัติอ่านอย่างเดียว" : "ยังไม่มีข้อมูล"}
+          ยังไม่มีข้อมูล
         </StatusBadge>
       </div>
 
       {programStatus === "COMPLETED" ? (
         <Alert className="mt-5" variant="neutral">
-          โปรแกรมนี้เสร็จสิ้นแล้ว จึงไม่สามารถสร้าง Final Assessment เพิ่มได้
+          โปรแกรมนี้จบแล้ว
         </Alert>
       ) : canManage ? (
         <p className="mt-5 text-sm leading-6 text-text-muted">
-          โปรแกรมยังอยู่ระหว่างดำเนินการ สามารถบันทึกข้อมูลได้ด้านล่าง
+          บันทึกได้ด้านล่าง
         </p>
-      ) : (
-        <Alert className="mt-5" variant="info">
-          บัญชีนี้มีสิทธิ์อ่านข้อมูลในโปรแกรมนี้ แต่ไม่มีสิทธิ์บันทึก Final Assessment ใหม่
-        </Alert>
-      )}
+      ) : null}
     </Panel>
   );
 }

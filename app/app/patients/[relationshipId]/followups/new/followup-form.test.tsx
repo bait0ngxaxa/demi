@@ -188,9 +188,9 @@ describe("Program follow-up progress and success rate (D1/D2)", () => {
     expect(planSelect?.value).toBe("goal-plan-2");
     expect(planSelect?.required).toBe(true);
     expect([...(planSelect?.options ?? [])].map((option) => option.value)).toEqual(["goal-plan-2"]);
-    expect(container.textContent).toContain("ต้องบันทึกให้ครบทุกกิจกรรมในแผน");
+    expect(container.textContent).toContain("บันทึกให้ครบทุกกิจกรรม ยกเว้นที่ไม่เกี่ยวข้อง");
     expect(container.textContent).not.toContain("เลือกบันทึกเฉพาะกิจกรรม");
-    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมเพื่อคำนวณอัตราความสำเร็จ");
+    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมเพื่อดูอัตราความสำเร็จ");
 
     chooseRadio("followedPlanChoice", "true");
     setValue("#followup-reflection", "เดินได้ต่อเนื่อง");
@@ -210,7 +210,7 @@ describe("Program follow-up progress and success rate (D1/D2)", () => {
 
     // An applicable activity without achieved days stays incomplete.
     setValue("#progress-status-stop_sweet", "PARTIAL");
-    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมเพื่อคำนวณอัตราความสำเร็จ");
+    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมเพื่อดูอัตราความสำเร็จ");
     setValue("#progress-achieved-days-stop_sweet", "2");
     // (3 + 2) / (4 + 3) = 71%, strictly above 70%.
     expect(summaryText()).toBe("ทำได้ 5 จาก 7 วัน · อัตราความสำเร็จ 71%เกิน 70%");
@@ -245,7 +245,7 @@ describe("Program follow-up progress and success rate (D1/D2)", () => {
     mountProgram({ goalPlans: [], selectedGoalPlanId: null, planReturnTo: returnTo });
     expect(container.querySelector("form")).toBeNull();
     expect(container.textContent).toContain("ต้องมีแผนสุขภาพก่อนบันทึกการติดตามผล");
-    expect(container.textContent).toContain("โปรแกรมนี้ยังไม่มีแผนสุขภาพ");
+    expect(container.textContent).toContain("สร้างแผนสุขภาพในครั้งที่ 2 ก่อน");
     const back = [...container.querySelectorAll("a")].find((link) => link.textContent === "กลับไปหน้าครั้งบริการ");
     expect(back?.getAttribute("href")).toBe(returnTo);
     expect([...container.querySelectorAll("button")].some((button) => button.textContent === "บันทึกการติดตามผล")).toBe(false);
@@ -317,7 +317,7 @@ describe("follow-up recording review", () => {
     expect(dialog?.textContent).toContain("ปรับแผน");
     expect(dialog?.textContent).toContain("เวลาน้อยในช่วงเช้า");
     expect(dialog?.textContent).toContain("ติดตามอีกหนึ่งสัปดาห์");
-    expect(dialog?.textContent).toContain("ระบบจะไม่ข้ามขั้นตอนหรือเลือกเหตุผลให้อัตโนมัติ");
+    expect(dialog?.textContent).toContain("ต้องระบุเหตุผลที่ข้ามขั้นตอน");
     expect(dialog?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false);
     expect(dialog?.querySelector<HTMLButtonElement>("footer button:last-child")?.disabled).toBe(true);
     expect(actions.createFollowupForProgramAction).not.toHaveBeenCalled();

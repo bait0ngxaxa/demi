@@ -85,10 +85,6 @@ function BaselineStatusNotice({
     return (
       <Alert variant="info">
         <p className="font-semibold">{PATIENT_BASELINE_LOCKED_NOTICE}</p>
-        <p className="mt-1">
-          ข้อมูลนี้เป็นจุดอ้างอิงของโปรแกรมที่เปิดแล้วและเป็นข้อมูลอ่านอย่างเดียว แสดงข้อมูลที่บันทึกไว้เท่านั้น
-          ยังไม่มีการแปลผลทางคลินิกหรือการเปรียบเทียบกับรายการติดตามผล
-        </p>
       </Alert>
     );
   }
@@ -98,8 +94,7 @@ function BaselineStatusNotice({
       <Alert variant="info">
         <p className="font-semibold">ข้อมูลอ้างอิงเริ่มต้น</p>
         <p className="mt-1">
-          แก้ไขได้จนกว่าจะเปิดโปรแกรม เมื่อเปิดโปรแกรมแล้วข้อมูลนี้จะเป็นข้อมูลอ่านอย่างเดียว
-          ระบบแสดงข้อมูลที่บันทึกไว้เท่านั้นและยังไม่แปลผลทางคลินิก
+          แก้ไขได้จนกว่าจะเปิดโปรแกรม
         </p>
       </Alert>
     );
@@ -107,11 +102,7 @@ function BaselineStatusNotice({
 
   return (
     <Alert variant="info">
-      <p className="font-semibold">ข้อมูลอ้างอิงเริ่มต้น (อ่านอย่างเดียว)</p>
-      <p className="mt-1">
-        ข้อมูลนี้เป็นข้อมูลอ้างอิงที่อ่านได้อย่างเดียว แสดงข้อมูลที่บันทึกไว้เท่านั้น
-        ยังไม่มีการแปลผลทางคลินิกหรือการเปรียบเทียบกับรายการติดตามผล
-      </p>
+      <p className="font-semibold">ข้อมูลอ้างอิงเริ่มต้น</p>
     </Alert>
   );
 }

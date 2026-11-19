@@ -171,9 +171,8 @@ export function PatientDirectoryView({
   return (
     <div className="content-workspace">
       <PageHeader
-        actions={<StatusBadge variant="info">อ่านข้อมูล</StatusBadge>}
+        actions={selectedScope.access === "NETWORK" ? <StatusBadge variant="neutral">ดูอย่างเดียว</StatusBadge> : undefined}
         breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedScope.hospitalId)}` }, { label: "รายชื่อผู้ป่วย" }]}
-        description="ค้นหาและเปิดดูข้อมูลผู้ป่วยเฉพาะในโรงพยาบาลที่คุณมีสิทธิ์เข้าถึง"
         title="รายชื่อผู้ป่วย"
       />
 
@@ -189,7 +188,7 @@ export function PatientDirectoryView({
                     <Select defaultValue={selectedScope.hospitalId} key={selectedScope.hospitalId} name="hospitalId">
                       {scopes.map((scope) => (
                         <option key={scope.hospitalId} value={scope.hospitalId}>
-                          {scope.access === "NETWORK" ? `${scope.hospitalName} (ลูกข่าย · อ่านอย่างเดียว)` : scope.hospitalName}
+                          {scope.access === "NETWORK" ? `${scope.hospitalName} (ลูกข่าย · ดูอย่างเดียว)` : scope.hospitalName}
                         </option>
                       ))}
                     </Select>
@@ -205,13 +204,8 @@ export function PatientDirectoryView({
               )}
             </div>
             <div className="max-w-xl space-y-3">
-              <p className="text-sm leading-6 text-text-muted">
-                แสดงเฉพาะผู้ป่วยของโรงพยาบาลที่เลือก
-              </p>
               {selectedScope.access === "NETWORK" ? (
-                <Alert variant="info">
-                  ลูกข่ายในเครือข่ายของคุณ ดูข้อมูลได้อย่างเดียว แก้ไขหรือบันทึกข้อมูลไม่ได้ และทุกการเปิดดูจะถูกบันทึกไว้
-                </Alert>
+                <p className="text-sm leading-6 text-text-muted">ลูกข่ายในเครือข่าย · การเปิดดูถูกบันทึก</p>
               ) : null}
               {canAssignOsm ? (
                 <Link
@@ -228,7 +222,7 @@ export function PatientDirectoryView({
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ค้นหาผู้ป่วย</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวภายในโรงพยาบาลที่เลือก
+            ชื่อพิมพ์บางส่วนได้ HN ต้องตรงทั้งหมด
           </p>
           <Form action="" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem_13rem_auto] @5xl/workspace:items-end">
             <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
@@ -267,9 +261,6 @@ export function PatientDirectoryView({
             </label>
             <PendingSubmitButton pendingLabel="กำลังค้นหา...">ค้นหา</PendingSubmitButton>
           </Form>
-          <p className="mt-3 text-xs leading-5 text-text-subtle">
-            พิมพ์ชื่อบางส่วนได้ ส่วน HN ต้องตรงกับข้อมูลในโรงพยาบาลที่เลือก
-          </p>
           {errorMessage ? (
             <Alert className="mt-5" variant="danger">
               <p className="font-semibold">ไม่สามารถค้นหาได้</p>
@@ -322,7 +313,7 @@ export function PatientDirectoryView({
                   {result.value ? "ไม่พบผู้ป่วยตามข้อมูลค้นหา" : "ยังไม่มีผู้ป่วยในโรงพยาบาลนี้"}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-text-muted">
-                  ลองตรวจสอบคำค้นหา หรือเลือกโรงพยาบาลอื่นที่อยู่ในขอบเขตของคุณ
+                  ลองเปลี่ยนคำค้นหาหรือเลือกโรงพยาบาลอื่น
                 </p>
               </div>
             )}

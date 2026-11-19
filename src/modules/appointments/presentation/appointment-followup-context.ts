@@ -22,7 +22,7 @@ export function getAppointmentFollowupContext({
 
   if (activeProgram && canRecordProgram) {
     return {
-      description: "นัดหมายนี้เสร็จสิ้นแล้ว คุณสามารถบันทึกการติดตามผลในโปรแกรมปัจจุบันได้",
+      description: "นัดหมายนี้เสร็จสิ้นแล้ว",
       href: `/app/patients/${encodedRelationshipId}/programs/${encodeURIComponent(activeProgram.programId)}/followups/new?appointmentId=${encodedAppointmentId}`,
       label: "บันทึกการติดตามผลในโปรแกรมปัจจุบัน",
     };
@@ -30,14 +30,14 @@ export function getAppointmentFollowupContext({
 
   if (activeProgram) {
     return {
-      description: "โปรแกรมปัจจุบันยังอ่านได้ แต่บัญชีนี้ไม่มีสิทธิ์บันทึกการติดตามผล",
+      description: "นัดหมายนี้เสร็จสิ้นแล้ว",
       href: `/app/patients/${encodedRelationshipId}/programs/${encodeURIComponent(activeProgram.programId)}`,
       label: "ดูโปรแกรมปัจจุบัน",
     };
   }
 
   return {
-    description: "นัดหมายนี้เสร็จสิ้นแล้ว คุณสามารถบันทึกการติดตามผลเป็นรายการใหม่ได้",
+    description: "นัดหมายนี้เสร็จสิ้นแล้ว",
     href: `/app/patients/${encodedRelationshipId}/followups/new?appointmentId=${encodedAppointmentId}`,
     label: "บันทึกการติดตามผล",
   };

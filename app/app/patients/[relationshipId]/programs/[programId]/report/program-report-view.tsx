@@ -230,7 +230,7 @@ function LinkedBaselineSection({
 
   return (
     <ReportSection
-      description="แสดงเฉพาะข้อมูล Baseline ที่โปรแกรมเชื่อมไว้โดยตรง ไม่มีการใช้ข้อมูล Baseline รายการอื่นมาแทน"
+      description="Baseline ที่โปรแกรมเชื่อมไว้"
       id="program-report-linked-baseline"
       title="ข้อมูล Baseline ที่เชื่อมกับโปรแกรม"
     >
@@ -340,7 +340,7 @@ function RoundVitalsSection({
 }): React.JSX.Element {
   return (
     <ReportSection
-      description="แสดงค่าตรวจของทุกครั้งบริการที่เปิดในโปรแกรมนี้ ใช้ค่าที่บันทึกล่าสุดระหว่างค่าตรวจของครั้งนั้นกับค่าจากการติดตามผล โดยไม่เพิ่มการแปลผล"
+      description="ค่าล่าสุดของแต่ละครั้งบริการ"
       id="program-report-round-vitals"
       title="ค่าตรวจรายครั้ง"
     >
@@ -403,7 +403,7 @@ function ScreeningSection({
 }): React.JSX.Element {
   return (
     <ReportSection
-      description="แสดงผล PAM และ PROMs ที่ทำในโปรแกรมนี้ตามที่บันทึกไว้ ใช้หลักเดียวกับรายงาน Excel ของโรงพยาบาล"
+      description="ผล PAM และ PROMs ในโปรแกรมนี้"
       id="program-report-screening"
       title="PAM / PROMs"
     >
@@ -485,7 +485,7 @@ function ServiceOneSection({
 }): React.JSX.Element {
   return (
     <ReportSection
-      description="แสดงการมีหรือไม่มีข้อมูลของกิจกรรม Service 1 ตามที่บันทึกไว้ในโปรแกรมนี้"
+      description="กิจกรรม Service 1 ในโปรแกรมนี้"
       id="program-report-service-one"
       title="บริการครั้งที่ 1 (Service 1)"
     >
@@ -643,7 +643,7 @@ function GoalPlansSection({
 }): React.JSX.Element {
   return (
     <ReportSection
-      description="แสดงประวัติแผนสุขภาพที่ผูกกับโปรแกรมนี้โดยตรงเป็นรอบ ๆ และใช้การแบ่งหน้าตามข้อมูลที่มี"
+      description="แผนสุขภาพของโปรแกรมนี้"
       id="program-report-goal-plans"
       title="แผนสุขภาพ"
     >
@@ -741,7 +741,7 @@ function FollowupsSection({
 }): React.JSX.Element {
   return (
     <ReportSection
-      description="แสดงประวัติการติดตามผลแบบหลายรอบตามข้อมูลที่บันทึกไว้ในโปรแกรมนี้"
+      description="การติดตามผลของโปรแกรมนี้"
       id="program-report-followups"
       title="ประวัติการติดตามผล"
     >
@@ -781,7 +781,7 @@ function FinalAssessmentSection({
 
   return (
     <ReportSection
-      description="แสดงข้อมูล Final Assessment ที่บันทึกไว้กับโปรแกรมนี้โดยตรงในรูปแบบอ่านอย่างเดียว"
+      description="Final Assessment ของโปรแกรมนี้"
       id="program-report-final-assessment"
       title="ข้อมูล Final Assessment"
     >
@@ -796,7 +796,6 @@ function FinalAssessmentSection({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h3 className="text-lg font-semibold tracking-[-0.02em] text-text">Final Assessment ที่บันทึกไว้</h3>
-              <p className="mt-1 text-sm leading-6 text-text-muted">ข้อมูลนี้เป็นข้อมูลอ่านอย่างเดียวของโปรแกรมนี้</p>
             </div>
             <StatusBadge variant="info">มีข้อมูล</StatusBadge>
           </div>
@@ -871,7 +870,7 @@ export function ProgramReportView({
           },
           { label: "รายงานข้อมูลโปรแกรม" },
         ]}
-        description="ข้อมูลที่บันทึกไว้ในโปรแกรมนี้ แยกตามแหล่งข้อมูลและแสดงแบบอ่านอย่างเดียว"
+        description="ข้อมูลที่บันทึกไว้ในโปรแกรมนี้"
         title="รายงานข้อมูลโปรแกรม"
       />
 
@@ -887,12 +886,9 @@ export function ProgramReportView({
           />
         </Panel>
 
-        <Alert variant="info">
-          หน้านี้แสดงข้อมูลที่บันทึกไว้แยกตามแหล่งข้อมูลของโปรแกรมไม่คำนวณหรือตีความค่าทางคลินิก และไม่ใช้ข้อมูลจากโปรแกรมอื่นมาแทน
-        </Alert>
 
         <ReportSection
-          description="วันที่ในส่วนนี้เป็นเวลาตามวงจรของโปรแกรมไม่ใช่เวลาการสังเกตหรือการวัดค่า"
+          description="วันที่ตามวงจรของโปรแกรม ไม่ใช่วันที่วัดค่า"
           id="program-report-lifecycle"
           title="วงจรโปรแกรม"
         >

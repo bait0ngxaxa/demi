@@ -255,9 +255,6 @@ export function PatientOsmAssignmentWorkspace({
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">เลือก อสม. ผู้รับผิดชอบ</h2>
-          <p className="mt-2 text-sm leading-6 text-text-muted">
-            แสดงเฉพาะ อสม. ที่เปิดใช้งานและมีสิทธิ์ทำงานกับโรงพยาบาลนี้
-          </p>
           <Form action="" className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
             <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold">
               <span>ค้นหาชื่อ อสม.</span>

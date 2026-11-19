@@ -217,13 +217,13 @@ function ProgressAchievementStatus({
   complete: boolean;
 }): React.JSX.Element {
   if (!complete) {
-    return <p className="text-sm leading-6 text-text-muted">กรอกให้ครบทุกกิจกรรมเพื่อคำนวณอัตราความสำเร็จ</p>;
+    return <p className="text-sm leading-6 text-text-muted">กรอกให้ครบทุกกิจกรรมเพื่อดูอัตราความสำเร็จ</p>;
   }
 
   if (!achievement) {
     return (
       <p className="text-sm leading-6 text-text-muted">
-        ไม่มีกิจกรรมที่นำมาคำนวณอัตราความสำเร็จ เพราะทุกกิจกรรมไม่เกี่ยวข้องในรอบนี้
+        ทุกกิจกรรมไม่เกี่ยวข้องในรอบนี้
       </p>
     );
   }
@@ -678,8 +678,8 @@ export function FollowupForm({
         ]}
         description={
           scope.kind === "program"
-            ? "บันทึกการติดตามผลในครั้งบริการที่เปิดอยู่ของโปรแกรมนี้"
-            : "บันทึกการติดตามผลไว้ในประวัติการดูแลของโรงพยาบาลนี้"
+            ? "ครั้งบริการที่เปิดอยู่ของโปรแกรมนี้"
+            : undefined
         }
         title="บันทึกการติดตามผล"
       />
@@ -689,8 +689,7 @@ export function FollowupForm({
           <Panel>
             <h2 className="text-xl font-semibold tracking-[-0.02em]">ต้องมีแผนสุขภาพก่อนบันทึกการติดตามผล</h2>
             <p className="mt-2 max-w-[68ch] text-sm leading-6 text-text-muted">
-              โปรแกรมนี้ยังไม่มีแผนสุขภาพ การติดตามผลต้องบันทึกความคืบหน้าของทุกกิจกรรมในแผนสุขภาพเพื่อคำนวณอัตราความสำเร็จ
-              แผนสุขภาพแรกของโปรแกรมสร้างในครั้งที่ 2 และระบบไม่ให้จบบริการครั้งที่ 2 จนกว่าจะมีแผน
+              สร้างแผนสุขภาพในครั้งที่ 2 ก่อน แล้วจึงบันทึกการติดตามผลได้
             </p>
             <Link
               className="mt-5 inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
@@ -750,22 +749,15 @@ export function FollowupForm({
               <p className="mt-4 text-sm leading-6 text-text-muted">
                 HN ของโรงพยาบาลนี้: {patient.hospitalNumber ?? "ไม่ระบุ"}
               </p>
-              {scope.kind === "program" ? (
-                <p className="mt-3 text-sm leading-6 text-text-muted">
-                  การบันทึกนี้จะอยู่ในประวัติของโปรแกรมนี้โดยตรง และสามารถอ้างอิงแผนสุขภาพของโปรแกรมเดียวกันได้
-                </p>
-              ) : (
-                <Alert className="mt-4" variant="warning">
-                  การติดตามผลนี้บันทึกนอกโปรแกรมจึงจะไม่อยู่ในรายงานโรงพยาบาลตามโปรแกรม (ไฟล์ Excel)
-                  หากต้องการให้อยู่ในรายงาน ให้บันทึกจากรอบบริการของโปรแกรมผู้ป่วยรายนี้
-                </Alert>
+              {scope.kind === "program" ? null : (
+                <Alert className="mt-4" variant="warning">บันทึกนอกโปรแกรม จะไม่อยู่ในรายงานโปรแกรม</Alert>
               )}
             </Panel>
 
             <Panel>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">{serviceDateLabel}</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                วันที่พบหรือติดตามผู้ป่วยจริง ใช้เป็นวันที่ติดตามในรายงาน เลือกย้อนหลังได้แต่เลือกวันในอนาคตไม่ได้
+                วันที่พบผู้ป่วยจริง วันนี้หรือย้อนหลัง
               </p>
               <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={busy || state.status === "SUCCESS"}>
                 <label className={labelClassName} htmlFor="followup-service-date">
@@ -789,8 +781,8 @@ export function FollowupForm({
               </h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
                 {scope.kind === "program"
-                  ? "เลือกแผนสุขภาพที่ใช้ติดตามในครั้งนี้ (ระบบเลือกแผนล่าสุดไว้ให้) และนัดหมายที่เสร็จสิ้นแล้วหากต้องการอ้างอิง"
-                  : "เลือกนัดหมายที่เสร็จสิ้นแล้ว หรือแผนสุขภาพย้อนหลังที่ต้องการอ้างอิงอย่างชัดเจน ระบบจะไม่แนบรายการล่าสุดให้โดยอัตโนมัติ"}
+                  ? "เลือกแผนล่าสุดไว้ให้แล้ว"
+                  : "ไม่เลือกก็ได้"}
               </p>
               <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={busy || state.status === "SUCCESS"}>
                 <label className={labelClassName} htmlFor="followup-appointment">
@@ -808,7 +800,7 @@ export function FollowupForm({
                     ))}
                   </Select>
                   <span className="text-xs font-normal leading-5 text-text-muted">
-                เลือกได้เฉพาะนัดหมายของผู้ป่วยรายนี้ที่เสร็จสิ้นแล้ว
+                เฉพาะนัดหมายที่เสร็จสิ้นแล้ว
                   </span>
                 </label>
                 <label className={labelClassName} htmlFor="followup-goal-plan">
@@ -837,8 +829,8 @@ export function FollowupForm({
                   </Select>
                   <span className="text-xs font-normal leading-5 text-text-muted">
                     {scope.kind === "program"
-                      ? "เลือกได้เฉพาะแผนสุขภาพของโปรแกรมนี้ ไม่เกิน 50 รอบล่าสุด"
-                      : "เลือกได้จากแผนสุขภาพย้อนหลังที่คุณมีสิทธิ์เข้าถึง ไม่เกิน 50 รอบล่าสุด"}
+                      ? "50 รอบล่าสุดของโปรแกรมนี้"
+                      : "50 รอบล่าสุด"}
                   </span>
                 </label>
               </fieldset>
@@ -847,7 +839,7 @@ export function FollowupForm({
             <Panel>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">ค่าที่บันทึกในการติดตามผล</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                กรอกเท่าที่มี ระบบจะเก็บค่าที่บันทึกไว้และไม่คำนวณผลทางการแพทย์อัตโนมัติ
+                กรอกเท่าที่มี
               </p>
               <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={busy || state.status === "SUCCESS"}>
                 <label className={labelClassName} htmlFor="followup-weight">
@@ -929,7 +921,7 @@ export function FollowupForm({
                     />
                     {rangeErrors.renderError("heightCm")}
                     <span className="text-xs font-normal leading-5 text-text-muted" id="followup-height-help">
-                      เติมค่าส่วนสูงล่าสุดให้แล้ว แก้ไขได้หากวัดใหม่ เว้นว่างได้ (ระบบจะใช้ค่าล่าสุด)
+                      เติมค่าล่าสุดให้แล้ว แก้ไขได้หากวัดใหม่
                     </span>
                   </label>
                 ) : null}
@@ -980,9 +972,6 @@ export function FollowupForm({
                       value={expertAdvice}
                     />
                   </label>
-                  <p className="text-sm leading-6 text-text-muted">
-                    ขั้นตอน “ทบทวนแผนสุขภาพ” ของครั้งนี้จะนับว่าบันทึกแล้วเมื่ออ้างอิงแผนสุขภาพ ตอบว่าทำตามแผนได้หรือไม่ และกรอก “เกิดอะไรขึ้นบ้าง?”
-                  </p>
                 </div>
               </Panel>
             ) : null}
@@ -992,13 +981,12 @@ export function FollowupForm({
                 <div>
                   <h2 className="text-xl font-semibold tracking-[-0.02em]">ความคืบหน้าตามแผนสุขภาพ</h2>
                   <p className="mt-2 text-sm leading-6 text-text-muted">
-                    แสดงกิจกรรมจากแผนสุขภาพรอบที่ {selectedGoalPlan.roundNumber} เท่านั้น
-                    เลือกสถานะตามข้อมูลที่ต้องการบันทึกในการติดตามผลรอบนี้
+                    กิจกรรมจากแผนสุขภาพรอบที่ {selectedGoalPlan.roundNumber}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-text-muted">
                     {requireAllProgress
-                      ? "ต้องบันทึกให้ครบทุกกิจกรรมในแผน: เลือกสถานะ และกรอกจำนวนวันที่ทำได้ ยกเว้นกิจกรรมที่ไม่เกี่ยวข้องในรอบนี้"
-                      : "เลือกบันทึกเฉพาะกิจกรรมที่ต้องการติดตามในรอบนี้ได้ กิจกรรมที่ไม่เลือกสถานะจะไม่ถูกบันทึก"}
+                      ? "บันทึกให้ครบทุกกิจกรรม ยกเว้นที่ไม่เกี่ยวข้อง"
+                      : "บันทึกเฉพาะกิจกรรมที่เลือกสถานะ"}
                   </p>
                 </div>
                 <ul className="mt-6 space-y-5">
@@ -1033,9 +1021,6 @@ export function FollowupForm({
 
             <Panel>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">การปรับแผนและอุปสรรค</h2>
-              <p className="mt-2 text-sm leading-6 text-text-muted">
-                ต้องเลือกทั้งสองข้อ ข้อมูลนี้ใช้ในรายงานการจัดบริการ
-              </p>
               <div className="mt-6 grid gap-6 sm:grid-cols-2">
                 <fieldset className="space-y-3" disabled={busy || state.status === "SUCCESS"}>
                   <legend className="text-sm font-semibold text-text">ปรับแผนใหม่ในรอบนี้หรือไม่</legend>
@@ -1056,8 +1041,8 @@ export function FollowupForm({
                   {planAdjusted === "true" ? (
                     <p className="text-sm leading-6 text-text-muted">
                       {scope.kind === "program"
-                        ? "หลังบันทึก ระบบจะพาไปสร้างแผนสุขภาพรอบใหม่ที่เชื่อมกับการติดตามครั้งนี้"
-                        : "หลังบันทึก ให้สร้างแผนสุขภาพรอบใหม่เพื่อใช้ในการติดตามครั้งถัดไป"}
+                        ? "หลังบันทึกจะไปสร้างแผนสุขภาพรอบใหม่"
+                        : "หลังบันทึก ให้สร้างแผนสุขภาพรอบใหม่"}
                     </p>
                   ) : null}
                 </fieldset>
@@ -1085,7 +1070,7 @@ export function FollowupForm({
                         id="followup-obstacle-note"
                         maxLength={1_000}
                         onChange={(event) => setObstacleNote(event.target.value)}
-                        placeholder="อุปสรรคที่พบ ใช้ประกอบการติดตาม ไม่แสดงในไฟล์รายงาน"
+                        placeholder="อุปสรรคที่พบ"
                         value={obstacleNote}
                       />
                     </label>
@@ -1098,11 +1083,6 @@ export function FollowupForm({
               <h2 className="text-xl font-semibold tracking-[-0.02em]">
                 {programId ? "หมายเหตุ" : "ความมั่นใจ / สิ่งที่ต้องการสะท้อน / หมายเหตุ"}
               </h2>
-              <p className="mt-2 text-sm leading-6 text-text-muted">
-                {programId
-                  ? "คะแนนความมั่นใจของโปรแกรมบันทึกที่ขั้นตอน “ไม้บรรทัดวัดใจ” ของแต่ละครั้ง ระบบจะไม่ใช้ข้อมูลส่วนนี้คำนวณคะแนนหรือแนะนำการรักษา"
-                  : "บันทึกข้อมูลตามที่เหมาะสม ระบบจะไม่ใช้ข้อมูลส่วนนี้คำนวณคะแนนหรือแนะนำการรักษา"}
-              </p>
               <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={busy || state.status === "SUCCESS"}>
                 {programId ? null : (
                 <>
@@ -1119,9 +1099,6 @@ export function FollowupForm({
                     value={confidenceScore}
                   />
                 </label>
-                <div className="text-sm leading-6 text-text-muted sm:pt-8">
-                  เลือกใส่เมื่อเหมาะสม ไม่ใช้เพื่อคำนวณคะแนนหรือแนะนำการรักษา
-                </div>
                 </>
                 )}
                 {programId ? null : (
@@ -1167,7 +1144,7 @@ export function FollowupForm({
             <Panel>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">ก่อนบันทึก</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                ตรวจทานค่าที่เลือกและกรอกในหน้าต่างถัดไป การบันทึกจะสร้างรายการติดตามผลใหม่ที่แก้ไขหรือลบไม่ได้
+                ตรวจทานในหน้าต่างถัดไป
               </p>
               <dl className="mt-5 grid gap-4 border-y border-border py-5 text-sm sm:grid-cols-3">
                 <div>
@@ -1351,7 +1328,7 @@ export function FollowupForm({
                     <p className="font-semibold">ค่าสุขภาพของรอบนี้ยังขาด</p>
                     <p className="mt-1">{missingVitalsPrompt.join(" · ")}</p>
                     <p className="mt-2">
-                      หากบันทึกต่อ ขั้นตอน “ข้อมูลทั่วไปและสัญญาณชีพ” ของรอบนี้อาจต้องระบุเหตุผลที่ข้ามด้วยตนเอง ระบบจะไม่ข้ามขั้นตอนหรือเลือกเหตุผลให้อัตโนมัติ
+                      หากบันทึกต่อ ต้องระบุเหตุผลที่ข้ามขั้นตอน “ข้อมูลทั่วไปและสัญญาณชีพ” เอง
                     </p>
                     <label className="mt-3 flex min-h-11 items-start gap-3 font-semibold text-text">
                       <input
@@ -1367,7 +1344,7 @@ export function FollowupForm({
                 ) : null}
 
                 <p className="text-sm leading-6 text-text-muted">
-                  การบันทึกจะสร้างรายการติดตามผลใหม่ ข้อมูลที่บันทึกแล้วแก้ไขหรือลบไม่ได้
+                  บันทึกแล้วแก้ไขหรือลบไม่ได้
                 </p>
               </div>
             }

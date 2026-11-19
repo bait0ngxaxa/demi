@@ -137,7 +137,9 @@ describe("CT-2 จัดบริการ workspace view", () => {
     const view = render();
 
     expect(view.querySelector("h1")?.textContent).toBe("จัดบริการ");
-    expect(view.textContent).toContain("ติดตามความคืบหน้าและเริ่มขั้นตอนถัดไปของผู้ป่วยแต่ละคน");
+    expect(view.textContent).not.toContain("ติดตามความคืบหน้าและเริ่มขั้นตอนถัดไป");
+    // The includeEnded checkbox applies only on submit (GET form), so the hint must say so.
+    expect(view.textContent).toContain("กดค้นหาเพื่อใช้ตัวกรอง");
     expect(view.querySelector<HTMLInputElement>('input[name="search"]')?.value).toBe("สมชาย");
     const checkbox = view.querySelector<HTMLInputElement>('input[name="includeEnded"]');
     expect(checkbox?.type).toBe("checkbox");
@@ -306,7 +308,7 @@ describe("CT-2 จัดบริการ workspace view", () => {
     expect([...form.querySelectorAll("option")].map((option) => [option.value, option.textContent])).toEqual([
       [hospitalId, "โรงพยาบาล ก"],
       ["44444444-4444-4444-8444-444444444444", "โรงพยาบาล ข"],
-      [`${hospitalId}:${childHospitalId}`, "รพ.สต. ลูกข่าย (ลูกข่ายของโรงพยาบาล ก · อ่านอย่างเดียว)"],
+      [`${hospitalId}:${childHospitalId}`, "รพ.สต. ลูกข่าย (ลูกข่ายของโรงพยาบาล ก · ดูอย่างเดียว)"],
     ]);
     expect(form.querySelector<HTMLOptionElement>("option[selected]")?.value).toBe(hospitalId);
     expect(form.querySelectorAll("input")).toHaveLength(0);
@@ -358,13 +360,13 @@ describe("CT-2 จัดบริการ workspace view", () => {
 
     it("shows the read-only banner and the Child with its Parent", () => {
       const view = renderNetwork({ scopes: [networkScope] });
-      const banner = [...view.querySelectorAll("p")].find((paragraph) => paragraph.textContent === "ข้อมูลลูกข่าย (อ่านอย่างเดียว)");
+      const banner = [...view.querySelectorAll("p")].find((paragraph) => paragraph.textContent?.startsWith("ดูอย่างเดียว"));
 
       expect(banner).toBeDefined();
-      expect(view.textContent).toContain("เปิดดูผ่านเครือข่ายของโรงพยาบาล ก");
-      expect(view.textContent).toContain("ทุกการเปิดดูจะถูกบันทึกไว้");
-      expect(view.textContent).toContain("รพ.สต. ลูกข่าย (ลูกข่ายของโรงพยาบาล ก · อ่านอย่างเดียว)");
-      expect(render().textContent).not.toContain("ข้อมูลลูกข่าย (อ่านอย่างเดียว)");
+      expect(banner?.textContent).toContain("ผ่านเครือข่ายของโรงพยาบาล ก · การเปิดดูถูกบันทึก");
+      expect(view.textContent).not.toContain("แก้ไขหรือบันทึกข้อมูลไม่ได้");
+      expect(view.textContent).toContain("รพ.สต. ลูกข่าย (ลูกข่ายของโรงพยาบาล ก · ดูอย่างเดียว)");
+      expect(render().textContent).not.toContain("การเปิดดูถูกบันทึก");
     });
 
     it("offers no primary action and no OSM name, only the Patient page link", () => {
@@ -377,7 +379,7 @@ describe("CT-2 จัดบริการ workspace view", () => {
 
       expect([...row.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toEqual([patientPath]);
       expect(row.querySelector("form, button, input, select, textarea")).toBeNull();
-      expect(row.textContent).toContain("ดูข้อมูลได้อย่างเดียว");
+      expect(row.textContent).toContain("ดูอย่างเดียว");
       expect(row.textContent).not.toContain("อสม.");
     });
 

@@ -69,7 +69,8 @@ describe("Appointment capability-scoped interaction presentation", () => {
     expect(markup).toContain("ส่งคำขอยกเลิกแทนผู้ป่วย");
     expect(markup).toContain("บันทึกว่าประสานงานแล้ว");
     expect(markup).toContain("ไม่เปลี่ยนสถานะนัด");
-    expect(markup).toContain("ไม่ใช่การตอบรับงานมอบหมาย OSM");
+    expect(markup).toContain("บันทึกแทนผู้ป่วย");
+    expect(markup).not.toContain("OSM");
     resetRender();
     expect(mutations(false)).toBe("");
     expect(markup).not.toContain("อนุมัติและยกเลิกนัด");

@@ -124,9 +124,6 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
     <Panel>
       <div id="new-evidence">
         <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">เพิ่มรูปหลักฐาน</h2>
-        <p className="mt-2 text-sm leading-6 text-text-muted">
-          รูปจะถูกเก็บไว้ในประวัติการดูแลของโรงพยาบาลนี้เท่านั้น
-        </p>
       </div>
 
       <form className="mt-6 space-y-5" ref={formRef} onSubmit={handleSubmit}>
@@ -143,9 +140,7 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
             type="file"
           />
           <span className="text-xs font-normal leading-5 text-text-muted">
-            JPEG, PNG หรือ WEBP · เลือกรูปได้สูงสุด 25 MB
-            <br />
-            ระบบจะลดขนาดรูปให้อัตโนมัติก่อนอัปโหลด
+            JPG, PNG หรือ WEBP ไม่เกิน 25 MB
           </span>
         </label>
 

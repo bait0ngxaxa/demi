@@ -6,8 +6,17 @@ import { describe, expect, it } from "vitest";
 // DESIGN.md COPY-DISTILL (2026-11-19): user copy on patient, family and LINE surfaces never explains
 // system guarantees (R1), implementation details (R2) or inline medical/legal disclaimers (R7).
 const GUARDED_DIRECTORIES = ["app/app/personal", "app/app/family", "app/line"] as const;
+// PR 2 (OSM and hospital staff daily flows): implementation terms only (R2).
+const STAFF_DIRECTORIES = [
+  "app/app/patients/[relationshipId]",
+  "app/app/patients/assigned",
+  "app/app/patients/service-requests",
+  "app/app/services",
+] as const;
+const STAFF_FILES = ["app/app/patients/patient-directory-view.tsx", "app/app/appointments/new/patient-picker-view.tsx"] as const;
 
 type BannedPhrase = { phrase: string; rule: string; pattern: RegExp; thaiOnly: boolean };
+const isImplementationRule = ({ rule }: BannedPhrase): boolean => rule.startsWith("R2");
 
 const THAI = /[฀-๿]/u;
 const BANNED: readonly BannedPhrase[] = [
@@ -50,8 +59,8 @@ function copyFragments(source: string, filename: string): { text: string; line: 
   return fragments;
 }
 
-function violations(source: string, filename: string): string[] {
-  return copyFragments(source, filename).flatMap(({ text, line }) => BANNED
+function violations(source: string, filename: string, banned: readonly BannedPhrase[] = BANNED): string[] {
+  return copyFragments(source, filename).flatMap(({ text, line }) => banned
     .filter(({ pattern, thaiOnly }) => pattern.test(text) && (!thaiOnly || THAI.test(text)))
     .filter(({ phrase }) => !ALLOWED.some((entry) => entry.file === filename && entry.phrase === phrase))
     .map(({ phrase, rule }) => `${filename}:${line} "${phrase}" (${rule})`));
@@ -78,6 +87,15 @@ describe("COPY-DISTILL copy guard", () => {
     const found = GUARDED_DIRECTORIES.flatMap((directory) => sourceFiles(directory)).flatMap((path) => {
       const filename = relative(process.cwd(), path).replaceAll("\\", "/");
       return violations(readFileSync(path, "utf8"), filename);
+    });
+    expect(found).toEqual([]);
+  });
+
+  it("keeps OSM and hospital staff daily flows free of implementation terms", () => {
+    const paths = [...STAFF_DIRECTORIES.flatMap((directory) => sourceFiles(directory)), ...STAFF_FILES];
+    const found = paths.flatMap((path) => {
+      const filename = relative(process.cwd(), path).replaceAll("\\", "/");
+      return violations(readFileSync(path, "utf8"), filename, BANNED.filter(isImplementationRule));
     });
     expect(found).toEqual([]);
   });

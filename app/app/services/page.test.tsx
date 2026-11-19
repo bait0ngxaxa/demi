@@ -107,7 +107,8 @@ describe("CT-2 /app/services page", () => {
     expect(getCareTrackingPage).toHaveBeenCalledWith(member, {
       hospitalId: hospitalA, childHospitalId: childHospital, stages: [], signals: ["stale"], search: "", includeEnded: false, page: 1,
     });
-    expect(html).toContain("ข้อมูลลูกข่าย (อ่านอย่างเดียว)");
+    expect(html).toContain("ดูอย่างเดียว");
+    expect(html).toContain("การเปิดดูถูกบันทึก");
   });
 
   it.each([

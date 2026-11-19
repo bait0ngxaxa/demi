@@ -501,9 +501,6 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 placeholder="บันทึกเฉพาะรายละเอียดการนัดหมายที่จำเป็น"
                 value={note}
               />
-              <span className="text-xs font-normal leading-5 text-text-muted">
-                หมายเหตุจะแสดงเฉพาะในนัดหมายที่ผู้ใช้มีสิทธิ์เข้าถึง
-              </span>
             </label>
           </fieldset>
         </Panel>

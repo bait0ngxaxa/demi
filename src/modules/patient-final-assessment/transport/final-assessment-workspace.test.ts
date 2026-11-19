@@ -111,7 +111,7 @@ describe("Final Assessment Program workspace", () => {
     expect(markup).toContain('name="systolicBloodPressure"');
     expect(markup).toContain('name="diastolicBloodPressure"');
     expect(markup).toContain('name="bloodSugar"');
-    expect(markup).toContain("ค่าที่แสดงเป็นค่าดิบที่บันทึกไว้สำหรับโปรแกรมนี้");
+    expect(markup).not.toContain("ระบบยังไม่แปลผลทางคลินิก");
   });
 
   it("renders an existing active Final as immutable read-only data", () => {
@@ -123,7 +123,8 @@ describe("Final Assessment Program workspace", () => {
       }),
     );
 
-    expect(markup).toContain("บันทึกแล้ว · อ่านอย่างเดียว");
+    expect(markup).toContain("บันทึกแล้ว");
+    expect(markup).not.toContain("อ่านอย่างเดียว");
     expect(markup).toContain("72.5");
     expect(markup).toContain("วันที่ประเมิน");
     expect(markup).toContain("20 สิงหาคม 2569");
@@ -145,7 +146,7 @@ describe("Final Assessment Program workspace", () => {
     );
 
     expect(markup).toContain("ยังไม่มีการบันทึกข้อมูล Final Assessment สำหรับโปรแกรมนี้");
-    expect(markup).toContain("ไม่มีสิทธิ์บันทึก Final Assessment ใหม่");
+    expect(markup).not.toContain("ไม่มีสิทธิ์");
     expect(markup).not.toContain("<form");
     expect(markup).not.toContain("บันทึกค่าดิบของ Final Assessment");
   });
@@ -162,7 +163,7 @@ describe("Final Assessment Program workspace", () => {
       }),
     );
 
-    expect(markup).toContain("ประวัติอ่านอย่างเดียว");
+    expect(markup).toContain("จบโปรแกรมแล้ว");
     expect(markup).toContain("สถานะโปรแกรม: เสร็จสิ้นแล้ว");
     expect(markup).toContain("บันทึกในระบบเมื่อ");
     expect(markup).not.toContain("<form");
@@ -179,7 +180,7 @@ describe("Final Assessment Program workspace", () => {
     );
 
     expect(markup).toContain("ยังไม่มีการบันทึกข้อมูล Final Assessment สำหรับโปรแกรมนี้");
-    expect(markup).toContain("โปรแกรมนี้เสร็จสิ้นแล้ว จึงไม่สามารถสร้าง Final Assessment เพิ่มได้");
+    expect(markup).toContain("โปรแกรมนี้จบแล้ว");
     expect(markup).not.toContain("ล้มเหลว");
     expect(markup).not.toContain("ไม่สำเร็จ");
     expect(markup).not.toContain("ผลลัพธ์ไม่ดี");

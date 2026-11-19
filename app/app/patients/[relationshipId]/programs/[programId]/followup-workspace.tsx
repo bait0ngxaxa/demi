@@ -108,11 +108,7 @@ export function PatientProgramFollowupWorkspace({
 
       {detail.status === "COMPLETED" ? (
         <Alert className="mt-5" variant="neutral">
-          โปรแกรมนี้จบแล้ว จึงอ่านประวัติการติดตามผลได้ แต่ไม่สามารถบันทึกรอบใหม่
-        </Alert>
-      ) : !history.canRecord ? (
-        <Alert className="mt-5" variant="info">
-          บัญชีนี้มีสิทธิ์อ่านประวัติการติดตามผลในโปรแกรมนี้ แต่ไม่มีสิทธิ์บันทึกข้อมูลใหม่
+          โปรแกรมนี้จบแล้ว
         </Alert>
       ) : null}
 
