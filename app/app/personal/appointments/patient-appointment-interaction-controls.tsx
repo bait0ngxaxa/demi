@@ -1,21 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Panel } from "@/components/ui/panel";
 import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import {
-  APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
-  APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE,
-  APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE,
-  APPOINTMENT_INTERACTION_SOURCE_LABELS,
-  APPOINTMENT_RESCHEDULE_GUIDANCE,
-} from "@/modules/appointments/domain/appointment-interaction-definitions";
 import {
   acknowledgeOwnPatientAppointmentAction,
   requestOwnPatientAppointmentCancellationAction,
@@ -24,23 +18,24 @@ import {
   initialAppointmentInteractionActionState,
   type AppointmentInteractionActionState,
 } from "@/modules/appointments/transport/action-state";
-import type { PatientSelfAppointmentDetail, PatientSelfAppointmentItem } from "@/modules/patient-self/services/patient-self-care-query-service";
+import type { PatientSelfAppointmentItem } from "@/modules/patient-self/services/patient-self-care-query-service";
+
+import { RescheduleRequestForm } from "../../patients/[relationshipId]/appointments/reschedule-request-form";
+import { formatAppointmentDateTime } from "../../appointment-summary";
+
+export const PATIENT_CANCELLATION_SUCCESS_MESSAGE = "ส่งคำขอยกเลิกแล้ว นัดยังไม่ถูกยกเลิกจนกว่าโรงพยาบาลอนุมัติ";
+const ACTIONS_HEADING_ID = "patient-appointment-actions-heading";
+
+/** The reschedule request the Patient may open, decided on the server from the reschedule history. */
+export type PatientRescheduleOffer = { nonce: string; expectedUpdatedAt: string } | null;
 
 type PatientAppointmentInteractionControlsProps = {
   relationshipId: string;
-  appointment: PatientSelfAppointmentItem;
+  appointment: Pick<PatientSelfAppointmentItem, "appointmentId" | "updatedAt" | "acknowledgement" | "cancellationRequests">;
+  appointmentSummary: string;
   cancellationRequestNonce: string;
-  hospitalStatus: PatientSelfAppointmentDetail["relationship"]["hospitalStatus"];
-  careEnded: boolean;
+  reschedule: PatientRescheduleOffer;
 };
-
-function formatInteractionTime(value: Date): string {
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Bangkok",
-  }).format(value);
-}
 
 export function PatientAppointmentActionError({ state }: { state: AppointmentInteractionActionState }): React.JSX.Element | null {
   if (state.status !== "ERROR") {
@@ -58,12 +53,25 @@ export function PatientAppointmentActionError({ state }: { state: AppointmentInt
   );
 }
 
+function CheckGlyph(): React.JSX.Element {
+  return (
+    <svg aria-hidden="true" className="size-5 shrink-0" fill="none" viewBox="0 0 20 20">
+      <path d="m4.5 10.5 3.5 3.5 7.5-8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+    </svg>
+  );
+}
+
+/**
+ * PATIENT-APPT-DISTILL "สิ่งที่ทำได้": the caller renders this only for a SCHEDULED appointment at an
+ * ACTIVE Hospital whose care has not ended. Order on mobile: รับทราบ → ขอเลื่อนนัด → ขอยกเลิกนัด.
+ * The server still enforces every rule; hiding a control is never authorization.
+ */
 export function PatientAppointmentInteractionControls({
   relationshipId,
   appointment,
+  appointmentSummary,
   cancellationRequestNonce,
-  hospitalStatus,
-  careEnded,
+  reschedule,
 }: PatientAppointmentInteractionControlsProps): React.JSX.Element {
   const router = useRouter();
   const [acknowledgementState, acknowledgeAction, acknowledgementPending, acknowledgementUnknown, resendAcknowledgement] = useMutationActionState<
@@ -74,6 +82,11 @@ export function PatientAppointmentInteractionControls({
     AppointmentInteractionActionState,
     FormData
   >(requestOwnPatientAppointmentCancellationAction, initialAppointmentInteractionActionState);
+  // The dialog only guards the first tap. It stays open for the state it was opened on: the next answer
+  // (a new state) or an unknown outcome closes it, and the result is shown in the panel.
+  const [confirmOpenedFor, setConfirmOpenedFor] = useState<AppointmentInteractionActionState | null>(null);
+  const confirmOpen = confirmOpenedFor === cancellationState && !cancellationUnknown;
+  const cancelTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (acknowledgementState.status === "SUCCESS" || cancellationState.status === "SUCCESS") {
@@ -81,110 +94,94 @@ export function PatientAppointmentInteractionControls({
     }
   }, [acknowledgementState, cancellationState, router]);
 
-  const isScheduled = appointment.status === "SCHEDULED";
-  const canSubmitPatientInteraction = isScheduled && hospitalStatus === "ACTIVE" && !careEnded;
   const pending = acknowledgementPending || cancellationPending;
   const unknownOutcome = acknowledgementUnknown || cancellationUnknown;
-  const pendingRequest = appointment.cancellationRequests.find((request) => request.status === "PENDING");
+  const acknowledged = appointment.acknowledgement !== null || acknowledgementState.status === "SUCCESS";
+  const cancellationRequested = cancellationState.status === "SUCCESS";
+  const cancellationPendingAtHospital = appointment.cancellationRequests.some((request) => request.status === "PENDING");
+
+  function submitCancellation(): void {
+    const formData = new FormData();
+    formData.set("patientHospitalRelationshipId", relationshipId);
+    formData.set("appointmentId", appointment.appointmentId);
+    formData.set("expectedUpdatedAt", appointment.updatedAt.toISOString());
+    formData.set("submissionNonce", cancellationRequestNonce);
+    startTransition(() => cancellationAction(formData));
+  }
 
   return (
     <Panel>
-      {careEnded ? (
-        <Alert className="mb-5" variant="info">โรงพยาบาลนี้สิ้นสุดการดูแลแล้ว อ่านข้อมูลนัดหมายเดิมได้ แต่รับทราบหรือส่งคำขอยกเลิกไม่ได้</Alert>
-      ) : hospitalStatus !== "ACTIVE" ? (
-        <Alert className="mb-5" variant="info">อ่านข้อมูลนัดหมายเดิมได้ แต่ยังรับทราบหรือส่งคำขอยกเลิกไม่ได้ในขณะที่โรงพยาบาลไม่อยู่ในสถานะเปิดใช้งาน</Alert>
-      ) : null}
-      <section aria-labelledby="patient-appointment-response-heading" className="space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold text-text" id="patient-appointment-response-heading">
-            การรับทราบนัดหมาย
-          </h2>
-          <p className="mt-1 text-sm leading-6 text-text-muted">
-            {APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE}
-          </p>
+      <section aria-labelledby={ACTIONS_HEADING_ID}>
+        <h2 className="text-lg font-semibold text-text" id={ACTIONS_HEADING_ID} tabIndex={-1}>สิ่งที่ทำได้</h2>
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
+          {acknowledged ? (
+            <p className="inline-flex min-h-11 items-center gap-2 font-semibold text-success" role="status">
+              <CheckGlyph />
+              {appointment.acknowledgement
+                ? <>รับทราบแล้ว · {formatAppointmentDateTime(appointment.acknowledgement.acknowledgedAt)}</>
+                : "รับทราบนัดหมายแล้ว"}
+            </p>
+          ) : (
+            <form action={acknowledgeAction} className="sm:contents">
+              <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
+              <input name="appointmentId" type="hidden" value={appointment.appointmentId} />
+              <input name="expectedUpdatedAt" type="hidden" value={appointment.updatedAt.toISOString()} />
+              <Button className="w-full sm:w-auto" disabled={pending || unknownOutcome} loading={acknowledgementPending} type="submit">
+                {acknowledgementPending ? "กำลังบันทึก..." : "รับทราบนัดหมาย"}
+              </Button>
+            </form>
+          )}
+
+          {reschedule ? (
+            <RescheduleRequestForm
+              appointmentId={appointment.appointmentId}
+              appointmentSummary={appointmentSummary}
+              audience="patient"
+              expectedUpdatedAt={reschedule.expectedUpdatedAt}
+              nonce={reschedule.nonce}
+              relationshipId={relationshipId}
+              returnFocusHeadingId={ACTIONS_HEADING_ID}
+            />
+          ) : null}
+
+          {cancellationPendingAtHospital || cancellationRequested ? null : (
+            <Button
+              className="w-full text-danger hover:bg-danger-soft hover:text-danger sm:w-auto"
+              disabled={pending || unknownOutcome}
+              onClick={() => setConfirmOpenedFor(cancellationState)}
+              ref={cancelTriggerRef}
+              type="button"
+              variant="ghost"
+            >
+              ขอยกเลิกนัด
+            </Button>
+          )}
         </div>
 
-        {appointment.acknowledgement ? (
-          <p className="text-sm font-semibold text-text" role="status">
-            รับทราบนัดหมายแล้ว · {APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]} · {formatInteractionTime(appointment.acknowledgement.acknowledgedAt)}
-          </p>
-        ) : canSubmitPatientInteraction ? (
-          <form action={acknowledgeAction}>
-            <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
-            <input name="appointmentId" type="hidden" value={appointment.appointmentId} />
-            <input name="expectedUpdatedAt" type="hidden" value={appointment.updatedAt.toISOString()} />
-            <Button className="w-full sm:w-auto" disabled={pending || unknownOutcome} loading={acknowledgementPending} type="submit">
-              {acknowledgementPending ? "กำลังบันทึก..." : "รับทราบนัดหมาย"}
-            </Button>
-          </form>
-        ) : (
-          <p className="text-sm text-text-muted">ยังไม่สามารถบันทึกการรับทราบสำหรับนัดหมายนี้ได้</p>
-        )}
-        {acknowledgementState.status === "SUCCESS" ? (
-          <Alert variant="success">บันทึกการรับทราบนัดหมายแล้ว</Alert>
-        ) : null}
         <PatientAppointmentActionError state={acknowledgementState} />
         <UnknownOutcomeAlert active={acknowledgementUnknown} recovery={{ kind: "resend", onResend: resendAcknowledgement, resending: acknowledgementPending }} />
-      </section>
 
-      <section aria-labelledby="patient-appointment-cancellation-heading" className="mt-7 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-text" id="patient-appointment-cancellation-heading">
-            คำขอยกเลิกนัด
-          </h2>
-          <p className="mt-1 text-sm leading-6 text-text-muted">
-            {APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE}
-          </p>
-        </div>
-
-        {pendingRequest ? (
-          <p className="text-sm font-semibold text-text" role="status">
-            {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[pendingRequest.status]}
-          </p>
-        ) : canSubmitPatientInteraction ? (
-          <form action={cancellationAction}>
-            <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
-            <input name="appointmentId" type="hidden" value={appointment.appointmentId} />
-            <input name="expectedUpdatedAt" type="hidden" value={appointment.updatedAt.toISOString()} />
-            <input name="submissionNonce" type="hidden" value={cancellationRequestNonce} />
-            <Button
-              className="w-full sm:w-auto"
-              disabled={pending || unknownOutcome}
-              loading={cancellationPending}
-              type="submit"
-              variant="secondary"
-            >
-              {cancellationPending ? "กำลังส่งคำขอ..." : "ขอยกเลิกนัด"}
-            </Button>
-          </form>
-        ) : (
-          <p className="text-sm text-text-muted">ยังไม่สามารถส่งคำขอยกเลิกสำหรับนัดหมายนี้ได้</p>
-        )}
-        {cancellationState.status === "SUCCESS" ? (
-          <Alert variant="success">ส่งคำขอไปยังโรงพยาบาลแล้ว นัดหมายยังไม่ถูกยกเลิก</Alert>
+        {cancellationRequested ? (
+          <Alert className="mt-3" variant="success">{PATIENT_CANCELLATION_SUCCESS_MESSAGE}</Alert>
         ) : null}
         <PatientAppointmentActionError state={cancellationState} />
         <UnknownOutcomeAlert active={cancellationUnknown} recovery={{ kind: "resend", onResend: resendCancellation, resending: cancellationPending }} />
-
-        {appointment.cancellationRequests.length > 0 ? (
-          <div>
-            <h3 className="text-sm font-semibold text-text">คำขอยกเลิกล่าสุด (ไม่เกิน 5 รายการ)</h3>
-            <ul className="mt-2 space-y-2 text-sm text-text-muted">
-              {appointment.cancellationRequests.map((request, index) => (
-                <li key={`${request.submittedAt.toISOString()}-${index}`}>
-                  {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[request.status]} · {APPOINTMENT_INTERACTION_SOURCE_LABELS[request.source]} · {formatInteractionTime(request.submittedAt)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {isScheduled ? (
-          <p className="border-t border-border pt-4 text-sm leading-6 text-text-muted">
-            {APPOINTMENT_RESCHEDULE_GUIDANCE}
-          </p>
-        ) : null}
       </section>
+
+      <ConfirmDialog
+        cancelLabel="ไม่ใช่ตอนนี้"
+        confirmLabel="ส่งคำขอยกเลิก"
+        confirmVariant="destructive"
+        description={`${appointmentSummary} — โรงพยาบาลจะพิจารณาคำขอ นัดยังไม่ถูกยกเลิกจนกว่าโรงพยาบาลอนุมัติ`}
+        onCancel={() => setConfirmOpenedFor(null)}
+        onConfirm={submitCancellation}
+        open={confirmOpen}
+        pending={cancellationPending}
+        pendingLabel="กำลังส่งคำขอ..."
+        returnFocusTarget={() => cancelTriggerRef.current?.isConnected ? cancelTriggerRef.current : document.getElementById(ACTIONS_HEADING_ID)}
+        title="ขอยกเลิกนัดนี้หรือไม่"
+      />
     </Panel>
   );
 }

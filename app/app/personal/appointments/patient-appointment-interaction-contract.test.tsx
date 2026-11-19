@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // Form ↔ server contract: the patient's own appointment controls post exactly what
 // ACKNOWLEDGEMENT_FORM_FIELDS / CANCELLATION_REQUEST_FORM_FIELDS, their parsers and schemas accept.
+import { act } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -20,6 +21,7 @@ import {
   expectFormContract,
   findButton,
   installFormContractEnvironment,
+  settleForm,
   submitForm,
 } from "../../../../tests/support/form-contract";
 
@@ -33,6 +35,10 @@ vi.mock("next/navigation", () => ({ useRouter: () => actions.router, unstable_re
 vi.mock("@/modules/appointments/transport/server-actions", () => ({
   acknowledgeOwnPatientAppointmentAction: actions.acknowledge,
   requestOwnPatientAppointmentCancellationAction: actions.requestCancellation,
+}));
+vi.mock("@/modules/appointments/transport/reschedule-request-actions", () => ({
+  submitRescheduleRequestAction: vi.fn(),
+  rejectRescheduleRequestAction: vi.fn(),
 }));
 
 import { PatientAppointmentInteractionControls } from "./patient-appointment-interaction-controls";
@@ -66,10 +72,10 @@ function render() {
   return (
     <PatientAppointmentInteractionControls
       appointment={appointment}
+      appointmentSummary="โรงพยาบาล ก · วันพฤหัสบดีที่ 20 พฤศจิกายน 2569 09:30"
       cancellationRequestNonce={ids.nonce}
-      careEnded={false}
-      hospitalStatus="ACTIVE"
       relationshipId={ids.relationship}
+      reschedule={null}
     />
   );
 }
@@ -89,13 +95,18 @@ describe("Patient appointment controls ↔ own appointment actions", () => {
       .toEqual({ patientHospitalRelationshipId: ids.relationship, appointmentId: ids.appointment, expectedUpdatedAt: updatedAt.toISOString() });
   });
 
-  it("cancellation request posts its nonce", async () => {
+  it("cancellation request posts its nonce only after the dialog is confirmed", async () => {
     const payload = await captureSubmittedFormData({
       render,
       action: actions.requestCancellation,
-      interact: (container) => {
-        const form = container.querySelector<HTMLInputElement>('input[name="submissionNonce"]')?.form ?? null;
-        submitForm(form, form?.querySelector<HTMLButtonElement>('button[type="submit"]'));
+      interact: async (container) => {
+        act(() => findButton(container, "ขอยกเลิกนัด").click());
+        await settleForm();
+        // PATIENT-APPT-DISTILL: the first tap only opens the confirmation; nothing is sent yet.
+        expect(actions.requestCancellation).not.toHaveBeenCalled();
+        expect(document.body.textContent).toContain("ขอยกเลิกนัดนี้หรือไม่");
+        expect(document.body.textContent).toContain("นัดยังไม่ถูกยกเลิกจนกว่าโรงพยาบาลอนุมัติ");
+        act(() => findButton(document.body, "ส่งคำขอยกเลิก").click());
       },
     });
 

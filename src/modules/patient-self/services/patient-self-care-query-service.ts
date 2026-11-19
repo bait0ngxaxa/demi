@@ -246,7 +246,11 @@ export type PatientSelfAppointmentItem = {
     source: AppointmentInteractionSource;
     status: AppointmentCancellationRequestStatus;
     submittedAt: Date;
+    /** The appointment version the request was made against; equal to `updatedAt` while it is about this schedule. */
+    sourceAppointmentUpdatedAt: Date;
   }>;
+  /** PATIENT-APPT-DISTILL: a reschedule request is waiting for the Hospital (read in the same select, no extra query). */
+  pendingReschedule: boolean;
 };
 
 export type PatientSelfAppointmentHistory = {
@@ -483,7 +487,13 @@ function appointmentSelect<
       source: true,
       status: true,
       submittedAt: true,
+      sourceAppointmentUpdatedAt: true,
     },
+  },
+  rescheduleRequests: {
+    where: { status: AppointmentCancellationRequestStatus.PENDING },
+    take: 1,
+    select: { id: true },
   },
   } satisfies Prisma.PatientAppointmentSelect;
 }
@@ -628,7 +638,9 @@ function toAppointmentItem(record: AppointmentItemSource): PatientSelfAppointmen
       source: request.source,
       status: request.status,
       submittedAt: request.submittedAt,
+      sourceAppointmentUpdatedAt: request.sourceAppointmentUpdatedAt,
     })),
+    pendingReschedule: record.rescheduleRequests.length > 0,
   };
 }
 

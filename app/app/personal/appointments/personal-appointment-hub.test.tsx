@@ -27,7 +27,7 @@ const appointment = {
   serviceCode: null, source: "HOSPITAL" as const,
   appointmentId, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: 30, locationType: AppointmentLocationType.CLINIC,
   locationDetail: null, status: AppointmentStatus.SCHEDULED, updatedAt: scheduledAt, responsibleDisplayName: null,
-  responsibleProfession: null, osmAtCreationDisplayName: null, assignedOsmDisplayName: null, appointer: { displayName: "พยาบาลผู้นัด", role: "NURSE" as const }, acknowledgement: null, cancellationRequests: [],
+  responsibleProfession: null, osmAtCreationDisplayName: null, assignedOsmDisplayName: null, appointer: { displayName: "พยาบาลผู้นัด", role: "NURSE" as const }, acknowledgement: null, cancellationRequests: [], pendingReschedule: false,
 };
 const family = {
   kind: "FAMILY" as const, key: grantId, grantId, caregiverRelationshipId: "99999999-9999-4999-8999-999999999999", contractVersion: "family-appointment-read-v1" as const, patient: { givenName: "แม่", familyName: "ใจดี" }, hospitalName: "รพ.สต. บ้านใหม่",
@@ -55,6 +55,10 @@ describe("AF-4 appointment hub view", () => {
 
   it("renders ฉัน with a merged list, Hospital filter, tabs, paging and ended-Hospital history", () => {
     const markup = renderToStaticMarkup(<PersonalAppointmentHub context={selfContext} />);
+    for (const policy of ["ไม่ใช่การยืนยันว่าจะมาตามนัด", "การส่งคำขอไม่ได้ยกเลิกนัดทันที", "ผู้นัดหมาย"]) {
+      expect(markup).not.toContain(policy);
+    }
+    expect(markup).toContain("รอคุณรับทราบ");
 
     for (const text of ["ฉัน", "แม่ ใจดี", "สมาชิกครอบครัว · รพ.สต. บ้านใหม่", "ทุกโรงพยาบาล", "ที่จะถึง", "ประวัติ", "ประวัติจากโรงพยาบาลที่สิ้นสุดการดูแลแล้ว"]) {
       expect(markup).toContain(text);
@@ -75,14 +79,19 @@ describe("AF-4 appointment hub view", () => {
       family: { appointments: [{ appointmentId, hospitalName: family.hospitalName, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: null, locationType: null, status: AppointmentStatus.SCHEDULED, extension: null }], nextCursor: null, contractVersion: "family-appointment-read-v1" },
     }} />);
 
-    expect(markup).toContain("นัดหมายของ แม่ ใจดี ที่ รพ.สต. บ้านใหม่");
+    expect(markup).toContain("นัดหมายของ แม่ ใจดี · รพ.สต. บ้านใหม่");
+    expect(markup).not.toContain("แบบอ่านอย่างเดียว");
     expect(markup).toContain(`href="/app/family/grants/${grantId}/appointments/${appointmentId}"`);
+    // PATIENT-APPT-DISTILL: one link row per appointment, no state chip (a caregiver cannot act), no placeholders.
+    for (const absent of ["รอคุณรับทราบ", "รับทราบแล้ว", "ยังไม่ระบุ", "ไม่มีข้อมูล", "อสม. ที่ดูแลขณะสร้างนัด", "ดูรายละเอียดนัดหมาย"]) {
+      expect(markup).not.toContain(absent);
+    }
     expect(markup).not.toMatch(/href="\/app\/personal\/appointments\/|<form|<button|ประวัติจากโรงพยาบาล/u);
   });
 
   it("explains the consent boundary on a family history tab and a grant that stopped authorizing", () => {
     const history = renderToStaticMarkup(<PersonalAppointmentHub context={{ ...selfContext, selected: family, tab: "history", self: null }} />);
-    expect(history).toContain("ภายใต้ความยินยอมปัจจุบัน ผู้ป่วยแชร์เฉพาะนัดหมายที่จะถึง");
+    expect(history).toContain("ผู้ป่วยแชร์เฉพาะนัดที่จะถึงใน 90 วัน");
 
     const unavailable = renderToStaticMarkup(<PersonalAppointmentHub context={{ ...selfContext, selected: family, self: null, family: "UNAVAILABLE" }} />);
     expect(unavailable).toContain("สิทธิ์อาจถูกยกเลิกแล้ว");
@@ -95,7 +104,7 @@ describe("AF-4 appointment hub view", () => {
       family: { appointments: [], nextCursor: null, contractVersion: "family-appointment-read-v2" },
     }} />);
     expect(markup).toContain("ไม่มีประวัติการนัดหมายในช่วง 90 วันที่ผ่านมา");
-    expect(markup).not.toContain("ภายใต้ความยินยอมปัจจุบัน");
+    expect(markup).not.toContain("ผู้ป่วยแชร์เฉพาะนัดที่จะถึงใน 90 วัน");
     expect(markup).toContain(`href="/app/family/members/${family.caregiverRelationshipId}"`);
   });
 

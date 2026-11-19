@@ -8,7 +8,7 @@ import { progressRelationship, progressPatient } from "../../../../tests/support
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
-import { AppointmentFields } from "../grants/[grantId]/appointments/appointment-fields";
+import { FamilyAppointmentSummary } from "../grants/[grantId]/appointments/appointment-fields";
 import { FamilyHealthSummaryView } from "./family-health-summary-view";
 
 const relationshipId = "44444444-4444-4444-8444-444444444444";
@@ -81,18 +81,21 @@ describe("AF-5 family appointment projection by contract version", () => {
     scheduledAt: new Date("2026-11-01T03:00:00.000Z"), durationMinutes: 30, locationType: AppointmentLocationType.HOME_VISIT, status: AppointmentStatus.SCHEDULED,
   };
 
-  it("v2 adds the parent Hospital, location detail, appointer and OSM at creation", () => {
-    const markup = renderToStaticMarkup(<AppointmentFields appointment={{ ...appointment, extension: {
+  it("v2 adds the parent Hospital, location detail and responsible person, never the OSM at creation", () => {
+    const markup = renderToStaticMarkup(<FamilyAppointmentSummary appointment={{ ...appointment, extension: {
       locationDetail: "บ้านเลขที่ 1", responsibleDisplayName: "หมอ ใจดี", responsibleProfession: Profession.DOCTOR,
       osmAtCreationDisplayName: "อสม. สมศรี", parentHospitalName: "โรงพยาบาลแม่ข่าย",
     } }} />);
-    for (const text of ["รพ.สต. บ้านใหม่ · โรงพยาบาลแม่ข่าย", "บ้านเลขที่ 1", "แพทย์ผู้ดูแล", "หมอ ใจดี", "อสม. สมศรี"]) expect(markup).toContain(text);
-    expect((markup.match(/<dt /g) ?? []).length).toBe(9);
+    for (const text of ["รพ.สต. บ้านใหม่ · โรงพยาบาลแม่ข่าย", "บ้านเลขที่ 1", "แพทย์ผู้ดูแล", "หมอ ใจดี"]) expect(markup).toContain(text);
+    expect(markup).not.toMatch(/อสม\. สมศรี|อสม\. ที่ดูแลขณะสร้างนัด/u);
+    // Place, Hospital, duration and responsible person.
+    expect((markup.match(/<dt /g) ?? []).length).toBe(4);
   });
 
-  it("v1 keeps exactly the six original fields", () => {
-    const markup = renderToStaticMarkup(<AppointmentFields appointment={{ ...appointment, extension: null }} />);
-    expect((markup.match(/<dt /g) ?? []).length).toBe(6);
-    expect(markup).not.toMatch(/รายละเอียดสถานที่|ผู้ดูแล|อสม\./u);
+  it("v1 renders no extension field and no placeholder", () => {
+    const markup = renderToStaticMarkup(<FamilyAppointmentSummary appointment={{ ...appointment, extension: null }} />);
+    // Place (type only), Hospital and duration.
+    expect((markup.match(/<dt /g) ?? []).length).toBe(3);
+    expect(markup).not.toMatch(/บ้านเลขที่|ผู้ดูแล|อสม\.|ยังไม่ระบุ|ไม่มีข้อมูล|โรงพยาบาลแม่ข่าย/u);
   });
 });

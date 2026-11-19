@@ -16,7 +16,9 @@ type RescheduleRequestContext = {
   preferredDatetimes: string[];
 };
 
-export function RescheduleRequestForm({ relationshipId, appointmentId, appointmentSummary, expectedUpdatedAt, nonce, requestId, requestContext, returnFocusHeadingId }: {
+export function RescheduleRequestForm({ relationshipId, appointmentId, appointmentSummary, expectedUpdatedAt, nonce, requestId, requestContext, returnFocusHeadingId, audience = "operator" }: {
+  /** PATIENT-APPT-DISTILL: "patient" is the Patient's own request dialog (shorter copy, secondary trigger); review stays operator-only. */
+  audience?: "operator" | "patient";
   relationshipId: string;
   appointmentId: string;
   appointmentSummary: string;
@@ -27,6 +29,7 @@ export function RescheduleRequestForm({ relationshipId, appointmentId, appointme
   returnFocusHeadingId: string;
 }): React.JSX.Element {
   const rejecting = requestId !== undefined;
+  const patient = audience === "patient" && !rejecting;
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<RescheduleRequestActionState, FormData>(
     rejecting ? rejectRescheduleRequestAction : submitRescheduleRequestAction,
     { status: "IDLE", message: "" },
@@ -80,11 +83,12 @@ export function RescheduleRequestForm({ relationshipId, appointmentId, appointme
   const title = rejecting ? "ปฏิเสธคำขอเลื่อนนัด" : "ขอเลื่อนนัด";
   const description = rejecting
     ? <>นัดหมายปัจจุบัน: {appointmentSummary}. การยืนยันจะบันทึกว่าปฏิเสธคำขอนี้และไม่เปลี่ยนวันนัดหมาย คำขอเดิมจะไม่กลับเป็นสถานะรอพิจารณา หากต้องการเลื่อนอีกครั้งต้องส่งคำขอใหม่เมื่อเข้าเงื่อนไข หากปิดก่อนส่ง เหตุผลจะยังอยู่เมื่อเปิดกลับมา</>
+    : patient ? <>นัดปัจจุบัน: {appointmentSummary}</>
     : <>นัดหมายปัจจุบัน: {appointmentSummary}. เลือกวันเวลา 1–3 ตัวเลือกและระบุเหตุผล เจ้าหน้าที่จะพิจารณาก่อนแก้ไขนัดหมาย หากปิดก่อนส่ง ข้อมูลที่กรอกจะยังอยู่เมื่อเปิดกลับมา</>;
 
   return <div className="space-y-3">
     {state.status === "SUCCESS" ? <p className="text-sm text-text" ref={resultRef} role="status" tabIndex={-1}>{state.message}</p> : (
-      <Button onClick={() => setDialogOpen(true)} ref={triggerRef} type="button" variant={rejecting ? "danger" : "primary"}>
+      <Button className={patient ? "w-full sm:w-auto" : undefined} onClick={() => setDialogOpen(true)} ref={triggerRef} type="button" variant={rejecting ? "danger" : patient ? "secondary" : "primary"}>
         {rejecting ? "ปฏิเสธคำขอพร้อมเหตุผล" : "ขอเลื่อนนัด"}
       </Button>
     )}
@@ -132,9 +136,13 @@ export function RescheduleRequestForm({ relationshipId, appointmentId, appointme
         </> : <>
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <input name="submissionNonce" type="hidden" value={nonce} />
-          <p className="text-sm text-text-muted">วันเวลาที่สะดวก 1–3 ตัวเลือก (เวลาประเทศไทย) ภายใน 366 วัน เจ้าหน้าที่จะพิจารณาและแก้นัดหมาย</p>
+          {patient ? null : <p className="text-sm text-text-muted">วันเวลาที่สะดวก 1–3 ตัวเลือก (เวลาประเทศไทย) ภายใน 366 วัน เจ้าหน้าที่จะพิจารณาและแก้นัดหมาย</p>}
+          <fieldset className="min-w-0">
+          {patient ? <legend className="mb-3 text-sm font-semibold text-text">วันเวลาที่สะดวก (เลือกได้ 1–3 ช่วง)</legend> : null}
           <div className="grid gap-4 sm:grid-cols-3">{[1, 2, 3].map((index) => <div key={index}>
-            <label htmlFor={`${formId}-datetime-${index}`} className="text-sm font-semibold text-text">ตัวเลือก {index}{index === 1 ? " (จำเป็น)" : ""}</label>
+            <label htmlFor={`${formId}-datetime-${index}`} className="text-sm font-semibold text-text">{patient
+              ? `ตัวเลือกที่ ${index}${index === 1 ? "" : " (ไม่บังคับ)"}`
+              : `ตัวเลือก ${index}${index === 1 ? " (จำเป็น)" : ""}`}</label>
             <input
               className={control}
               disabled={pending || unknownOutcome}
@@ -145,10 +153,11 @@ export function RescheduleRequestForm({ relationshipId, appointmentId, appointme
               type="datetime-local"
             />
           </div>)}</div>
+          </fieldset>
         </>}
         <div>
           <label className="text-sm font-semibold text-text" htmlFor={`${formId}-reason`}>
-            {rejecting ? "เหตุผลที่ปฏิเสธ" : "เหตุผลที่ขอเลื่อนนัด"}
+            {rejecting ? "เหตุผลที่ปฏิเสธ" : patient ? "เหตุผล" : "เหตุผลที่ขอเลื่อนนัด"}
           </label>
           <textarea
             className={control}

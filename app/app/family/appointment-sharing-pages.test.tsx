@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AppointmentSharingWorkspace } from "./appointment-sharing-workspace";
-import { AppointmentFields } from "./grants/[grantId]/appointments/appointment-fields";
+import { FamilyAppointmentSummary } from "./grants/[grantId]/appointments/appointment-fields";
 import { FamilyManagementWorkspace } from "./family-management-workspace";
 import { FAMILY_APPOINTMENT_LATEST_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACT_V2, type FamilyAppointmentReadContract } from "@/modules/family/domain/appointment-grant-contract";
 import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "@/modules/family/domain/caregiver-sharing-contract";
@@ -112,10 +112,12 @@ describe("bounded appointment sharing UI", () => {
     expect(card).toContain(statusLabel);
     expect(recordFieldValue(card, scopeLabel)).toBe(scopeSummary);
   });
-  it("renders only six allowed resource fields, truthful cancelled and null source values", () => {
-    const markup = renderToStaticMarkup(<AppointmentFields appointment={appointment} />);
-    expect((markup.match(/<dt /g) ?? []).length).toBe(6);
-    expect(markup).toContain("ยกเลิกแล้ว"); expect(markup).toContain("ยังไม่ระบุ");
+  it("renders only allowed resource fields that have a value, never a placeholder (PATIENT-APPT-DISTILL)", () => {
+    const markup = renderToStaticMarkup(<FamilyAppointmentSummary appointment={appointment} />);
+    // Duration and location are null in this v1 projection, so only the Hospital remains.
+    expect((markup.match(/<dt /g) ?? []).length).toBe(1);
+    expect(markup).toContain("หน่วยบริการทดสอบ");
+    expect(markup).not.toMatch(/ยังไม่ระบุ|ไม่ระบุ|ไม่มีข้อมูล/u);
     expect(markup).not.toMatch(/appointment-locator|HN|ผู้รับผิดชอบ|อสม.|ยืนยันนัด|ขอยกเลิก|หมายเหตุ|สถานที่โดยละเอียด/);
   });
   it("ordinary Family management explains that a relationship alone grants no access", () => {
@@ -186,7 +188,7 @@ describe("bounded appointment sharing UI", () => {
     const detail = renderToStaticMarkup(await DetailPage({ params: Promise.resolve({ grantId: "grant", appointmentId: "appointment" }) }));
     expect(mocks.detail).toHaveBeenCalledWith("grant", "appointment"); expect(detail).toContain("ยกเลิกแล้ว");
     expect(detail).toContain('href="/app/personal/appointments?subject=grant&amp;tab=upcoming"');
-    expect(detail).not.toMatch(/<form|<button|การรับทราบนัดหมาย|คำขอยกเลิก|ผู้รับผิดชอบ|OSM|\/app\/personal\/appointments\/|\/app\/patients/);
+    expect(detail).not.toMatch(/<form|<button|การรับทราบนัดหมาย|คำขอยกเลิก|ผู้รับผิดชอบ|OSM|อสม\.|ยังไม่ระบุ|ไม่มีข้อมูล|ข้อมูลนัดหมายที่ผู้ป่วยอนุญาตให้ดูเท่านั้น|\/app\/personal\/appointments\/|\/app\/patients/);
     mocks.detail.mockRejectedValue(new Error("denied"));
     await expect(DetailPage({ params: Promise.resolve({ grantId: "grant", appointmentId: "foreign" }) })).rejects.toThrow("denied");
   });

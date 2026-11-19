@@ -3,10 +3,8 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
-import {
-  APPOINTMENT_STATUS_LABELS,
-  type AppointmentStatusValue,
-} from "@/modules/appointments/domain/appointment-definitions";
+import type { AppointmentStatusValue } from "@/modules/appointments/domain/appointment-definitions";
+import type { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
 import {
   FOLLOWUP_PROGRESS_STATUS_LABELS,
   type FollowupProgressStatus,
@@ -28,12 +26,15 @@ import {
   PatientSelfHospitalContext,
 } from "./patient-self-care-presentation";
 import {
-  appointmentStatusVariant,
   ORDINARY_PATIENT_APPOINTMENT_LINKS,
   PatientSelfAppointmentDetailContent,
   PatientSelfAppointmentHistoryContent,
 } from "./patient-self-appointment-content";
+import { AppointmentStatusBadge } from "../appointment-summary";
 import { PatientAppointmentInteractionControls } from "./appointments/patient-appointment-interaction-controls";
+import { PatientAppointmentRequests, patientAppointmentRequestCards } from "./appointments/patient-appointment-requests";
+
+type PatientAppointmentRescheduleHistory = Awaited<ReturnType<typeof getAppointmentRescheduleHistory>>;
 
 const linkClassName =
   "inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2";
@@ -265,50 +266,58 @@ export function PatientSelfAppointmentHistoryView({
 
 export function PatientSelfAppointmentDetailView({
   detail,
-  cancellationRequestNonce, rescheduleRequests,
+  cancellationRequestNonce,
+  rescheduleHistory,
+  rescheduleNonce,
 }: {
   detail: PatientSelfAppointmentDetail;
   cancellationRequestNonce: string;
-  rescheduleRequests?: React.ReactNode;
+  rescheduleHistory: PatientAppointmentRescheduleHistory;
+  rescheduleNonce: string;
 }): React.JSX.Element {
   const relationshipId = detail.relationship.relationshipId;
-  const historyHref = ORDINARY_PATIENT_APPOINTMENT_LINKS.history(relationshipId);
+  const careEnded = detail.relationship.careEndedAt !== null;
+  const hospitalActive = detail.relationship.hospitalStatus === "ACTIVE";
+  const canAct = detail.status === "SCHEDULED" && hospitalActive && !careEnded;
+  const notice = careEnded
+    ? "โรงพยาบาลนี้สิ้นสุดการดูแลแล้ว ดูนัดหมายเดิมได้อย่างเดียว"
+    : !hospitalActive ? "นัดหมายนี้ดูได้อย่างเดียว" : undefined;
+  const pendingReschedule = rescheduleHistory.requests.some((request) => request.status === "PENDING");
+  const appointmentSummary = `${detail.relationship.hospitalName} · ${new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "full",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  }).format(detail.scheduledAt)}`;
+  const requestCards = patientAppointmentRequestCards({
+    appointmentUpdatedAt: detail.updatedAt,
+    rescheduleRequests: rescheduleHistory.requests,
+    cancellationRequests: detail.cancellationRequests,
+  });
 
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={
-          <StatusBadge variant={appointmentStatusVariant(detail.status as AppointmentStatusValue)}>
-            {APPOINTMENT_STATUS_LABELS[detail.status as AppointmentStatusValue]}
-          </StatusBadge>
-        }
+        actions={<AppointmentStatusBadge status={detail.status as AppointmentStatusValue} />}
         breadcrumbs={[
-          { href: "/app/personal", label: "พื้นที่ส่วนตัว" },
           { href: "/app/personal/appointments", label: "นัดหมาย" },
-          { href: historyHref, label: detail.relationship.hospitalName },
-          { label: "รายละเอียดนัดหมาย" },
+          { label: "รายละเอียด" },
         ]}
-        description="นัดหมายของคุณตามข้อมูลที่โรงพยาบาลบันทึกไว้"
-        title="รายละเอียดนัดหมาย"
+        title="นัดหมาย"
       />
       <div className="space-y-6 pt-6">
-        <PatientSelfAppointmentDetailContent
-          detail={detail}
-          interactions={
-            <PatientAppointmentInteractionControls
-              appointment={detail}
-              cancellationRequestNonce={cancellationRequestNonce}
-              hospitalStatus={detail.relationship.hospitalStatus}
-              careEnded={detail.relationship.careEndedAt !== null}
-              relationshipId={relationshipId}
-            />
-          }
-          rescheduleRequests={rescheduleRequests}
-        />
-        <nav aria-label="กลับจากรายละเอียดนัดหมาย" className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <Link className={linkClassName} href={historyHref} prefetch={false}>กลับไปนัดหมายของโรงพยาบาลนี้</Link>
-          <Link className={linkClassName} href="/app/personal" prefetch={false}>กลับพื้นที่ส่วนตัว</Link>
-        </nav>
+        <PatientSelfAppointmentDetailContent detail={detail} notice={notice} />
+        {canAct ? (
+          <PatientAppointmentInteractionControls
+            appointment={detail}
+            appointmentSummary={appointmentSummary}
+            cancellationRequestNonce={cancellationRequestNonce}
+            relationshipId={relationshipId}
+            reschedule={rescheduleHistory.canRequest && rescheduleHistory.scheduled && !pendingReschedule
+              ? { nonce: rescheduleNonce, expectedUpdatedAt: rescheduleHistory.updatedAt.toISOString() }
+              : null}
+          />
+        ) : null}
+        <PatientAppointmentRequests cards={requestCards} />
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { PatientSelfAppointmentDetailContent, PatientSelfAppointmentRow } from "../personal/patient-self-appointment-content";
-import { AppointmentFields } from "../family/grants/[grantId]/appointments/appointment-fields";
+import { FamilyAppointmentSummary } from "../family/grants/[grantId]/appointments/appointment-fields";
 import { WorkAppointmentView } from "./work-appointment-view";
 import { AppointmentForm } from "../patients/[relationshipId]/appointments/new/appointment-form";
 import { PatientServicesWorkspace } from "../personal/services/patient-services-workspace";
@@ -25,7 +25,7 @@ const appointment = {
   source: "PATIENT_REQUEST" as const, scheduledAt: at, durationMinutes: 30,
   locationType: "HOME_VISIT" as const, locationDetail: null, status: "SCHEDULED" as const, updatedAt: at,
   responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, assignedOsmDisplayName: null, appointer: { displayName: "พยาบาลผู้นัด", role: "NURSE" as const },
-  acknowledgement: null, cancellationRequests: [],
+  acknowledgement: null, cancellationRequests: [], pendingReschedule: false,
 };
 const hospital = { hospitalId: "hospital", hospitalName: "โรงพยาบาล", access: "DIRECT" as const, canCreate: true, canResolveRequests: true, canAcceptAssignments: false };
 const page: WorkAppointmentPage = {
@@ -37,34 +37,36 @@ const page: WorkAppointmentPage = {
 };
 
 describe("SR-C appointment surfaces", () => {
-  it("shows service beside type and a source badge on the patient row and detail, without the one-off note", () => {
+  it("shows service beside type on the patient row and detail, the source badge on the detail, without the one-off note", () => {
     const relationship = { relationshipId: "relationship", hospitalName: "โรงพยาบาล", hospitalCode: "H", hospitalNumber: null, hospitalStatus: "ACTIVE" as const, careEndedAt: null };
-    for (const markup of [
-      renderToStaticMarkup(<PatientSelfAppointmentRow appointment={appointment} href="/detail" />),
-      renderToStaticMarkup(<PatientSelfAppointmentDetailContent detail={{ ...appointment, relationship, parentHospitalName: null, contactPhones: { assignedOsmPhone: null, hospitalPhone: null, patientPhone: null } }} interactions={null} />),
-    ]) {
+    const row = renderToStaticMarkup(<PatientSelfAppointmentRow appointment={appointment} href="/detail" />);
+    const detail = renderToStaticMarkup(<PatientSelfAppointmentDetailContent detail={{ ...appointment, relationship, parentHospitalName: null, contactPhones: { assignedOsmPhone: null, hospitalPhone: null, patientPhone: null } }} />);
+    for (const markup of [row, detail]) {
       expect(markup).toContain("ให้ความรู้ · เสริมพลังใจ");
-      expect(markup).toContain("ขอรับบริการ");
       expect(markup).not.toContain("เยี่ยมครั้งนี้เท่านั้น");
     }
+    // PATIENT-APPT-DISTILL: the row is one line "{service} · {place}"; the source badge stays on the detail.
+    expect(row).toContain("ให้ความรู้ · เสริมพลังใจ · เยี่ยมบ้าน");
+    expect(detail).toContain("ขอรับบริการ");
   });
 
   const extension = { locationDetail: null, responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, parentHospitalName: null };
   it("shows service/source on a caregiver v3 projection without changing the other fields", () => {
-    const markup = renderToStaticMarkup(<AppointmentFields appointment={{ ...appointment, hospitalName: "โรงพยาบาล", extension }} />);
+    const markup = renderToStaticMarkup(<FamilyAppointmentSummary appointment={{ ...appointment, hospitalName: "โรงพยาบาล", extension }} />);
     expect(markup).toContain("ให้ความรู้ · เสริมพลังใจ");
     expect(markup).toContain("ขอรับบริการ");
     expect(markup).not.toContain("เยี่ยมครั้งนี้เท่านั้น");
-    expect(markup.match(/<dt /g)).toHaveLength(9);
+    // Place, Hospital and duration have values; the empty extension fields are simply absent.
+    expect(markup.match(/<dt /g)).toHaveLength(3);
   });
 
   it.each([null, extension])("SR-C1: a v1/v2 caregiver projection has no service/source keys and renders the plain type (%#)", (versionExtension) => {
     const projected = { appointmentId: "appointment", hospitalName: "โรงพยาบาล", type: "EDUCATION" as const, scheduledAt: at, durationMinutes: 30,
       locationType: "HOME_VISIT" as const, status: "SCHEDULED" as const, extension: versionExtension };
-    const markup = renderToStaticMarkup(<AppointmentFields appointment={projected} />);
+    const markup = renderToStaticMarkup(<FamilyAppointmentSummary appointment={projected} />);
     expect(markup).toContain("ให้ความรู้");
-    for (const text of ["เสริมพลังใจ", "ขอรับบริการ", "โรงพยาบาลนัด"]) expect(markup).not.toContain(text);
-    expect(markup.match(/<dt /g)).toHaveLength(versionExtension ? 9 : 6);
+    for (const text of ["เสริมพลังใจ", "ขอรับบริการ", "โรงพยาบาลนัด", "ยังไม่ระบุ"]) expect(markup).not.toContain(text);
+    expect(markup.match(/<dt /g)).toHaveLength(3);
   });
 
   it.each(["DIRECT", "OSM"] as const)("shows both sources and the server-projected one-off note in %s work lists", (access) => {
