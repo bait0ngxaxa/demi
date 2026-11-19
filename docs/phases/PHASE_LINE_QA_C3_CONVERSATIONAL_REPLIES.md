@@ -6,6 +6,8 @@
 **Final commit:** `feat(line): keyword next-appointment and role-aware help replies` (the single C3 commit that adds this file)
 **Status:** Implemented with unit and PostgreSQL integration evidence. No authorization semantics, Rich Menu catalog/asset, LIFF, MINI App, LINE Console, environment or production data change. One forward-only migration.
 
+> For current behavior, see [LINE Production Setup §6.7](../operations/LINE_PRODUCTION_SETUP.md). Since 2026-11-18, “ตรวจสอบนัดหมาย” is an exact keyword and the text sent by the Patient Rich Menu and HELP Quick Reply.
+
 ## 1. Scope
 
 Text messages in the DEMI OA 1:1 chat now get a reply on the existing reactive pipeline (receipt → `after()` → Reply API), the same path the Phase 17J.2 "ตรวจสอบนัดหมาย" postback uses. Two intents:

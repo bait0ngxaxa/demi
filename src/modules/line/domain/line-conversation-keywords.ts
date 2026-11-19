@@ -1,6 +1,9 @@
 import "server-only";
 
-import { LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT } from "./line-reactive-marker";
+import {
+  LINE_PATIENT_NEXT_APPOINTMENT_LEGACY_MESSAGE_TEXT,
+  LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT,
+} from "./line-reactive-marker";
 
 /**
  * Exact keyword table for LINE text messages (WB-DF-18). Matching is exact
@@ -9,6 +12,7 @@ import { LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT } from "./line-reactive-mark
  */
 const NEXT_APPOINTMENT_KEYWORDS: ReadonlySet<string> = new Set([
   LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT,
+  LINE_PATIENT_NEXT_APPOINTMENT_LEGACY_MESSAGE_TEXT,
   "นัดหมาย",
   "นัดถัดไป",
 ]);

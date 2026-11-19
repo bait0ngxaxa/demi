@@ -28,7 +28,7 @@ describe("LINE HELP reply", () => {
 
     expect(reply.text).toBe("เลือกเมนูที่ต้องการด้านล่าง หรือพิมพ์ “นัด” เพื่อดูนัดหมายถัดไป");
     expect(actions(["PATIENT"])).toEqual([
-      { type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" },
+      { type: "message", label: "ตรวจสอบนัดหมาย", text: "ตรวจสอบนัดหมาย" },
       { type: "uri", label: "นัดหมายทั้งหมด", uri: `${origin}/app/personal/appointments` },
       { type: "uri", label: "บันทึกสุขภาพ", uri: `${origin}/app/personal/wellness` },
       { type: "uri", label: "ยาของฉัน", uri: `${origin}/app/personal/medications` },
@@ -89,7 +89,7 @@ describe("LINE HELP reply", () => {
         expect(action.uri).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-|U[0-9a-f]{32}/iu);
       } else {
         expect(roles).toContain("PATIENT");
-        expect(action).toStrictEqual({ type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" });
+        expect(action).toStrictEqual({ type: "message", label: "ตรวจสอบนัดหมาย", text: "ตรวจสอบนัดหมาย" });
       }
     }
   });

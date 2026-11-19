@@ -272,10 +272,11 @@ describe("LINE webhook ingestion", () => {
       ["35", "ＨｅＬＰ", "HELP", false],
       ["36", " help ", "HELP", false],
       ["37", "นัด หมาย", "HELP", true],
-      ["38", "ตรวจสอบนัดหมาย", "HELP", true],
+      ["38", "ตรวจสอบนัดหมายครับ", "HELP", true],
       ["39", "นัดหมายพรุ่งนี้", "HELP", true],
       ["3A", "helpme", "HELP", true],
       ["3B", "", "HELP", true],
+      ["3C", "ตรวจสอบนัดหมาย", "PATIENT_NEXT_APPOINTMENT", undefined],
     ] as const;
 
     const result = await processLineWebhookRequest(
