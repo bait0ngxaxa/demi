@@ -190,7 +190,7 @@ describe("Program follow-up progress and success rate (D1/D2)", () => {
     expect([...(planSelect?.options ?? [])].map((option) => option.value)).toEqual(["goal-plan-2"]);
     expect(container.textContent).toContain("บันทึกให้ครบทุกกิจกรรม ยกเว้นที่ไม่เกี่ยวข้อง");
     expect(container.textContent).not.toContain("เลือกบันทึกเฉพาะกิจกรรม");
-    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมก่อน");
+    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมเพื่อดูอัตราความสำเร็จ");
 
     chooseRadio("followedPlanChoice", "true");
     setValue("#followup-reflection", "เดินได้ต่อเนื่อง");
@@ -210,7 +210,7 @@ describe("Program follow-up progress and success rate (D1/D2)", () => {
 
     // An applicable activity without achieved days stays incomplete.
     setValue("#progress-status-stop_sweet", "PARTIAL");
-    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมก่อน");
+    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมเพื่อดูอัตราความสำเร็จ");
     setValue("#progress-achieved-days-stop_sweet", "2");
     // (3 + 2) / (4 + 3) = 71%, strictly above 70%.
     expect(summaryText()).toBe("ทำได้ 5 จาก 7 วัน · อัตราความสำเร็จ 71%เกิน 70%");

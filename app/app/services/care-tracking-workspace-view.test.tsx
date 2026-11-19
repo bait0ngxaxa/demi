@@ -138,6 +138,8 @@ describe("CT-2 จัดบริการ workspace view", () => {
 
     expect(view.querySelector("h1")?.textContent).toBe("จัดบริการ");
     expect(view.textContent).not.toContain("ติดตามความคืบหน้าและเริ่มขั้นตอนถัดไป");
+    // The includeEnded checkbox applies only on submit (GET form), so the hint must say so.
+    expect(view.textContent).toContain("กดค้นหาเพื่อใช้ตัวกรอง");
     expect(view.querySelector<HTMLInputElement>('input[name="search"]')?.value).toBe("สมชาย");
     const checkbox = view.querySelector<HTMLInputElement>('input[name="includeEnded"]');
     expect(checkbox?.type).toBe("checkbox");

@@ -481,7 +481,7 @@ export function CareTrackingWorkspaceView({
             </label>
           </Form>
           <p className="mt-2 text-xs leading-5 text-text-subtle">
-            ชื่อพิมพ์บางส่วนได้ HN ต้องตรงทั้งหมด
+            ชื่อพิมพ์บางส่วนได้ HN ต้องตรงทั้งหมด กดค้นหาเพื่อใช้ตัวกรอง
           </p>
           {errorMessage ? (
             <Alert className="mt-5" variant="danger">

@@ -217,7 +217,7 @@ function ProgressAchievementStatus({
   complete: boolean;
 }): React.JSX.Element {
   if (!complete) {
-    return <p className="text-sm leading-6 text-text-muted">กรอกให้ครบทุกกิจกรรมก่อน</p>;
+    return <p className="text-sm leading-6 text-text-muted">กรอกให้ครบทุกกิจกรรมเพื่อดูอัตราความสำเร็จ</p>;
   }
 
   if (!achievement) {

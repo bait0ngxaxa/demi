@@ -511,10 +511,22 @@ describe("Patient detail page", () => {
 
     expect(primaryActionCount(page)).toBe(1);
     expect(containsString(page, "ดูการจัดบริการทั้งหมด")).toBe(true);
-    expect(containsString(page, "ยังโหลดความคืบหน้ารอบไม่ได้")).toBe(true);
+    expect(containsString(page, "เปิดภาพรวมการจัดบริการเพื่อดูขั้นตอนถัดไป")).toBe(true);
     expect(containsString(page, "/programs/current-program/rounds")).toBe(true);
     expect(mockedNotFound).not.toHaveBeenCalled();
     expect(mockedRedirect).not.toHaveBeenCalled();
+  });
+
+  it("does not claim a load failure when a loaded overview still routes to the rounds overview (After locked)", async () => {
+    const active = programProjection();
+    mockedGetPatientProgramPageContext.mockResolvedValue(programContext({ active, latest: active, canOpen: false, canManage: true }));
+    mockedGetProgramRoundsOverview.mockResolvedValue(roundOverview(["COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED"], "LOCKED"));
+
+    const page = await renderPage();
+
+    expect(containsString(page, "เปิดภาพรวมการจัดบริการเพื่อดูขั้นตอนถัดไป")).toBe(true);
+    expect(containsString(page, "โหลด")).toBe(false);
+    expect(containsString(page, "/programs/current-program/rounds")).toBe(true);
   });
 
   it("renders the existing Program open control as the only primary action when Baseline is not actionable", async () => {

@@ -306,7 +306,8 @@ function PatientNextStepPanel({
       description = "บันทึก After แล้ว จบโปรแกรมได้";
       break;
     case "ROUNDS_OVERVIEW":
-      description = "ยังโหลดความคืบหน้ารอบไม่ได้ เปิดภาพรวมการจัดบริการเพื่อตรวจสอบอีกครั้ง";
+      // ROUNDS_OVERVIEW covers a failed load, fewer than 6 completed rounds, and a locked After: one sentence true for all.
+      description = "เปิดภาพรวมการจัดบริการเพื่อดูขั้นตอนถัดไป";
       break;
   }
 
