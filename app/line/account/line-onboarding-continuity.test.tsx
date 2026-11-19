@@ -66,7 +66,7 @@ describe("mobile LINE onboarding continuity interactions", () => {
   it.each(["UNKNOWN", "MISMATCH", "UNAVAILABLE"])("keeps checked %s recoverable without automatic retries", async (menuState) => {
     fetcher.mockImplementation(async () => Response.json({ ...linked, menuState, reconciliation: "CHECKED" }));
     await mount(); await act(async () => button("ตรวจสอบสถานะเมนูอีกครั้ง").click());
-    expect(container.textContent).toContain("กำลังตั้งค่าเมนู");
+    expect(container.textContent).toContain(menuState === "UNKNOWN" ? "กำลังตั้งค่าเมนู" : "เมนูยังไม่พร้อม");
     expect(container.textContent).not.toContain("พร้อมใช้งาน");
     expect(container.querySelector('a[href="/app"]')).not.toBeNull();
     expect(fetcher).toHaveBeenCalledOnce();

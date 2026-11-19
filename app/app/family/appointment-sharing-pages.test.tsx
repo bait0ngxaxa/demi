@@ -60,11 +60,11 @@ const appointmentContractReadbacks = [
   },
   {
     contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2,
-    scopeSummary: "นัดย้อนหลังและล่วงหน้าอย่างละ 90 วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา สถานที่ ผู้รับผิดชอบ อสม. ตอนสร้างนัด",
+    scopeSummary: "นัดย้อนหลังและล่วงหน้าอย่างละ 90 วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา สถานที่ ผู้รับผิดชอบ",
   },
   {
     contractVersion: FAMILY_APPOINTMENT_LATEST_READ_CONTRACT,
-    scopeSummary: "นัดย้อนหลังและล่วงหน้าอย่างละ 90 วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา สถานที่ ผู้รับผิดชอบ อสม. ตอนสร้างนัด บริการ และที่มาของนัด",
+    scopeSummary: "นัดย้อนหลังและล่วงหน้าอย่างละ 90 วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา สถานที่ ผู้รับผิดชอบ บริการ และที่มาของนัด",
   },
 ] as const satisfies readonly { contractVersion: FamilyAppointmentReadContract; scopeSummary: string }[];
 

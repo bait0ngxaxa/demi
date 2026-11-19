@@ -37,6 +37,7 @@ vi.mock("@/modules/family/transport/server-actions", () => ({
 
 import { FamilyInvitationPreview } from "./family-invitation-preview";
 import { metadata } from "./page";
+import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS } from "@/modules/family/domain/caregiver-sharing-contract";
 
 function render(): string { return renderToStaticMarkup(<FamilyInvitationPreview legal={accountCreationLegalViewFixture()} />); }
 
@@ -116,10 +117,20 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
     const requestedSharing = { relationshipLabel: "บุตร", appointmentHospitalCount: 2, appointmentHospitalNames: null, resources: ["PROFILE_SUMMARY" as const] };
     harness.preview = { status: "NEEDS_ACCOUNT", invitation: { expiresAt: "2026-10-02T00:00:00Z", patientDisplayName: "สมชาย ใจดี", acceptanceContractVersion: "family-delegation-v1", requestedSharing } };
     const publicMarkup = render();
-    for (const text of ["บุตร", "ข้อมูลที่ผู้ป่วยแชร์ให้คุณ", "2 หน่วยบริการที่ผู้ป่วยเลือก", "90 วันย้อนหลัง", "ข้อมูลทั่วไป", "อายุ ชื่อ อสม. ที่ดูแล"]) expect(publicMarkup).toContain(text);
+    for (const text of ["บุตร", "เมื่อตอบรับ คุณจะได้รับสิทธิ์ดูข้อมูลต่อไปนี้", "2 หน่วยบริการที่ผู้ป่วยเลือก", "90 วันย้อนหลัง", "ข้อมูลทั่วไป", "อายุ ชื่อ อสม. ที่ดูแล"]) expect(publicMarkup).toContain(text);
 
     harness.preview = { status: "READY", invitation: { invitationStatus: "PENDING", patientDisplayName: "สมชาย ใจดี", expiresAt: "2026-10-02T00:00:00Z",
       acceptanceContractVersion: "family-delegation-v1", requestedSharing: { ...requestedSharing, appointmentHospitalNames: ["รพ.สต. บ้านใหม่", "โรงพยาบาลแม่ข่าย"] } } };
     expect(render()).toContain("นัดหมาย: รพ.สต. บ้านใหม่, โรงพยาบาลแม่ข่าย");
+  });
+  it("states that accepting the invitation is the consent to the listed scopes, above the list and the accept action", () => {
+    const requestedSharing = { relationshipLabel: null, appointmentHospitalCount: 0, appointmentHospitalNames: null, resources: ["MEDICATION" as const] };
+    harness.preview = { status: "READY", invitation: { invitationStatus: "PENDING", patientDisplayName: "สมชาย ใจดี", expiresAt: "2026-10-02T00:00:00Z",
+      acceptanceContractVersion: "family-delegation-v1", requestedSharing } };
+    const markup = render();
+    const heading = markup.indexOf("เมื่อตอบรับ คุณจะได้รับสิทธิ์ดูข้อมูลต่อไปนี้");
+    expect(heading).toBeGreaterThan(-1);
+    expect(heading).toBeLessThan(markup.indexOf(CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS.MEDICATION));
+    expect(markup.indexOf(CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS.MEDICATION)).toBeLessThan(markup.indexOf("ยอมรับคำเชิญเป็นผู้ดูแล"));
   });
 });

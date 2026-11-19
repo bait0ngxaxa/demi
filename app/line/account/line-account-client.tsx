@@ -239,7 +239,9 @@ export function selectLineReadinessMessage(input: { friendshipWarning: boolean; 
   if (input.friendshipWarning) return "ตรวจสอบไม่ได้";
   if (input.notFriend) return "ต้องเพิ่มเพื่อน";
   if (input.menuReady) return "พร้อมใช้งาน";
-  return input.menuPending ? "กำลังตั้งค่าเมนู" : "ตรวจสอบไม่ได้";
+  if (!input.menuPending) return "ตรวจสอบไม่ได้";
+  // A checked, not-ready menu must not read as still in progress (UNKNOWN/null/check pending only).
+  return input.menuState === "UNKNOWN" || input.menuState === null || input.menuCheckPending ? "กำลังตั้งค่าเมนู" : "เมนูยังไม่พร้อม";
 }
 
 export function LineAccountScreen({

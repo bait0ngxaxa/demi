@@ -68,7 +68,7 @@ function appointmentGrantVisibleFields(contractVersion: FamilyAppointmentReadCon
     return `นัดที่จะถึงใน ${FAMILY_APPOINTMENT_WINDOW_DAYS} วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา ระยะเวลา รูปแบบสถานที่ และสถานะ`;
   }
   const serviceAndSource = familyAppointmentContractIncludesServiceSource(contractVersion) ? " บริการ และที่มาของนัด" : "";
-  return `นัดย้อนหลังและล่วงหน้าอย่างละ ${FAMILY_APPOINTMENT_WINDOW_DAYS} วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา สถานที่ ผู้รับผิดชอบ อสม. ตอนสร้างนัด${serviceAndSource}`;
+  return `นัดย้อนหลังและล่วงหน้าอย่างละ ${FAMILY_APPOINTMENT_WINDOW_DAYS} วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา สถานที่ ผู้รับผิดชอบ${serviceAndSource}`;
 }
 
 /** What sharing the latest grant adds over an ACTIVE older grant; undefined when nothing is added. */

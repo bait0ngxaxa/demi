@@ -52,7 +52,7 @@ function RequestedSharing({ sharing }: { sharing: CaregiverInvitationRequestedSh
       {sharing.relationshipLabel ? <p className="text-sm text-text">ผู้ป่วยระบุความสัมพันธ์กับคุณว่า: <span className="font-semibold">{sharing.relationshipLabel}</span></p> : null}
       {hasScopes ? (
         <Alert variant="info">
-          <p className="font-semibold">ข้อมูลที่ผู้ป่วยแชร์ให้คุณ</p>
+          <p className="font-semibold">เมื่อตอบรับ คุณจะได้รับสิทธิ์ดูข้อมูลต่อไปนี้</p>
           <ul className="mt-3 space-y-3">
             {sharing.appointmentHospitalCount > 0 ? (
               <li>

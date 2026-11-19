@@ -12,6 +12,7 @@ import {
   LineAccountClient,
   LineAccountScreen,
   closeLineLiffWindow,
+  selectLineReadinessMessage,
 } from "./line-account-client";
 
 const emptyStatus = {
@@ -88,9 +89,20 @@ describe("LINE account user experience", () => {
     expect(confirmation).not.toContain("หาก LINE ยังไม่ยืนยันผล คุณตรวจสอบเพื่อเชื่อมใหม่ได้");
     expect(confirmation.includes("ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้")).toBe(state !== "READY");
   });
+  it.each([
+    [{ menuState: "UNKNOWN", menuCheckPending: false }, "กำลังตั้งค่าเมนู"],
+    [{ menuState: null, menuCheckPending: false }, "กำลังตั้งค่าเมนู"],
+    [{ menuState: "APPLIED", menuCheckPending: true }, "กำลังตั้งค่าเมนู"],
+    [{ menuState: "MISMATCH", menuCheckPending: false }, "เมนูยังไม่พร้อม"],
+    [{ menuState: "UNAVAILABLE", menuCheckPending: false }, "เมนูยังไม่พร้อม"],
+  ] as const)("separates an in-progress menu from a checked, not-ready menu (%o)", (menu, title) => {
+    expect(selectLineReadinessMessage({ friendshipWarning: false, notFriend: false, menuReady: false, menuPending: true, ...menu })).toBe(title);
+  });
   it.each(["UNKNOWN", "MISMATCH", "UNAVAILABLE"] as const)("offers a manual menu refresh for %s without claiming readiness", (menuState) => {
     const markup = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true, reachability: "FRIEND", menuState }, { canRefreshReachability: true });
-    expect(markup).toContain("กำลังตั้งค่าเมนู");
+    // Only an unchecked (UNKNOWN) menu reads as in progress; a checked MISMATCH/UNAVAILABLE says it is not ready.
+    expect(markup).toContain(menuState === "UNKNOWN" ? "กำลังตั้งค่าเมนู" : "เมนูยังไม่พร้อม");
+    expect(markup).not.toContain(menuState === "UNKNOWN" ? "เมนูยังไม่พร้อม" : "กำลังตั้งค่าเมนู");
     expect(markup).toContain(">ตรวจสอบสถานะเมนูอีกครั้ง</button>");
     expect(markup).not.toContain("พร้อมใช้งาน");
     expect(markup).not.toContain(">เชื่อมบัญชี LINE นี้</button>");
