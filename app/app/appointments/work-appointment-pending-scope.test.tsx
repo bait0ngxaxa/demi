@@ -35,6 +35,7 @@ const page = {
 
 const scope: WorkAppointmentPendingScope = {
   tab: "PENDING_REQUESTS",
+  label: "คำขอนัดหมายรอพิจารณา",
   totalCount: 8,
   hospitals: [
     { hospitalId: "hospital-a", hospitalName: "โรงพยาบาล ก", count: 2 },
@@ -69,5 +70,12 @@ describe("multi-Hospital pending scope on the appointment queue", () => {
     const html = renderToStaticMarkup(<WorkAppointmentView page={page} pendingScope={elsewhere} queryError={null} />);
     expect(html).toContain("คำขอนัดหมายรอพิจารณา รวม 4 รายการ จาก 1 โรงพยาบาล");
     expect(html).toContain('href="/app/appointments?hospitalId=hospital-b&amp;tab=PENDING_REQUESTS"');
+  });
+
+  it("keeps a request-kind filter when switching Hospital and names the typed queue", () => {
+    const typedPage = { ...page, filters: { requestType: "CANCELLATION" } } as WorkAppointmentPage;
+    const html = renderToStaticMarkup(<WorkAppointmentView page={typedPage} pendingScope={{ ...scope, label: "คำขอยกเลิกนัดรอพิจารณา" }} queryError={null} />);
+    expect(html).toContain("คำขอยกเลิกนัดรอพิจารณา รวม 8 รายการ จาก 3 โรงพยาบาล");
+    expect(html).toContain('href="/app/appointments?hospitalId=hospital-b&amp;tab=PENDING_REQUESTS&amp;requestType=CANCELLATION"');
   });
 });

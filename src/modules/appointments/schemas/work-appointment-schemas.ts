@@ -7,6 +7,7 @@ import {
   APPOINTMENT_LOCATION_VALUES,
   APPOINTMENT_STATUS_VALUES,
 } from "../domain/appointment-definitions";
+import { APPOINTMENT_REQUEST_KINDS } from "../domain/appointment-request-kinds";
 import { appointmentTypeSchema } from "./appointment-schemas";
 
 export const WORK_APPOINTMENT_PAGE_SIZE = 25;
@@ -24,6 +25,9 @@ const optionalHospitalLocatorSchema = z
   .optional()
   .catch(undefined);
 
+/** PENDING_REQUESTS only: narrows the queue to one request kind. An invalid value is ignored, never an error. */
+const optionalRequestTypeSchema = z.enum(APPOINTMENT_REQUEST_KINDS).optional().catch(undefined);
+
 export const workAppointmentFiltersSchema = z
   .object({
     dateFrom: z.iso.date().optional(),
@@ -36,6 +40,7 @@ export const workAppointmentFiltersSchema = z
     unassignedOsm: z.literal("true").optional(),
     /** Future SCHEDULED appointments with neither a responsible staff member nor an assigned อสม. */
     unassigned: z.literal("true").optional(),
+    requestType: z.enum(APPOINTMENT_REQUEST_KINDS).optional(),
   })
   .strict()
   .superRefine((filters, context) => {
@@ -61,6 +66,7 @@ export const workAppointmentQuerySchema = z
     awaitingOsmAcceptance: z.literal("true").optional(),
     unassignedOsm: z.literal("true").optional(),
     unassigned: z.literal("true").optional(),
+    requestType: optionalRequestTypeSchema,
     cursor: z.string().optional(),
   })
   .strict()
@@ -72,7 +78,12 @@ export const workAppointmentQuerySchema = z
         message: "End date must be on or after start date",
       });
     }
-  });
+  })
+  // The request-kind filter exists only on PENDING_REQUESTS; other tabs drop it rather than fail.
+  .transform(({ requestType, ...input }) => ({
+    ...input,
+    ...(input.tab === "PENDING_REQUESTS" && requestType !== undefined ? { requestType } : {}),
+  }));
 
 export type WorkAppointmentTab = z.infer<typeof workAppointmentTabSchema>;
 export type WorkAppointmentFilters = z.infer<typeof workAppointmentFiltersSchema>;

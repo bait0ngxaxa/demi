@@ -610,12 +610,23 @@ export async function countWorkAppointmentAcceptanceByHospital(
  * SQL form of the direct-read PENDING_REQUESTS predicate (`buildAppointmentWhere` with a direct scope and no filters:
  * `appointmentRelationshipReadWhere` + any PENDING reschedule or cancellation request), grouped by Hospital. Prisma
  * `groupBy` cannot group appointments by their relationship's Hospital. Rows are appointments, so an appointment with
- * both request types and duplicate membership rows count once (EXISTS, no fan-out). Count/list parity is enforced by
- * the PostgreSQL integration suite. Every value is a bound parameter.
+ * both request types and duplicate membership rows count once in `count` (EXISTS, no fan-out); the per-kind counts
+ * filter the same rows, so such an appointment counts in both of them. Count/list parity is enforced by the
+ * PostgreSQL integration suite. Every value is a bound parameter.
  */
 function pendingRequestCountByHospitalQuery(actorUserId: string, hospitalIds: readonly string[]): Prisma.Sql {
+  const pendingReschedule = Prisma.sql`EXISTS (
+    SELECT 1 FROM "PatientAppointmentRescheduleRequest" AS reschedule
+    WHERE reschedule."appointmentId" = appointment."id" AND reschedule."status" = 'PENDING'
+  )`;
+  const pendingCancellation = Prisma.sql`EXISTS (
+    SELECT 1 FROM "PatientAppointmentCancellationRequest" AS cancellation
+    WHERE cancellation."appointmentId" = appointment."id" AND cancellation."status" = 'PENDING'
+  )`;
   return Prisma.sql`
-    SELECT hospital."id" AS "hospitalId", COUNT(*)::int AS "count"
+    SELECT hospital."id" AS "hospitalId", COUNT(*)::int AS "count",
+      (COUNT(*) FILTER (WHERE ${pendingReschedule}))::int AS "rescheduleCount",
+      (COUNT(*) FILTER (WHERE ${pendingCancellation}))::int AS "cancellationCount"
     FROM "PatientAppointment" AS appointment
     JOIN "PatientHospitalRelationship" AS relationship
       ON relationship."id" = appointment."patientHospitalRelationshipId"
@@ -641,41 +652,51 @@ function pendingRequestCountByHospitalQuery(actorUserId: string, hospitalIds: re
         JOIN "UserRole" AS patientRole ON patientRole."userId" = patient."id" AND patientRole."role" = 'PATIENT'
         WHERE profile."id" = relationship."patientProfileId"
       )
-      AND (
-        EXISTS (
-          SELECT 1 FROM "PatientAppointmentRescheduleRequest" AS reschedule
-          WHERE reschedule."appointmentId" = appointment."id" AND reschedule."status" = 'PENDING'
-        )
-        OR EXISTS (
-          SELECT 1 FROM "PatientAppointmentCancellationRequest" AS cancellation
-          WHERE cancellation."appointmentId" = appointment."id" AND cancellation."status" = 'PENDING'
-        )
-      )
+      AND (${pendingReschedule} OR ${pendingCancellation})
     GROUP BY hospital."id"
   `;
 }
 
+export type WorkAppointmentRequestCount = {
+  hospitalId: string;
+  /** Distinct appointments with any PENDING request: the PENDING_REQUESTS queue length. */
+  count: number;
+  /** Appointments with a PENDING reschedule request: the `requestType=RESCHEDULE` queue length. */
+  rescheduleCount: number;
+  /** Appointments with a PENDING cancellation request: the `requestType=CANCELLATION` queue length. */
+  cancellationCount: number;
+};
+
 /**
- * Distinct appointments per Hospital matching the deduplicated PENDING_REQUESTS list, in one round trip that returns
- * at most one row per requested Hospital and never appointment IDs. Every Hospital must be an ACTIVE direct
- * OWNER/MEMBER scope of the actor; ADMIN never counts Hospital queues. Hospitals with no pending work are returned as 0.
+ * Distinct appointments per Hospital matching the deduplicated PENDING_REQUESTS list, with the per-kind queue lengths,
+ * in one round trip that returns at most one row per requested Hospital and never appointment IDs. Every Hospital
+ * must be an ACTIVE direct OWNER/MEMBER scope of the actor; ADMIN never counts Hospital queues. Hospitals with no
+ * pending work are returned as 0.
  */
 export async function countWorkAppointmentRequestsByHospital(
   actor: ActorContext,
   hospitalIds: readonly string[],
   dependencies: WorkAppointmentQueryDependencies = {},
-): Promise<Array<{ hospitalId: string; count: number }>> {
+): Promise<WorkAppointmentRequestCount[]> {
   const uniqueHospitalIds = [...new Set(hospitalIds)];
   if (actor.roles.includes(Role.ADMIN) || uniqueHospitalIds.some((hospitalId) => !isActiveHospitalOperator(actor, hospitalId))) {
     throw new ForbiddenError();
   }
   if (uniqueHospitalIds.length === 0) return [];
   try {
-    const rows = await getDatabase(dependencies.database).$queryRaw<Array<{ hospitalId: string; count: number }>>(
+    const rows = await getDatabase(dependencies.database).$queryRaw<WorkAppointmentRequestCount[]>(
       pendingRequestCountByHospitalQuery(actor.userId, uniqueHospitalIds),
     );
-    const counts = new Map(rows.map(({ hospitalId, count }) => [hospitalId, count]));
-    return uniqueHospitalIds.map((hospitalId) => ({ hospitalId, count: counts.get(hospitalId) ?? 0 }));
+    const counts = new Map(rows.map((row) => [row.hospitalId, row]));
+    return uniqueHospitalIds.map((hospitalId) => {
+      const row = counts.get(hospitalId);
+      return {
+        hospitalId,
+        count: row?.count ?? 0,
+        rescheduleCount: row?.rescheduleCount ?? 0,
+        cancellationCount: row?.cancellationCount ?? 0,
+      };
+    });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
     throw toInfrastructureError("appointments.countPendingRequests", error, "Pending appointment requests could not be counted");
@@ -1123,8 +1144,9 @@ export async function listWorkAppointments(
         status: AppointmentCancellationRequestStatus.PENDING,
         appointment: { is: baseWhere },
       };
+      // `requestType` narrows the queue to one source; ordering and cursor semantics are those of the merged queue.
       const [reschedules, cancellations] = await Promise.all([
-        database.patientAppointmentRescheduleRequest.findMany({
+        filters.requestType === "CANCELLATION" ? [] : database.patientAppointmentRescheduleRequest.findMany({
           where: {
             ...appointmentScope,
             ...(position ? pendingRequestCursorWhere(position) : {}),
@@ -1137,7 +1159,7 @@ export async function listWorkAppointments(
             appointment: { select: workAppointmentSelect(resolvedScope.hospitalId) },
           },
         }),
-        database.patientAppointmentCancellationRequest.findMany({
+        filters.requestType === "RESCHEDULE" ? [] : database.patientAppointmentCancellationRequest.findMany({
           where: {
             ...appointmentScope,
             ...(position ? pendingCancellationRequestCursorWhere(position) : {}),

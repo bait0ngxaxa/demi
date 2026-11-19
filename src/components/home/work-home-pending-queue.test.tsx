@@ -85,6 +85,31 @@ describe("WorkHomePendingQueue", () => {
     expect(markup.textContent).not.toContain("โรงพยาบาลหนึ่ง");
   });
 
+  it("replaces the aggregate appointment row with one typed row per pending request kind", () => {
+    const markup = renderQueue({
+      status: "READY",
+      checkedAt: 1,
+      indicators: [{ ...appointments, count: 4, breakdown: [
+        { kind: "RESCHEDULE", label: "คำขอเลื่อนนัดรอพิจารณา", count: 2, href: "/app/appointments?tab=PENDING_REQUESTS&requestType=RESCHEDULE&hospitalId=a",
+          hospitals: [{ hospitalId: "a", count: 2 }, { hospitalId: "b", count: 0 }] },
+        { kind: "CANCELLATION", label: "คำขอยกเลิกนัดรอพิจารณา", count: 3, href: "/app/appointments?tab=PENDING_REQUESTS&requestType=CANCELLATION&hospitalId=a",
+          hospitals: [{ hospitalId: "a", count: 1 }, { hospitalId: "b", count: 2 }] },
+      ], hospitalQueue: { tab: "PENDING_REQUESTS", hospitals: [{ hospitalId: "a", count: 2 }, { hospitalId: "b", count: 2 }] } }],
+    });
+    const links = [...markup.querySelectorAll("li > a")];
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/app/appointments?tab=PENDING_REQUESTS&requestType=RESCHEDULE&hospitalId=a",
+      "/app/appointments?tab=PENDING_REQUESTS&requestType=CANCELLATION&hospitalId=a",
+    ]);
+    expect(links.map((link) =>
+      link.getAttribute("aria-labelledby")?.split(" ").map((id) => markup.getElementById(id)?.textContent).join(" "),
+    )).toEqual(["คำขอเลื่อนนัดรอพิจารณา 2 รายการ", "คำขอยกเลิกนัดรอพิจารณา 3 รายการ"]);
+    expect(markup.textContent).not.toContain("คำขอนัดหมายรอพิจารณา");
+    // Only the kind pending in two Hospitals names them.
+    expect(links[0]?.hasAttribute("aria-describedby")).toBe(false);
+    expect(markup.getElementById(links[1]?.getAttribute("aria-describedby") ?? "")?.textContent).toBe("โรงพยาบาลหนึ่ง 1 · โรงพยาบาลสอง 2");
+  });
+
   it.each([
     { name: "all-zero", indicators: [{ ...requests, count: 0 }, { ...appointments, count: 0 }] },
     { name: "no indicators", indicators: [] },

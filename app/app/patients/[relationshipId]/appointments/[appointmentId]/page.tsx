@@ -33,6 +33,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { AppointmentMutationControls } from "./appointment-mutation-controls";
 import { AppointmentInteractionControls } from "./appointment-interaction-controls";
 import { AppointmentAssignmentControls } from "./appointment-assignment-controls";
+import { PendingRequestSummary } from "./pending-request-summary";
 import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
 import { AppointmentContactPhoneEntries } from "../../../../appointment-contact-phones";
 
@@ -87,11 +88,12 @@ async function resolveActor() {
 function AppointmentDetailView({
   activeProgram,
   canRecordProgram,
-  detail, rescheduleRequests,
+  detail, pendingRequestSummary, rescheduleRequests,
 }: {
   activeProgram: PatientProgramProjection | null;
   canRecordProgram: boolean;
   detail: AppointmentDetail & { contactPhones: AppointmentContactPhones };
+  pendingRequestSummary?: React.ReactNode;
   rescheduleRequests?: React.ReactNode;
 }): React.JSX.Element {
   const relationshipId = detail.patient.patientHospitalRelationshipId;
@@ -125,6 +127,7 @@ function AppointmentDetailView({
       />
 
       <div className="space-y-6 pt-8">
+        {pendingRequestSummary}
         {detail.status === "COMPLETED" ? (
           <Alert variant="info">
             <p className="font-semibold">นัดหมายนี้เสร็จสิ้นแล้ว</p>
@@ -344,6 +347,20 @@ export default async function AppointmentDetailPage({
 
   return (
     <AppointmentDetailView
+      pendingRequestSummary={<PendingRequestSummary
+        appointmentId={appointmentId}
+        cancellation={{
+          // The same authority that renders "พิจารณาคำขอยกเลิกนัด" in AppointmentInteractionControls.
+          canDecide: detail.canHospitalManage ?? detail.canManage,
+          requests: detail.cancellationRequests,
+        }}
+        reschedule={{
+          // The same authority that renders the approve/reject actions in RescheduleRequestSection.
+          canDecide: rescheduleHistory.canReview && rescheduleHistory.scheduled,
+          requests: rescheduleHistory.requests,
+        }}
+        status={detail.status}
+      />}
       rescheduleRequests={<RescheduleRequestSection
         history={rescheduleHistory}
         relationshipId={relationshipId}

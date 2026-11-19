@@ -5,6 +5,10 @@ import { connection } from "next/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { workAppointmentQuerySchema } from "@/modules/appointments/schemas/work-appointment-schemas";
 import {
+  APPOINTMENT_REQUEST_KIND_QUEUE_LABELS,
+  APPOINTMENT_REQUESTS_AGGREGATE_LABEL,
+} from "@/modules/appointments/domain/appointment-request-kinds";
+import {
   listWorkAppointments,
   type WorkAppointmentPage,
 } from "@/modules/appointments/services/work-appointment-query-service";
@@ -75,11 +79,18 @@ async function loadPendingScope(
   }
   const queue = indicator?.hospitalQueue;
   if (!indicator || !queue || queue.tab !== page.tab) return null;
-  const counts = new Map(queue.hospitals.map(({ hospitalId, count }) => [hospitalId, count]));
+  // A list filtered to one request kind is summarized with that kind's per-Hospital counts, never the mixed total.
+  const requestType = page.tab === "PENDING_REQUESTS" ? page.filters.requestType : undefined;
+  const typed = requestType ? indicator.breakdown?.find(({ kind }) => kind === requestType) : undefined;
+  const sourceHospitals = requestType ? typed?.hospitals ?? [] : queue.hospitals;
+  const counts = new Map(sourceHospitals.map(({ hospitalId, count }) => [hospitalId, count]));
   const hospitals = page.hospitals
     .map(({ hospitalId, hospitalName }) => ({ hospitalId, hospitalName, count: counts.get(hospitalId) ?? 0 }))
     .filter(({ hospitalId, count }) => counts.has(hospitalId) && count > 0);
-  return { tab: queue.tab, totalCount: hospitals.reduce((total, { count }) => total + count, 0), hospitals };
+  const label = requestType
+    ? APPOINTMENT_REQUEST_KIND_QUEUE_LABELS[requestType]
+    : queue.tab === "AWAITING_MY_ACCEPTANCE" ? "นัดหมายรอคุณตอบรับ" : APPOINTMENT_REQUESTS_AGGREGATE_LABEL;
+  return { tab: queue.tab, label, totalCount: hospitals.reduce((total, { count }) => total + count, 0), hospitals };
 }
 
 export default async function WorkAppointmentPage({
@@ -100,6 +111,7 @@ export default async function WorkAppointmentPage({
     awaitingOsmAcceptance: firstSearchParam(params.awaitingOsmAcceptance),
     unassignedOsm: firstSearchParam(params.unassignedOsm),
     unassigned: firstSearchParam(params.unassigned),
+    requestType: firstSearchParam(params.requestType),
     cursor: firstSearchParam(params.cursor),
   };
   const parsed = workAppointmentQuerySchema.safeParse(rawQuery);

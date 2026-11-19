@@ -56,11 +56,14 @@ describe("work appointment page query", () => {
   describe("multi-Hospital pending scope", () => {
     const other = "44444444-4444-4444-8444-444444444444";
     const unauthorized = "55555555-5555-4555-8555-555555555555";
-    const page = { tab: "PENDING_REQUESTS", hospital: { hospitalId, hospitalName: "รพ. ก" }, hospitals: [
+    const page = { tab: "PENDING_REQUESTS", filters: {}, hospital: { hospitalId, hospitalName: "รพ. ก" }, hospitals: [
       { hospitalId, hospitalName: "รพ. ก" }, { hospitalId: other, hospitalName: "รพ. ข" },
     ] };
     const indicator = (tab: string) => ({ navigationHref: "/app/appointments", href: "/app/appointments", count: 9, label: "คำขอนัดหมายรอพิจารณา",
-      hospitalQueue: { tab, hospitals: [{ hospitalId, count: 2 }, { hospitalId: other, count: 4 }, { hospitalId: unauthorized, count: 3 }] } });
+      hospitalQueue: { tab, hospitals: [{ hospitalId, count: 2 }, { hospitalId: other, count: 4 }, { hospitalId: unauthorized, count: 3 }] },
+      breakdown: [{ kind: "CANCELLATION", label: "คำขอยกเลิกนัดรอพิจารณา", count: 4, href: "/app/appointments", hospitals: [
+        { hospitalId, count: 0 }, { hospitalId: other, count: 1 }, { hospitalId: unauthorized, count: 3 },
+      ] }] });
     async function scopeFor(): Promise<unknown> {
       const element = await WorkAppointmentPage({ searchParams: Promise.resolve({ hospitalId, tab: "PENDING_REQUESTS" }) });
       return (element.props as { pendingScope: unknown }).pendingScope;
@@ -69,10 +72,30 @@ describe("work appointment page query", () => {
 
     it("names only Hospitals in the page's authorized scope and their own counts", async () => {
       mocks.pendingActions.mockResolvedValue({ status: "READY", checkedAt: 0, indicators: [indicator("PENDING_REQUESTS")] });
-      expect(await scopeFor()).toEqual({ tab: "PENDING_REQUESTS", totalCount: 6, hospitals: [
+      expect(await scopeFor()).toEqual({ tab: "PENDING_REQUESTS", label: "คำขอนัดหมายรอพิจารณา", totalCount: 6, hospitals: [
         { hospitalId, hospitalName: "รพ. ก", count: 2 }, { hospitalId: other, hospitalName: "รพ. ข", count: 4 },
       ] });
       expect(mocks.pendingActions).toHaveBeenCalledExactlyOnceWith(owner.userId);
+    });
+
+    it("summarizes a request-kind filtered queue with that kind's authorized per-Hospital counts", async () => {
+      mocks.pendingActions.mockResolvedValue({ status: "READY", checkedAt: 0, indicators: [indicator("PENDING_REQUESTS")] });
+      mocks.list.mockResolvedValue({ ...page, filters: { requestType: "CANCELLATION" } });
+      const element = await WorkAppointmentPage({ searchParams: Promise.resolve({ hospitalId, tab: "PENDING_REQUESTS", requestType: "CANCELLATION" }) });
+      expect(mocks.list).toHaveBeenCalledExactlyOnceWith(owner, { hospitalId, tab: "PENDING_REQUESTS", requestType: "CANCELLATION" });
+      expect((element.props as { pendingScope: unknown }).pendingScope).toEqual({ tab: "PENDING_REQUESTS", label: "คำขอยกเลิกนัดรอพิจารณา", totalCount: 1, hospitals: [
+        { hospitalId: other, hospitalName: "รพ. ข", count: 1 },
+      ] });
+    });
+
+    it.each([
+      ["on another tab", { tab: "UPCOMING", requestType: "CANCELLATION" }, { tab: "UPCOMING" }],
+      ["when invalid", { tab: "PENDING_REQUESTS", requestType: "BOTH" }, { tab: "PENDING_REQUESTS" }],
+    ] as const)("ignores the request-kind filter %s without a query error", async (_name, query, expected) => {
+      mocks.pendingActions.mockResolvedValue({ status: "READY", checkedAt: 0, indicators: [] });
+      const element = await WorkAppointmentPage({ searchParams: Promise.resolve({ hospitalId, ...query }) });
+      expect(mocks.list).toHaveBeenCalledExactlyOnceWith(owner, { hospitalId, ...expected });
+      expect((element.props as { queryError: unknown }).queryError).toBeNull();
     });
 
     it("shows no scope for another queue, no pending work or unavailable indicators", async () => {

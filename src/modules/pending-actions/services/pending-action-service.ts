@@ -6,8 +6,15 @@ import { Role, type Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import { createActorContextStore, resolveActorAccessByUserId } from "@/modules/auth/services/actor-context-service";
 import {
+  APPOINTMENT_REQUEST_KINDS,
+  APPOINTMENT_REQUEST_KIND_QUEUE_LABELS,
+  APPOINTMENT_REQUESTS_AGGREGATE_LABEL,
+  type AppointmentRequestKind,
+} from "@/modules/appointments/domain/appointment-request-kinds";
+import {
   countWorkAppointmentAcceptanceByHospital,
   countWorkAppointmentRequestsByHospital,
+  type WorkAppointmentRequestCount,
 } from "@/modules/appointments/services/work-appointment-query-service";
 import { decidePatientServiceRequestPolicy, PATIENT_SERVICE_REQUEST_CAPABILITIES } from "@/modules/patient-service-requests/policies/patient-service-request-policy";
 import { hospitalOperatedByWhere } from "@/modules/identity/services/hospital-authority";
@@ -17,11 +24,27 @@ import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PendingActionHospitalCount = { hospitalId: string; count: number };
 
+/** One request kind inside the operator appointment indicator (APPT-REQ-TYPE). */
+export type PendingActionBreakdownEntry = {
+  kind: AppointmentRequestKind;
+  label: string;
+  /** Appointments with this kind pending, summed across authorized Hospitals. */
+  count: number;
+  /** The typed queue of the first authorized Hospital with this kind pending. */
+  href: string;
+  /** Per-Hospital counts of this kind, in authorized-scope order; Hospitals with none are included as 0. */
+  hospitals: readonly PendingActionHospitalCount[];
+};
+
 export type PendingActionIndicator = {
-  /** Existing navigation destination; no new navigation entries are created. */
+  /**
+   * Existing navigation destination; no new navigation entries are created. Navigation keys dots by this value, so
+   * there is exactly one indicator per destination and `count` stays that destination's distinct total.
+   */
   navigationHref: string;
   href: string;
   count: number;
+  /** Untyped aggregate name; surfaces that can show `breakdown` name the request kinds instead. */
   label: string;
   /**
    * Appointment queues are Hospital-specific while `count` spans every authorized Hospital. The breakdown holds only
@@ -29,7 +52,29 @@ export type PendingActionIndicator = {
    * from the aggregate.
    */
   hospitalQueue?: { tab: "PENDING_REQUESTS" | "AWAITING_MY_ACCEPTANCE"; hospitals: readonly PendingActionHospitalCount[] };
+  /**
+   * Operator appointment requests only: the pending kinds with a nonzero count, reschedule first. An appointment with
+   * both kinds counts in both entries but once in `count`. Absent for OSM acceptance and every other indicator.
+   */
+  breakdown?: readonly PendingActionBreakdownEntry[];
 };
+
+function appointmentRequestBreakdown(counts: readonly WorkAppointmentRequestCount[]): PendingActionBreakdownEntry[] {
+  return APPOINTMENT_REQUEST_KINDS.flatMap((kind) => {
+    const hospitals = counts.map(({ hospitalId, rescheduleCount, cancellationCount }) => ({
+      hospitalId, count: kind === "RESCHEDULE" ? rescheduleCount : cancellationCount,
+    }));
+    const first = hospitals.find(({ count }) => count > 0);
+    if (!first) return [];
+    return [{
+      kind,
+      label: APPOINTMENT_REQUEST_KIND_QUEUE_LABELS[kind],
+      count: hospitals.reduce((total, { count }) => total + count, 0),
+      href: `/app/appointments?${new URLSearchParams({ tab: "PENDING_REQUESTS", requestType: kind, hospitalId: first.hospitalId })}`,
+      hospitals,
+    }];
+  });
+}
 
 /** Only a server-authenticated user ID enters here. Roles and scopes are resolved again from persistence. */
 export async function calculatePendingActions(
@@ -68,21 +113,25 @@ export async function calculatePendingActions(
       hospitalIds.length === 0 ? [] : countWorkAppointmentRequestsByHospital(actor, hospitalIds, dependencies),
       countWorkAppointmentAcceptanceByHospital(actor, dependencies),
     ]);
-    const appointmentCounts = actor.roles.includes(Role.OSM) ? acceptances : appointmentRequests;
+    const isOsm = actor.roles.includes(Role.OSM);
+    const appointmentCounts: readonly PendingActionHospitalCount[] = isOsm
+      ? acceptances
+      : appointmentRequests.map(({ hospitalId, count }) => ({ hospitalId, count }));
     const firstPending = appointmentCounts.find(({ count }) => count > 0);
     const appointmentCount = appointmentCounts.reduce((total, { count }) => total + count, 0);
-    const tab = actor.roles.includes(Role.OSM) ? "AWAITING_MY_ACCEPTANCE" as const : "PENDING_REQUESTS" as const;
+    const tab = isOsm ? "AWAITING_MY_ACCEPTANCE" as const : "PENDING_REQUESTS" as const;
     return [
       ...(hospitalIds.length === 0 ? [] : [{
         navigationHref: "/app/patients/service-requests", href: "/app/patients/service-requests?group=PENDING",
         count: serviceRequests, label: "คำขอรับบริการรอพิจารณา",
       }]),
-      ...(hospitalIds.length === 0 && !actor.roles.includes(Role.OSM) ? [] : [{
+      ...(hospitalIds.length === 0 && !isOsm ? [] : [{
         navigationHref: "/app/appointments",
         href: firstPending ? `/app/appointments?${new URLSearchParams({ tab, hospitalId: firstPending.hospitalId })}` : "/app/appointments",
         count: appointmentCount,
-        label: actor.roles.includes(Role.OSM) ? "นัดหมายรอคุณตอบรับ" : "คำขอนัดหมายรอพิจารณา",
+        label: isOsm ? "นัดหมายรอคุณตอบรับ" : APPOINTMENT_REQUESTS_AGGREGATE_LABEL,
         hospitalQueue: { tab, hospitals: appointmentCounts },
+        ...(isOsm ? {} : { breakdown: appointmentRequestBreakdown(appointmentRequests) }),
       }]),
     ];
   } catch (error: unknown) {

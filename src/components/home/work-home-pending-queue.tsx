@@ -2,15 +2,43 @@ import Link from "next/link";
 
 import { getMoreNavigationIcon, MobileNavigationGlyph } from "@/components/app-shell/mobile-navigation-glyph";
 import { ChevronGlyph } from "@/components/ui/glyphs";
-import type { PendingActionIndicator, PendingActionsResult } from "@/modules/pending-actions/services/pending-action-service";
+import type {
+  PendingActionHospitalCount,
+  PendingActionIndicator,
+  PendingActionsResult,
+} from "@/modules/pending-actions/services/pending-action-service";
 
 const numberFormat = new Intl.NumberFormat("th-TH");
 
+type QueueRow = {
+  key: string;
+  navigationHref: string;
+  href: string;
+  label: string;
+  count: number;
+  hospitals: readonly PendingActionHospitalCount[];
+};
+
+/** A typed breakdown replaces its aggregate row; each kind keeps its own per-Hospital line. */
+function queueRows(indicator: PendingActionIndicator): QueueRow[] {
+  const base = { navigationHref: indicator.navigationHref };
+  if (indicator.breakdown && indicator.breakdown.length > 0) {
+    return indicator.breakdown.map((entry) => ({
+      ...base, key: `${indicator.navigationHref}#${entry.kind}`, href: entry.href, label: entry.label, count: entry.count,
+      hospitals: entry.hospitals,
+    }));
+  }
+  return [{
+    ...base, key: indicator.navigationHref, href: indicator.href, label: indicator.label, count: indicator.count,
+    hospitals: indicator.hospitalQueue?.hospitals ?? [],
+  }];
+}
+
 function formatHospitalQueue(
-  hospitalQueue: PendingActionIndicator["hospitalQueue"],
+  hospitalCounts: readonly PendingActionHospitalCount[],
   hospitalNames: ReadonlyMap<string, string>,
 ): string | null {
-  const hospitals = (hospitalQueue?.hospitals ?? []).flatMap(({ hospitalId, count }) => {
+  const hospitals = hospitalCounts.flatMap(({ hospitalId, count }) => {
     const name = hospitalNames.get(hospitalId);
     return name && count > 0 ? [`${name} ${numberFormat.format(count)}`] : [];
   });
@@ -28,7 +56,9 @@ export function WorkHomePendingQueue({
   result: PendingActionsResult;
   hospitalNames: ReadonlyMap<string, string>;
 }): React.JSX.Element {
-  const indicators = result.status === "READY" ? result.indicators.filter(({ count }) => count > 0) : [];
+  const rows = result.status === "READY"
+    ? result.indicators.filter(({ count }) => count > 0).flatMap(queueRows).filter(({ count }) => count > 0)
+    : [];
 
   return (
     <section aria-labelledby="work-home-pending-heading">
@@ -38,16 +68,16 @@ export function WorkHomePendingQueue({
       <p className="mt-1 text-sm text-text-muted">
         {result.status === "UNAVAILABLE"
           ? "ยังตรวจสอบงานที่รอดำเนินการไม่ได้ ลองโหลดหน้าใหม่อีกครั้ง"
-          : indicators.length === 0 ? "ไม่มีงานรอดำเนินการในตอนนี้" : "รวมทุกโรงพยาบาลที่คุณมีสิทธิ์"}
+          : rows.length === 0 ? "ไม่มีงานรอดำเนินการในตอนนี้" : "รวมทุกโรงพยาบาลที่คุณมีสิทธิ์"}
       </p>
-      {indicators.length > 0 ? (
+      {rows.length > 0 ? (
         <ul className="mt-3 divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
-          {indicators.map((indicator, index) => {
+          {rows.map((indicator, index) => {
             const rowId = `work-home-pending-${index}`;
-            const hospitalQueue = formatHospitalQueue(indicator.hospitalQueue, hospitalNames);
+            const hospitalQueue = formatHospitalQueue(indicator.hospitals, hospitalNames);
 
             return (
-              <li key={indicator.navigationHref}>
+              <li key={indicator.key}>
                 <Link
                   aria-describedby={hospitalQueue ? `${rowId}-hospitals` : undefined}
                   aria-labelledby={`${rowId}-label ${rowId}-count`}

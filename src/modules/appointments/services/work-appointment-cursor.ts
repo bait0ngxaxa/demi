@@ -11,6 +11,7 @@ import type {
   WorkAppointmentTab,
 } from "../schemas/work-appointment-schemas";
 import { appointmentTypeSchema } from "../schemas/appointment-schemas";
+import { APPOINTMENT_REQUEST_KINDS } from "../domain/appointment-request-kinds";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const CURSOR_PREFIX = "workappt_cur_v1_";
@@ -47,6 +48,7 @@ const cursorPayloadSchema = z
             locationType: z.enum(["CLINIC", "ONLINE", "HOME_VISIT", "OTHER"]).optional(),
             responsibleUserId: z.uuid().optional(),
             awaitingOsmAcceptance: z.literal("true").optional(),
+            requestType: z.enum(APPOINTMENT_REQUEST_KINDS).optional(),
           })
           .strict(),
       })
@@ -98,6 +100,7 @@ function cursorContext(
       ...(context.filters.awaitingOsmAcceptance === undefined
         ? {}
         : { awaitingOsmAcceptance: context.filters.awaitingOsmAcceptance }),
+      ...(context.filters.requestType === undefined ? {} : { requestType: context.filters.requestType }),
     },
   };
 }
