@@ -83,9 +83,7 @@ function CreateHospitalPanel({ submissionNonce }: { submissionNonce: string }): 
     <Panel aria-labelledby="create-hospital-heading">
       <h2 className="text-xl font-semibold tracking-[-0.02em]" id="create-hospital-heading">เพิ่มโรงพยาบาลแม่ข่าย</h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        โรงพยาบาลแม่ข่ายที่รอขึ้นทะเบียนต้องมีผู้รับผิดชอบสมัครผ่านหน้าขึ้นทะเบียน เมื่อได้รับอนุมัติ ผู้สมัครจะได้สิทธิ์แอดมินโรงพยาบาลคนแรก
-        หรือผู้ดูแลระบบ DEMI เชิญแอดมินโรงพยาบาลคนแรกได้จากหน้ารายละเอียด
-        แอดมินโรงพยาบาลแม่ข่ายเพิ่ม รพ.สต. และหน่วยบริการลูกข่ายได้จากหน้าจัดการลูกข่าย
+        ผู้รับผิดชอบสมัครผ่านหน้าขึ้นทะเบียน หรือเชิญแอดมินคนแรกจากหน้ารายละเอียด
       </p>
       <NetworkMutationForm
         action={createNetworkHospitalAction}

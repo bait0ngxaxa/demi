@@ -31,13 +31,13 @@ export function WorkforceOsmAssignedPatientsSection({
             ผู้ป่วยในความรับผิดชอบ
           </h2>
           <p className="mt-1 text-sm leading-6 text-text-muted">
-            แสดงผู้ป่วยที่ยังรับการดูแลจากโรงพยาบาลนี้และยังมอบหมายให้ อสม. รายนี้ดูแล โดยไม่กรองตามสถานะบัญชีผู้ป่วย ทั้งนี้ อสม. ต้องมีบัญชีและสิทธิ์ทำงานกับโรงพยาบาลนี้อยู่
+            ผู้ป่วยที่ยังมอบหมายให้ อสม. รายนี้ในโรงพยาบาลนี้
           </p>
         </div>
 
         {state.status === "SUMMARY_ONLY" ? (
           <Alert className="mt-4" role="status" variant="info">
-            แสดงได้เฉพาะจำนวนผู้ป่วยที่ อสม. รายนี้รับผิดชอบ บัญชีของคุณไม่มีสิทธิ์ดูรายชื่อผู้ป่วย
+            แสดงเฉพาะจำนวนผู้ป่วย
           </Alert>
         ) : state.status === "ERROR" ? (
           <Alert className="mt-4" role="alert" variant="warning">
@@ -56,7 +56,7 @@ export function WorkforceOsmAssignedPatientsSection({
             </p>
             {state.page.total !== currentAssignmentCount ? (
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                ยอดด้านบนเป็นจำนวนผู้ป่วยที่ยังมอบหมายอยู่ ส่วนรายชื่อนี้แสดงเฉพาะผู้ป่วยที่ยังรับการดูแลจากโรงพยาบาลนี้ และผู้รับผิดชอบมีบัญชีและสิทธิ์ทำงานกับโรงพยาบาลนี้อยู่
+                ยอดด้านบนรวมผู้ป่วยที่ยังมอบหมายอยู่ทั้งหมด รายชื่อนี้ไม่รวมผู้ที่สิ้นสุดการดูแลแล้ว
               </p>
             ) : null}
             <ul aria-label="รายชื่อผู้ป่วยในความรับผิดชอบ" className="mt-3 divide-y divide-border border-y border-border">

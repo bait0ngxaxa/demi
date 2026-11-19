@@ -83,6 +83,6 @@ describe("Hospital Contact Owner interface", () => {
 
     expect(html).toContain("มีข้อมูลติดต่อบางส่วน");
     expect(html).toContain("02-123-4567 ต่อ 123");
-    expect(html).toContain("เว้นช่องว่างเพื่อล้างข้อมูลได้");
+    expect(html).toContain("เว้นว่างเพื่อล้างข้อมูล");
   });
 });

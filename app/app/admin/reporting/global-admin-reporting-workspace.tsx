@@ -316,7 +316,7 @@ export function GlobalAdminReportingWorkspace({
     <div className="min-w-0">
       <PageHeader
         breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ผู้ดูแลระบบ DEMI" }, { label: "รายงานระบบ" }]}
-        description="ดูโครงสร้างโรงพยาบาลและรายงานของแห่งที่เลือก ข้อมูลผู้ป่วยและโปรแกรมจำกัดอยู่ในโรงพยาบาลนั้น ไม่รวมแม่ข่ายหรือลูกข่าย"
+        description="รายงานของโรงพยาบาลที่เลือก ไม่รวมแม่ข่ายหรือลูกข่าย"
         title="รายงานสำหรับผู้ดูแลระบบ DEMI"
       />
 

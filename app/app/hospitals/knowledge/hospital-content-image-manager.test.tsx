@@ -88,7 +88,7 @@ function shownOrder(): string[] {
 describe("Hospital content draft image manager", () => {
   it("states the three image limit and hides the picker once it is reached", async () => {
     await mountManager([one, two, three]);
-    expect(container?.textContent).toContain("ได้ไม่เกิน 3 รูป");
+    expect(container?.textContent).toContain("ไม่เกิน 3 รูป");
     expect(container?.textContent).toContain("เพิ่มรูปครบ 3 รูปแล้ว");
     expect(container?.querySelector("#hospital-content-image-files")).toBeNull();
   });

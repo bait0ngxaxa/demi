@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type FormEvent, type MouseEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { CharacterCount } from "@/components/ui/character-count";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { notify } from "@/components/ui/notify";
@@ -17,6 +18,7 @@ import {
   HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE,
   HOSPITAL_CONTENT_STATUS_LABELS,
   HOSPITAL_CONTENT_STATUS_VARIANTS,
+  HOSPITAL_CONTENT_TITLE_MAX_CODE_UNITS,
 } from "@/modules/hospital-content/domain/hospital-content";
 import type { HospitalContentDetailProjection } from "@/modules/hospital-content/types/hospital-content-projections";
 import type {
@@ -420,7 +422,6 @@ export function HospitalContentDetailWorkspace({
         <PageHeader
           onBreadcrumbClick={leavePage}
           breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ข่าวสารและความรู้", href: "/app/hospitals/knowledge" }]}
-          description="จัดการเนื้อหาของโรงพยาบาลที่คุณเป็นแอดมินโดยตรง"
           title="ข่าวสารและความรู้"
         />
         <Alert className="mt-6" variant="warning">
@@ -511,7 +512,6 @@ export function HospitalContentDetailWorkspace({
               {reviewCurrent.status === HospitalContentStatus.DRAFT ? (
                 <Button className="mt-4 sm:ml-3" disabled={isPending} onClick={reapplyLocalDraft} type="button" variant="secondary">นำแบบร่างเดิมมาแก้ต่อจากรุ่นปัจจุบัน</Button>
               ) : null}
-              <p className="mt-2 text-sm leading-6 text-text-muted">การนำแบบร่างเดิมมาใช้จะยังไม่บันทึก ระบบจะบันทึกเมื่อกดปุ่มบันทึกอย่างชัดเจนเท่านั้น</p>
             </div>
           ) : null}
           {dirty ? (
@@ -532,7 +532,6 @@ export function HospitalContentDetailWorkspace({
           <StatusBadge variant={HOSPITAL_CONTENT_STATUS_VARIANTS[current.status]}>{HOSPITAL_CONTENT_STATUS_LABELS[current.status]}</StatusBadge>
         </div>
 
-        <p className="mt-4 text-sm leading-6 text-text-muted">ข่าวสารและความรู้เป็นข้อมูลที่โรงพยาบาลจัดทำ โรงพยาบาลผู้เผยแพร่รับผิดชอบความถูกต้องของเนื้อหา</p>
 
         {current.status !== HospitalContentStatus.DRAFT ? (
           <Button className="mt-5" disabled={isPending} onClick={() => setLocalPreview((value) => !value)} type="button" variant="secondary">
@@ -558,7 +557,7 @@ export function HospitalContentDetailWorkspace({
                   setDraft((value) => ({ ...value, title: nextValue }));
                 }}
               />
-              <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-title-description">หัวข้อหนึ่งบรรทัด ไม่เกิน 200 ตัวอักษรหลังตัดช่องว่างหัวท้าย</p>
+              <CharacterCount className="mt-2" id="hospital-content-title-description" max={HOSPITAL_CONTENT_TITLE_MAX_CODE_UNITS} value={draft.title} />
               <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-title-error">{fieldMessage(mutationState, "title")}</p>
             </div>
             <div className="min-w-0">
@@ -577,7 +576,7 @@ export function HospitalContentDetailWorkspace({
                   setDraft((value) => ({ ...value, body: nextValue }));
                 }}
               />
-              <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-body-description">ข้อความธรรมดา ระบบคงบรรทัดใหม่และไม่แปล Markdown หรือ HTML</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-body-description">ข้อความธรรมดา ไม่รองรับ Markdown หรือ HTML</p>
               <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-body-error">{fieldMessage(mutationState, "body")}</p>
             </div>
             <div className="min-w-0">
@@ -616,7 +615,7 @@ export function HospitalContentDetailWorkspace({
                   setDraft((value) => ({ ...value, sourceText: nextValue }));
                 }}
               />
-              <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-source-description">ข้อความอ้างอิงหนึ่งรายการ ระบบไม่ตรวจสอบแหล่งที่มาและไม่ทำเป็นลิงก์</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-source-description">ข้อความอ้างอิงหนึ่งรายการ ไม่ทำเป็นลิงก์</p>
               <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-source-error">{fieldMessage(mutationState, "sourceText")}</p>
             </div>
             <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">

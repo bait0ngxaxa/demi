@@ -347,12 +347,16 @@ function PatientImportSavedFieldsNote({ className }: { className?: string }): Re
 export function PatientImportUploadGuidance(): React.JSX.Element {
   return (
     <>
-      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-muted">
+      <details className="mt-3 text-sm leading-6 text-muted">
+        <summary className="min-h-11 cursor-pointer py-2 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">กติกาการนำเข้า</summary>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
         <li>นำเข้าซ้ำได้: เพิ่มผู้ป่วยใหม่ต่อท้ายไฟล์เดิม ระบบจะเพิ่มเฉพาะผู้ป่วยใหม่</li>
         <li>การแก้ไขข้อมูลของผู้ป่วยที่มีอยู่แล้วในไฟล์จะไม่ถูกนำไปใช้ ให้แก้ไขในระบบ</li>
         <li>การกำหนด อสม. ทำหลังนำเข้า</li>
+          <li>ไฟล์ตัวอย่างใช้ได้กับโรงพยาบาลนี้เท่านั้น ห้ามแก้หัวตารางหรือเพิ่มคอลัมน์</li>
       </ul>
-      <PatientImportSavedFieldsNote className="mt-3 text-sm leading-6 text-muted" />
+        <PatientImportSavedFieldsNote className="mt-3" />
+      </details>
     </>
   );
 }
@@ -930,7 +934,7 @@ export function PatientImportReviewReminder({
       <p className="font-semibold">{message}</p>
       {!result ? (
         <p className="mt-1 text-muted">
-          ยังไม่ได้นำเข้า กรุณายืนยันในหน้าตรวจสอบ หากเปลี่ยนไฟล์ โรงพยาบาล หรือวันที่ข้อมูลตั้งต้น ต้องตรวจสอบใหม่
+          ยังไม่ได้นำเข้า กดยืนยันในหน้าตรวจสอบ
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-3">
@@ -1281,7 +1285,7 @@ export function PatientProvisioningWorkspace({
       <PageHeader
         actions={<StatusBadge variant="info">นำเข้าผู้ป่วย</StatusBadge>}
         breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "นำเข้าผู้ป่วย" }]}
-        description="นำเข้ารายชื่อผู้ป่วยจาก Excel ของโรงพยาบาลที่คุณเป็นแอดมิน รองรับตั้งแต่ 1 รายการต่อไฟล์"
+        description="นำเข้ารายชื่อผู้ป่วยจาก Excel ตั้งแต่ 1 รายการ"
         title="นำเข้าผู้ป่วย"
       />
 
@@ -1324,7 +1328,7 @@ export function PatientProvisioningWorkspace({
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2 text-sm leading-6">
               <p className="font-semibold text-ink">
-                ใช้ไฟล์ตัวอย่าง Excel ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย
+                ใช้ไฟล์ตัวอย่าง Excel
               </p>
               <a
                 className={buttonClassName({ size: "compact", variant: "secondary" })}
@@ -1334,9 +1338,6 @@ export function PatientProvisioningWorkspace({
                 ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ {selectedScope.hospitalName}
               </a>
               <p className="text-xs text-muted">รองรับสูงสุด 500 รายการต่อไฟล์</p>
-              <p className="text-xs text-muted">
-                ไฟล์นี้ใช้ได้กับโรงพยาบาลนี้เท่านั้น หากแก้ไขหัวตารางหรือเพิ่มคอลัมน์ ระบบจะไม่รับไฟล์
-              </p>
             </div>
           </div>
         ) : null}
@@ -1347,7 +1348,7 @@ export function PatientProvisioningWorkspace({
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">นำเข้าผู้ป่วยจาก Excel</h2>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  ตรวจสอบผลลัพธ์ก่อนยืนยัน ระบบจะประมวลผลแต่ละแถวแยกกัน
+                  ตรวจสอบผลก่อนยืนยัน
                 </p>
                 <PatientImportUploadGuidance />
               </div>
@@ -1406,15 +1407,11 @@ export function PatientProvisioningWorkspace({
                     className="text-xs font-normal leading-5 text-muted"
                     id="patient-import-effective-date-help"
                   >
-                    วันที่นี้ใช้ร่วมกับข้อมูลตั้งต้นด้านสุขภาพในไฟล์ เช่น น้ำหนัก รอบเอว
-                    ค่าน้ำตาลในเลือด (DTX) และ HbA1c ไม่ใช่วันที่อัปโหลด วันที่ลงทะเบียน
-                    หรือวันที่วินิจฉัย
+                    วันที่ของข้อมูลสุขภาพในไฟล์ (น้ำหนัก รอบเอว DTX HbA1c)
+                    ไม่ใช่วันที่อัปโหลดหรือวันที่วินิจฉัย
                   </span>
                 </label>
 
-                <p className="text-xs leading-5 text-muted">
-                  วันที่ข้อมูลตั้งต้นเป็นตัวเลือกตามข้อมูลในไฟล์ ระบบจะแจ้งหากจำเป็นต้องระบุก่อนนำเข้า
-                </p>
 
                 {previewState.status === "ERROR" ? (
                   <Alert aria-live="polite" className="mt-2" variant="danger">

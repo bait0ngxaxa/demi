@@ -118,9 +118,6 @@ export function HospitalOwnerGovernanceControls({
   return (
     <Panel>
       <h2 className="text-xl font-semibold tracking-[-0.02em]">จัดการสิทธิ์แอดมินโรงพยาบาล</h2>
-      <p className="mt-2 text-sm leading-6 text-text-muted">
-        การเปลี่ยนแปลงนี้มีผลเฉพาะสิทธิ์ในโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชีหรือข้อมูลเข้าสู่ระบบ
-      </p>
 
       <UnknownOutcomeAlert
         active={session.unconfirmed && latest?.kind !== "demote"}

@@ -144,8 +144,8 @@ function BulkAddPanel({
       <details>
         <summary className="cursor-pointer text-xl font-semibold tracking-[-0.02em]">เพิ่มหลายคน</summary>
         <p className="mt-2 text-sm leading-6 text-muted">
-          เพิ่มได้ครั้งละไม่เกิน {MAX_BULK_ROWS} คน ครั้งละหนึ่งประเภท ระบบบันทึกทีละแถว แถวที่มีอยู่แล้วจะไม่ถูกสร้างซ้ำ
-          เลขบัตรประชาชนต้องไม่ซ้ำกันในรายการที่ส่ง หลังบันทึกให้พิมพ์ใบเปิดใช้งานจากส่วน &quot;รอเปิดใช้งาน&quot;
+          ครั้งละไม่เกิน {MAX_BULK_ROWS} คน ประเภทเดียว เลขบัตรประชาชนต้องไม่ซ้ำกัน
+          หลังบันทึกให้พิมพ์ใบเปิดใช้งานจากส่วน &quot;รอเปิดใช้งาน&quot;
         </p>
         <form action={action} className="mt-6 space-y-4" onSubmit={() => setShowOutcome(true)}>
           {kind === "OSM" ? <p className="text-sm text-muted" id="bulk-osm-phone-help">เบอร์นี้จะแสดงให้ผู้ป่วยที่ อสม. ดูแลเห็น</p> : null}
@@ -204,11 +204,14 @@ function BulkAddPanel({
               </ul>
             </Alert>
           ) : null}
-          <p className="text-sm leading-6 text-muted">
-            หากคำขอขาดการเชื่อมต่อ ให้ส่งข้อมูลเดิมอีกครั้งเพื่อรับผลของรายการเดิม ผลที่บันทึกแล้วจะไม่ถูกสร้างซ้ำ
-            หากแก้ข้อมูล ให้เริ่มรายการใหม่ ผลสำเร็จของรายการเดิมยังคงอยู่ รหัสรายการใช้ได้ 30 วัน
-            หากโหลดหน้าใหม่ ให้กรอกข้อมูลเดิมอีกครั้ง รหัสรายการเดิมจะยังอยู่ในแท็บนี้เมื่อเบราว์เซอร์รองรับ
-          </p>
+          <details className="text-sm leading-6 text-muted">
+            <summary className="min-h-11 cursor-pointer py-2 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">ถ้าการเชื่อมต่อขาดหาย</summary>
+            <p className="mt-1">
+              ส่งข้อมูลเดิมอีกครั้งเพื่อรับผลของรายการเดิม
+              หากแก้ข้อมูล ให้เริ่มรายการใหม่ ผลสำเร็จของรายการเดิมยังคงอยู่ รหัสรายการใช้ได้ 30 วัน
+              หากโหลดหน้าใหม่ ให้กรอกข้อมูลเดิมอีกครั้ง รหัสรายการเดิมจะยังอยู่ในแท็บนี้เมื่อเบราว์เซอร์รองรับ
+            </p>
+          </details>
           {unknownOutcome && !pending ? <Alert role="alert" variant="warning">ระบบยังยืนยันผลการบันทึกไม่ได้ กรุณากด “บันทึกทั้งหมด” อีกครั้งโดยไม่แก้ข้อมูล เพื่อรับผลของรายการเดิม</Alert> : null}
           <Button disabled={pending} onClick={startNewSubmission} type="button" variant="secondary">เริ่มรายการใหม่หลังแก้ข้อมูล</Button>
           <Button className="w-full" disabled={pending || !submissionId} loading={pending} type="submit">{pending ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}</Button>
@@ -397,7 +400,7 @@ export function WorkforceImportWorkspace({
         <section className="mt-8" id="workforce-pending">
           <h2 className="text-xl font-semibold tracking-[-0.02em]">พิมพ์ใบเปิดใช้งาน</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            เลือกรายชื่อเพื่อออกลิงก์ใหม่และพิมพ์ใบ ระบบจะยกเลิกลิงก์เดิมที่ยังใช้ได้ก่อนออกลิงก์ใหม่ ลิงก์ใช้ได้ 72 ชั่วโมงและใช้ได้ครั้งเดียว ผู้ใช้ต้องกรอกเลขบัตรประชาชนของตนเอง
+            เลือกรายชื่อเพื่อออกลิงก์ใหม่และพิมพ์ใบ ลิงก์ใช้ได้ 72 ชั่วโมงและใช้ได้ครั้งเดียว
           </p>
           {pendingRows.length === 0 ? <p className="mt-4 rounded-panel border border-border bg-surface px-4 py-8 text-center text-sm text-muted">ไม่มีรายชื่อที่ต้องเปิดใช้งานในรายการนี้</p> : (
             <div className="mt-4 grid gap-6 @5xl/workspace:grid-cols-2">

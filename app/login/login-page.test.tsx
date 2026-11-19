@@ -105,7 +105,7 @@ describe("Login page entry points and recovery guidance", () => {
     const markup = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({ returnTo: "/line/account" }) }));
     expect(markup).toContain("อีกหนึ่งขั้นตอนก่อนใช้งานผ่าน LINE");
     expect(markup).toContain("ระบบจะพาคุณกลับไปเชื่อมบัญชี LINE");
-    expect(markup).toContain("ยังไม่เชื่อมบัญชีให้อัตโนมัติ");
+    expect(markup).toContain("ระบบจะพาคุณกลับไปเชื่อมบัญชี LINE");
   });
 
   it.each([undefined, "https://evil.example/line/account", "//evil.example/line/account", "/line/account?returnTo=https://evil.example", ["/line/account", "/line/account"]])("does not trust an arbitrary or duplicated return destination %s", async (returnTo) => {

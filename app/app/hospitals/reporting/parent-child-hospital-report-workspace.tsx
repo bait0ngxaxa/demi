@@ -60,11 +60,11 @@ export function ParentChildHospitalReportWorkspace({
               โรงพยาบาลแม่ข่าย: {report.parent.name}
             </p>
           </div>
-          <StatusBadge variant="info">รายงานโรงพยาบาลลูกข่ายผ่านสิทธิ์เจ้าหน้าที่โรงพยาบาลแม่ข่าย</StatusBadge>
+          <StatusBadge variant="info">ลูกข่าย · ดูอย่างเดียว</StatusBadge>
         </div>
 
         <Alert className="mt-5" variant="info">
-          แสดงรายงานของโรงพยาบาลลูกข่ายที่เลือกเท่านั้น สิทธิ์นี้ไม่ครอบคลุมการจัดการบัญชี ข้อมูลผู้ป่วย หรือรายงานของโรงพยาบาลอื่น ไฟล์ Excel มีเฉพาะตัวเลขสรุป 9 ค่านี้ ไม่รวมผู้ที่สิ้นสุดการดูแล และทุกการส่งออกถูกบันทึกไว้
+          ไฟล์ Excel มีเฉพาะตัวเลขสรุป 9 ค่านี้ ไม่รวมผู้ที่สิ้นสุดการดูแล · การส่งออกถูกบันทึก
         </Alert>
 
         {/* Visualizes only the nine allowlisted values already rendered below; no links, tooltips or extra fields. */}

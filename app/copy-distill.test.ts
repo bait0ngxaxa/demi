@@ -14,6 +14,20 @@ const STAFF_DIRECTORIES = [
   "app/app/services",
 ] as const;
 const STAFF_FILES = ["app/app/patients/patient-directory-view.tsx", "app/app/appointments/new/patient-picker-view.tsx"] as const;
+// PR 3 (admin, onboarding, provisioning, workforce, hospital settings/content, public auth): implementation terms only (R2).
+const OPERATOR_DIRECTORIES = [
+  "app/app/admin",
+  "app/app/hospitals",
+  "app/app/workforce",
+  "app/app/users",
+  "app/app/patients/provision",
+  "app/app/patients/activation",
+  "app/activate",
+  "app/recover",
+  "app/register",
+  "app/login",
+  "app/hospital/onboarding",
+] as const;
 
 type BannedPhrase = { phrase: string; rule: string; pattern: RegExp; thaiOnly: boolean };
 const isImplementationRule = ({ rule }: BannedPhrase): boolean => rule.startsWith("R2");
@@ -91,8 +105,12 @@ describe("COPY-DISTILL copy guard", () => {
     expect(found).toEqual([]);
   });
 
-  it("keeps OSM and hospital staff daily flows free of implementation terms", () => {
-    const paths = [...STAFF_DIRECTORIES.flatMap((directory) => sourceFiles(directory)), ...STAFF_FILES];
+  it("keeps staff, operator and public auth flows free of implementation terms", () => {
+    const paths = [
+      ...STAFF_DIRECTORIES.flatMap((directory) => sourceFiles(directory)),
+      ...STAFF_FILES,
+      ...OPERATOR_DIRECTORIES.flatMap((directory) => sourceFiles(directory)),
+    ];
     const found = paths.flatMap((path) => {
       const filename = relative(process.cwd(), path).replaceAll("\\", "/");
       return violations(readFileSync(path, "utf8"), filename, BANNED.filter(isImplementationRule));

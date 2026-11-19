@@ -83,8 +83,7 @@ export default async function LoginPage({
           {safeReturnTo === "/line/account" ? (
             <Alert className="mt-5" variant="info">
               <h3 className="font-semibold">อีกหนึ่งขั้นตอนก่อนใช้งานผ่าน LINE</h3>
-              <p className="mt-2">กรุณาเข้าสู่ระบบ DEMI ด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้ เมื่อเข้าสู่ระบบสำเร็จ ระบบจะพาคุณกลับไปเชื่อมบัญชี LINE</p>
-              <p className="mt-2">เบราว์เซอร์กับ LINE อาจไม่ได้ใช้การเข้าสู่ระบบร่วมกัน การเข้าสู่ระบบครั้งนี้ยังไม่เชื่อมบัญชีให้อัตโนมัติ</p>
+              <p className="mt-2">เข้าสู่ระบบ DEMI แล้วระบบจะพาคุณกลับไปเชื่อมบัญชี LINE</p>
             </Alert>
           ) : null}
 
@@ -141,9 +140,6 @@ export default async function LoginPage({
             </div>
           </section>
 
-          <p className="mt-8 text-sm leading-6 text-muted">
-            การเข้าสู่ระบบไม่ได้เปิดให้ใช้ทุกส่วน ระบบจะแสดงเฉพาะงานที่บัญชีของคุณเข้าใช้ได้
-          </p>
           {/* LG-D1: no acceptance step at login; the documents stay one tap away. */}
           <LegalFooterLinks className="mt-4" />
         </div>

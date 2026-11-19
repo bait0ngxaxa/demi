@@ -60,7 +60,7 @@ export function UsersDirectory({ hospitals, page, filters }: {
           { label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(hospitalId)}` },
           { label: "ผู้ใช้และสิทธิ์" },
         ]}
-        description="ตรวจสอบสถานะและจัดการบัญชีเจ้าหน้าที่ อสม. และผู้ป่วยในโรงพยาบาลที่คุณเป็นแอดมิน"
+        description="บัญชีเจ้าหน้าที่ อสม. และผู้ป่วย"
         title="ผู้ใช้และสิทธิ์"
       />
 
@@ -77,9 +77,6 @@ export function UsersDirectory({ hospitals, page, filters }: {
             {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}
           </Select>
           {switching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
-          <p className="mt-2 text-sm leading-6 text-muted">
-            แสดงเฉพาะรายการของ {page.hospital.name} ที่คุณเป็นแอดมินโรงพยาบาล การเปิดบัญชีและจัดการสิทธิ์เจ้าหน้าที่ยังใช้ขั้นตอนเดิม
-          </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/workforce/new?hospitalId=${encodeURIComponent(hospitalId)}&step=1`}>เพิ่มเจ้าหน้าที่ / อสม.</Link>
             <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`}>นำเข้าผู้ป่วย</Link>

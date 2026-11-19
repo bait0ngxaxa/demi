@@ -33,7 +33,7 @@ export default async function AdminPasswordRecoveryPage(): Promise<React.JSX.Ele
     <div className="content-detail space-y-6">
       <PageHeader
         breadcrumbs={[{ href: "/app", label: "หน้าหลัก" }, { label: "ผู้ดูแลระบบ DEMI" }, { label: "กู้คืนบัญชีผู้ใช้" }]}
-        description="ค้นหาด้วยเลขบัตรประชาชน หรือรหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้ ตรวจสอบตัวตนก่อนส่งลิงก์ให้เจ้าของบัญชี"
+        description="ตรวจสอบตัวตนก่อนส่งลิงก์ให้เจ้าของบัญชี"
         title="กู้คืนบัญชีผู้ใช้"
       />
       <AdminMediatedPasswordResetSearch />

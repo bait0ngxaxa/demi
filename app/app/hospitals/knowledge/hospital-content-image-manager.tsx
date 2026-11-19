@@ -150,7 +150,7 @@ export function HospitalContentImageManager({ contentId, imageIds }: { contentId
 
   return <section aria-labelledby="hospital-content-images-heading" className="mt-6 border-t border-border pt-5">
     <h2 className="text-lg font-semibold text-text" id="hospital-content-images-heading">ภาพประกอบ</h2>
-    <p className="mt-2 text-sm leading-6 text-text-muted">เพิ่มรูป JPEG, PNG หรือ WEBP ได้ไม่เกิน {HOSPITAL_CONTENT_IMAGE_LIMIT} รูป ระบบจะปรับขนาดก่อนจัดเก็บแบบส่วนตัว ลำดับที่เห็นคือลำดับที่ผู้อ่านจะเห็น</p>
+    <p className="mt-2 text-sm leading-6 text-text-muted">JPG, PNG หรือ WEBP ไม่เกิน {HOSPITAL_CONTENT_IMAGE_LIMIT} รูป ผู้อ่านเห็นตามลำดับนี้</p>
     {images.length > HOSPITAL_CONTENT_IMAGE_LIMIT ? <Alert className="mt-3" variant="warning">ฉบับร่างนี้มี {images.length} รูป เกินกำหนด {HOSPITAL_CONTENT_IMAGE_LIMIT} รูป กรุณาลบรูปที่เกินก่อนเผยแพร่หรือจัดเรียง</Alert> : null}
     {images.length > 0 ? <HospitalContentImageOrderList
       disabled={busy}

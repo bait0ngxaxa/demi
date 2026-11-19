@@ -73,7 +73,6 @@ export default async function HospitalSettingsPage({ searchParams }: HospitalSet
           { href: requestedHospitalId ? `/app?hospitalId=${encodeURIComponent(requestedHospitalId)}` : "/app", label: "งานโรงพยาบาล" },
           { label: "ตั้งค่าโรงพยาบาล" },
         ]}
-        description="ตั้งค่าข้อมูลของโรงพยาบาลตามสิทธิ์ที่คุณได้รับ แต่ละส่วนตรวจสอบสิทธิ์แยกกัน"
         title="ตั้งค่าโรงพยาบาล"
       />
 

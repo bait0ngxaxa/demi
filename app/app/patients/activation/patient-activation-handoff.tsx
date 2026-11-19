@@ -417,7 +417,7 @@ export function PatientActivationHandoff({
       <p className="mt-1 text-sm leading-6 text-muted">
         {candidate.activationStatus === "ISSUED"
           ? "ลิงก์เดิมแสดงซ้ำไม่ได้ หากต้องการส่งลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่ ระบบจะยกเลิกลิงก์เดิมทันที"
-          : "ออกลิงก์ครั้งเดียวให้ผู้ป่วยตั้งรหัสผ่านด้วยตนเอง โรงพยาบาลจะไม่เห็นรหัสผ่าน"}
+          : "ออกลิงก์ครั้งเดียวให้ผู้ป่วยตั้งรหัสผ่านเอง"}
       </p>
       {candidate.activationExpiresAt ? (
         <p className="mt-2 text-xs leading-5 text-muted">

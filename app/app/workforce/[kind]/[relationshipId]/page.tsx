@@ -150,7 +150,6 @@ function WorkforceDetailView({
           { href: `/app/workforce?hospitalId=${encodeURIComponent(detail.hospital.id)}`, label: "จัดการเจ้าหน้าที่" },
           { label: "รายละเอียดการทำงาน" },
         ]}
-        description="สถานะบัญชีและสิทธิ์การทำงานกับโรงพยาบาลแสดงแยกกัน"
         title={detail.displayName}
       />
 

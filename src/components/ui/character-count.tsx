@@ -3,8 +3,9 @@
  * instead of a prose rule. Counts UTF-16 code units of the value the server validates: trimmed,
  * and with inner whitespace runs collapsed to one space when `collapseWhitespace` is set.
  */
-export function CharacterCount({ id, value, max, collapseWhitespace = false }: {
+export function CharacterCount({ id, value, max, collapseWhitespace = false, className }: {
   id?: string;
+  className?: string;
   value: string;
   max: number;
   collapseWhitespace?: boolean;
@@ -12,7 +13,7 @@ export function CharacterCount({ id, value, max, collapseWhitespace = false }: {
   const normalized = collapseWhitespace ? value.trim().replace(/\s+/gu, " ") : value.trim();
   const count = normalized.length;
   return (
-    <p id={id} className={`text-sm tabular-nums ${count > max ? "font-medium text-danger" : "text-text-muted"}`}>
+    <p id={id} className={`${className ?? ""} text-sm tabular-nums ${count > max ? "font-medium text-danger" : "text-text-muted"}`.trim()}>
       {count.toLocaleString("th-TH")}/{max.toLocaleString("th-TH")}
     </p>
   );

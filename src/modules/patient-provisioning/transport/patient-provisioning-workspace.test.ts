@@ -101,9 +101,9 @@ describe("PatientProvisioningWorkspace form structure", () => {
     );
     expect(markup).toContain('download="DEMI_โรงพยาบาลทดสอบ_patient_import_v4.xlsx"');
     expect(markup).toContain("ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ โรงพยาบาลทดสอบ");
-    expect(markup).toContain("ใช้ไฟล์ตัวอย่าง Excel ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย");
+    expect(markup).toContain("ใช้ไฟล์ตัวอย่าง Excel");
     expect(markup).toContain("รองรับสูงสุด 500 รายการต่อไฟล์");
-    expect(markup).toContain("ไฟล์นี้ใช้ได้กับโรงพยาบาลนี้เท่านั้น");
+    expect(markup).toContain("ไฟล์ตัวอย่างใช้ได้กับโรงพยาบาลนี้เท่านั้น");
     expect(markup).not.toContain("/templates/demi-patient-import-template");
     expect(markup).not.toContain("PATIENT_IMPORT_TEMPLATE_VERSION");
     expect(markup).not.toContain("contractVersion");
@@ -135,6 +135,9 @@ describe("PatientProvisioningWorkspace form structure", () => {
     expect(markup).toContain("เพิ่มเฉพาะผู้ป่วยใหม่");
     expect(markup).toContain("ไม่ถูกนำไปใช้ ให้แก้ไขในระบบ");
     expect(markup).toContain("การกำหนด อสม. ทำหลังนำเข้า");
+    // COPY-DISTILL PR 3: the import rules are one collapsed disclosure, closed by default.
+    expect(markup).toMatch(/^<details[^>]*><summary[^>]*>กติกาการนำเข้า<\/summary>/u);
+    expect(markup).not.toMatch(/<details[^>]*\sopen/u);
   });
 
   it("explains all profile fields are saved and sequence is only row metadata", () => {

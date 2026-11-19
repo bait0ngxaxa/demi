@@ -51,7 +51,7 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
   return (
     <Panel>
       <h2 className="text-xl font-semibold text-text">ค้นหาบัญชี</h2>
-      <p className="mt-2 text-sm leading-6 text-text-muted">ค้นหาผู้ใช้ด้วยเลขบัตรประชาชน หรือค้นหาผู้ดูแลระบบ DEMI ด้วยรหัสเข้าสู่ระบบที่ลงทะเบียนไว้ โดยต้องตรงกันทุกตัว ระบบจะไม่บันทึกรหัสนี้ลงในประวัติการใช้งาน</p>
+      <p className="mt-2 text-sm leading-6 text-text-muted">เลขบัตรประชาชน หรือรหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ต้องตรงกันทุกตัว</p>
       <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={(event) => void search(event)}>
         <label className="grid flex-1 gap-1 text-sm font-medium">
           เลขบัตรประชาชน หรือรหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้

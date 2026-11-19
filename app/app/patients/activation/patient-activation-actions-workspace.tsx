@@ -264,8 +264,8 @@ export function PatientActivationActionsWorkspace({
             ]
           : [{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายชื่อผู้ป่วย", href: `/app/patients?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}
         description={contextualCandidate
-          ? "ตรวจสอบสถานะบัญชีของผู้ป่วยรายนี้ แล้วออกหรือส่งลิงก์เปิดใช้งานใหม่ตามสิทธิ์และสถานะบัญชี"
-          : "ค้นหาผู้ป่วยในโรงพยาบาลนี้ แล้วออกลิงก์ให้ผู้ป่วยเปิดใช้งานบัญชีและตั้งรหัสผ่านเอง"}
+          ? "ตรวจสอบสถานะบัญชีแล้วออกหรือส่งลิงก์ใหม่"
+          : "ออกลิงก์ให้ผู้ป่วยตั้งรหัสผ่านเอง"}
         title="เปิดใช้งานบัญชีผู้ป่วย"
       />
 
