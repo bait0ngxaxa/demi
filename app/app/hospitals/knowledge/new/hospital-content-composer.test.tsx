@@ -169,6 +169,16 @@ function imageOk(imageId: string): Response {
 }
 
 describe("Hospital content composer", () => {
+  it("tells the author how to recover when the browser blocks temporary storage, and blocks sending", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new DOMException("blocked", "SecurityError"); });
+    await mountComposer();
+    await settle();
+    expect(container?.textContent).toContain("เบราว์เซอร์นี้ไม่อนุญาตให้เก็บข้อมูลชั่วคราว ลองปิดโหมดส่วนตัวหรือใช้เบราว์เซอร์อื่น");
+    expect(container?.textContent).not.toContain("กรุณาลองเปิดหน้านี้ใหม่");
+    expect(button("บันทึกฉบับร่าง").disabled).toBe(true);
+    vi.restoreAllMocks();
+  });
+
   it("offers one primary 'เผยแพร่' with a secondary draft button and asks for required fields first", async () => {
     await mountComposer();
 

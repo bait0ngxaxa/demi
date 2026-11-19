@@ -800,7 +800,7 @@ export function HospitalContentCreateForm({
             {storageUnavailable ? (
               <Alert className="mt-4" variant="warning">
                 <p className="font-semibold">พื้นที่กู้คืนคำขอไม่พร้อมใช้งาน</p>
-                <p className="mt-1">ยังส่งคำขอสร้างไม่ได้ กรุณาลองเปิดหน้านี้ใหม่</p>
+                <p className="mt-1">เบราว์เซอร์นี้ไม่อนุญาตให้เก็บข้อมูลชั่วคราว ลองปิดโหมดส่วนตัวหรือใช้เบราว์เซอร์อื่น</p>
               </Alert>
             ) : null}
 

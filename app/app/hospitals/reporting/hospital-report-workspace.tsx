@@ -707,7 +707,6 @@ export function HospitalReportWorkspace({
           </p>
         </div>
 
-        
 
         {page.page.items.length === 0 && page.counts.programs.total === 0 ? (
           <Panel>

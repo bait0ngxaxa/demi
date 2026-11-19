@@ -64,7 +64,7 @@ export default async function HospitalReportExportPage({
     <div className="min-w-0 max-w-3xl space-y-6">
       <PageHeader
         title="ส่งออกรายงานโรงพยาบาล"
-        description="ไฟล์ Excel · การส่งออกถูกบันทึก ใช้และเก็บไฟล์ตามนโยบายข้อมูลของโรงพยาบาล"
+        description="การส่งออกถูกบันทึก ใช้และเก็บไฟล์ตามนโยบายข้อมูลของโรงพยาบาล"
       />
       {networks.length > 0 ? (
         <ul className="space-y-4">
