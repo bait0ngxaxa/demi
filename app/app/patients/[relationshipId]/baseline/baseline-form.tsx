@@ -71,7 +71,7 @@ const baselineSectionTitles = {
 const unrecordedLabel = "ไม่ได้บันทึก";
 
 const editableUntilProgramCopy =
-  "ข้อมูลตั้งต้นแก้ไขได้จนกว่าจะเปิดโปรแกรม เมื่อเปิดโปรแกรมแล้วจะเป็นข้อมูลอ่านอย่างเดียว";
+  "แก้ไขได้จนกว่าจะเปิดโปรแกรม";
 
 type ReviewField = { label: string; value: string; multiline?: boolean };
 type ReviewSection = { title: string; fields: readonly ReviewField[] };

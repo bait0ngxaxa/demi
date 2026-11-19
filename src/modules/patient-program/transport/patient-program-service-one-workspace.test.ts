@@ -196,8 +196,8 @@ describe("Service 1 per-round tool steps (SR-D8)", () => {
     const markup = renderStep("routine", serviceOne({ routine: { ...activity(true), routineDate: null, entries: [], evidence: null } }));
 
     expect(markup).toContain('capture="environment"');
-    expect(markup).toContain("เลือกรูปได้สูงสุด 25 MB");
-    expect(markup).toContain("ระบบจะลดขนาดรูปให้อัตโนมัติก่อนอัปโหลด");
+    expect(markup).toContain("JPG, PNG หรือ WEBP ไม่เกิน 25 MB");
+    expect(markup).not.toContain("ฝั่งเซิร์ฟเวอร์");
     expect(markup).not.toContain("ไม่เกิน 5 MB");
   });
 

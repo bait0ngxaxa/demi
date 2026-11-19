@@ -126,7 +126,7 @@ describe("Patient Baseline review dialog", () => {
     expect(dialog()?.textContent).toContain("สมชาย ผู้ป่วย");
     expect(dialog()?.textContent).toContain("โรงพยาบาล ก");
     expect(dialog()?.textContent).toContain("HN-001");
-    expect(dialog()?.textContent).toContain("อ่านอย่างเดียว");
+    expect(dialog()?.textContent).toContain("แก้ไขได้จนกว่าจะเปิดโปรแกรม");
     expect(document.activeElement).toBe(button("กลับไปแก้ไข", dialog() ?? container));
   });
 

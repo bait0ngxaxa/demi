@@ -54,12 +54,11 @@ export function AppointmentPatientPicker({
           { href: "/app/appointments", label: "รายการนัดหมาย" },
           { label: "เลือกผู้ป่วย" },
         ]}
-        description="ค้นหาผู้ป่วยด้วยชื่อหรือ HN ในโรงพยาบาลที่คุณมีสิทธิ์สร้างนัด"
         title="เลือกผู้ป่วย"
       />
 
       {!selectedScope ? (
-        <Alert role="status" variant="info">บัญชีนี้ยังไม่มีโรงพยาบาลหรือผู้ป่วยที่สามารถสร้างนัดหมายได้</Alert>
+        <Alert role="status" variant="info">ยังไม่มีผู้ป่วยที่สร้างนัดหมายได้</Alert>
       ) : (
         <>
           <Panel>
@@ -128,7 +127,7 @@ export function AppointmentPatientPicker({
           ) : (
             <div className="rounded-panel border border-dashed border-border bg-surface px-5 py-9 text-center sm:px-7">
               <p className="font-semibold text-text">ไม่พบผู้ป่วยตามคำค้นหานี้</p>
-              <p className="mt-2 text-sm leading-6 text-text-muted">ค้นหาด้วยชื่อหรือ HN หรือเลือกโรงพยาบาลอื่นที่คุณมีสิทธิ์</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">ลองเปลี่ยนคำค้นหาหรือเลือกโรงพยาบาลอื่น</p>
             </div>
           )}
         </>

@@ -139,13 +139,8 @@ export function HospitalPatientServiceRequestsWorkspace({
     <div className="max-w-5xl">
       <PageHeader
         breadcrumbs={[{ href: "/app", label: "งาน" }, { label: "คำขอบริการผู้ป่วย" }]}
-        description="ตรวจสอบคำขอและส่งต่องานดูแลผู้ป่วยตามสิทธิ์ของโรงพยาบาล"
         title="คำขอบริการผู้ป่วย"
       />
-      <p className="mt-4 max-w-prose text-sm leading-6 text-text-muted">
-        รวมคำขอจากทุกโรงพยาบาลที่คุณมีสิทธิ์ตรวจสอบโดยตรง
-        หน้านี้ไม่ได้กรองตามโรงพยาบาล คำขอแต่ละรายการผูกกับผู้ป่วยและโรงพยาบาลที่ระบุ
-      </p>
 
       <nav aria-label="กลุ่มคำขอบริการ" className="mt-6 flex flex-wrap gap-2">
         {hospitalServiceRequestGroups.map(({ key, label }) => (
@@ -271,7 +266,7 @@ export function HospitalPatientServiceRequestsWorkspace({
                   />
                 ) : null}
                 {request.status === "STARTED" || request.status === "REJECTED" || request.status === "WITHDRAWN" ? (
-                  <p className="mt-4 text-sm text-text-muted">ประวัติคำขอ · อ่านอย่างเดียว</p>
+                  <p className="mt-4 text-sm text-text-muted">ประวัติคำขอ</p>
                 ) : null}
               </Panel>
             ))}

@@ -160,9 +160,7 @@ export function AppointmentInteractionControls({
               <h2 className="text-xl font-semibold tracking-[-0.02em]" id="appointment-osm-interactions-heading">
                 การประสานงานกับผู้ป่วย
               </h2>
-              <p className="mt-2 text-sm leading-6 text-text-muted">
-                บันทึกแทนผู้ป่วยภายใต้สิทธิ์ที่ได้รับมอบหมาย ไม่ใช่การตอบรับงานมอบหมาย OSM
-              </p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">บันทึกแทนผู้ป่วย</p>
             </div>
 
             {acknowledgement ? null : isScheduled ? (

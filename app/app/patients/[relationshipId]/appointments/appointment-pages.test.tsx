@@ -106,7 +106,7 @@ describe("Work appointment journey", () => {
   it("keeps current-assignment capabilities separate from OSM-at-creation display", async () => {
     mocks.detail.mockResolvedValue({ ...detail, canManage: false, canProxyPatientActions: true, canRecordCoordination: true, osmAtCreationDisplayName: null });
     const markup = await render();
-    expect(markup).toContain("ไม่มีข้อมูล OSM ณ วันที่สร้างนัด");
+    expect(markup).toContain("อสม. ตอนสร้างนัด");
     expect(markup).toContain("ไม่ยืนยันผู้รับผิดชอบปัจจุบันหรือการตอบรับงาน");
     expect(markup).toContain("ส่งคำขอยกเลิกแทนผู้ป่วย");
     expect(markup).toContain("บันทึกว่าประสานงานแล้ว");

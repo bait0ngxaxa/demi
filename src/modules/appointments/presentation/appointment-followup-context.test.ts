@@ -16,7 +16,7 @@ describe("getAppointmentFollowupContext", () => {
     });
 
     expect(context).toEqual({
-      description: "โปรแกรมปัจจุบันยังอ่านได้ แต่บัญชีนี้ไม่มีสิทธิ์บันทึกการติดตามผล",
+      description: "นัดหมายนี้เสร็จสิ้นแล้ว",
       href: `/app/patients/${relationshipId}/programs/${programId}`,
       label: "ดูโปรแกรมปัจจุบัน",
     });
@@ -32,7 +32,7 @@ describe("getAppointmentFollowupContext", () => {
         relationshipId,
       }),
     ).toEqual({
-      description: "นัดหมายนี้เสร็จสิ้นแล้ว คุณสามารถบันทึกการติดตามผลในโปรแกรมปัจจุบันได้",
+      description: "นัดหมายนี้เสร็จสิ้นแล้ว",
       href: `/app/patients/${relationshipId}/programs/${programId}/followups/new?appointmentId=${appointmentId}`,
       label: "บันทึกการติดตามผลในโปรแกรมปัจจุบัน",
     });
@@ -47,7 +47,7 @@ describe("getAppointmentFollowupContext", () => {
         relationshipId,
       }),
     ).toEqual({
-      description: "นัดหมายนี้เสร็จสิ้นแล้ว คุณสามารถบันทึกการติดตามผลเป็นรายการใหม่ได้",
+      description: "นัดหมายนี้เสร็จสิ้นแล้ว",
       href: `/app/patients/${relationshipId}/followups/new?appointmentId=${appointmentId}`,
       label: "บันทึกการติดตามผล",
     });

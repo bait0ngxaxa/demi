@@ -172,7 +172,6 @@ export default async function PatientEvidencePage({
           },
           { label: "หลักฐาน / รูปภาพสถานะ" },
         ]}
-        description="ดูหลักฐานและรูปภาพที่เกี่ยวข้องกับการดูแลผู้ป่วยรายนี้"
         title="หลักฐาน / รูปภาพสถานะ"
       />
 
@@ -205,11 +204,8 @@ export default async function PatientEvidencePage({
               <h2 className="text-2xl font-semibold tracking-[-0.03em] text-text" id="evidence-list-heading">
                 หลักฐานที่บันทึกไว้
               </h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">แสดงรายการล่าสุดไม่เกิน 50 รายการ</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">50 รายการล่าสุด</p>
             </div>
-            {!context.canCreate ? (
-              <p className="text-sm text-text-muted">บัญชีนี้มีสิทธิ์ดูข้อมูล แต่ไม่มีสิทธิ์เพิ่มรูปหลักฐาน</p>
-            ) : null}
           </div>
 
           {context.artifacts.length === 0 ? (

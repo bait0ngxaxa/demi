@@ -126,7 +126,7 @@ describe("Baseline page: edit until a Program links the Baseline", () => {
   it("keeps a read-only actor on the view without an edit action", async () => {
     await render({ canEdit: false, lockedByProgram: false });
     expect(findButton("แก้ไขข้อมูลตั้งต้น")).toBeUndefined();
-    expect(container.textContent).toContain("ข้อมูลอ้างอิงเริ่มต้น (อ่านอย่างเดียว)");
+    expect(container.textContent).toContain("ข้อมูลอ้างอิงเริ่มต้น");
   });
 
   it("opens the same form prefilled, with Thai range errors, and cancels back to the view", async () => {

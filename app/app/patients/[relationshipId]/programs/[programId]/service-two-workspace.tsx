@@ -159,11 +159,7 @@ export function PatientProgramServiceTwoWorkspace({
 
       {detail.status === "COMPLETED" ? (
         <Alert className="mt-5" variant="neutral">
-          โปรแกรมนี้จบแล้ว จึงอ่านประวัติแผนสุขภาพได้ แต่ไม่สามารถสร้างรอบใหม่
-        </Alert>
-      ) : !detail.canManage ? (
-        <Alert className="mt-5" variant="info">
-          บัญชีนี้มีสิทธิ์อ่านแผนสุขภาพในโปรแกรมนี้ แต่ไม่มีสิทธิ์สร้างข้อมูลใหม่
+          โปรแกรมนี้จบแล้ว
         </Alert>
       ) : null}
 

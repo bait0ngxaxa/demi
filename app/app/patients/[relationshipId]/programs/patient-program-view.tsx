@@ -148,7 +148,7 @@ export function PatientProgramView({
                 : "ยังไม่มีข้อมูลตั้งต้น"}
             </dd>
             <p className="mt-1 text-sm leading-6 text-text-muted">
-              ข้อมูลตั้งต้นแนะนำสำหรับการดูแล แต่ไม่ใช่เงื่อนไขของการเปิดโปรแกรม
+              แนะนำให้บันทึกข้อมูลตั้งต้นก่อนเปิดโปรแกรม
             </p>
           </div>
           <div>
@@ -219,7 +219,7 @@ export function PatientProgramView({
           </div>
         ) : (
           <p className="mt-5 border-t border-border pt-4 text-sm leading-6 text-text-muted">
-            เริ่มโปรแกรมเมื่อพร้อม ระบบจะแนะนำการจัดบริการทีละขั้นตามลำดับ
+            เริ่มโปรแกรมเมื่อพร้อม
           </p>
         )}
 

@@ -372,7 +372,7 @@ export function EvidenceAttachmentControl({
           <div>
             <p className="text-sm font-semibold text-text">แนบหลักฐานรูปภาพ (ไม่บังคับ)</p>
             <p className="mt-1 text-xs leading-5 text-text-muted">
-              เลือกได้หนึ่งรูปต่อกิจกรรม รูปจะถูกตรวจสอบและเก็บผ่านระบบฝั่งเซิร์ฟเวอร์
+              เลือกได้หนึ่งรูปต่อกิจกรรม
             </p>
           </div>
           <form className="mt-4 space-y-4" ref={formRef} onSubmit={handleSubmit}>
@@ -388,9 +388,7 @@ export function EvidenceAttachmentControl({
                 type="file"
               />
               <span className="text-xs font-normal leading-5 text-text-muted">
-                JPEG, PNG หรือ WEBP · เลือกรูปได้สูงสุด 25 MB
-                <br />
-                ระบบจะลดขนาดรูปให้อัตโนมัติก่อนอัปโหลด
+                JPG, PNG หรือ WEBP ไม่เกิน 25 MB
               </span>
             </label>
             {feedback.status === "error" ? <Alert variant="danger">{feedback.message}</Alert> : null}
@@ -1184,8 +1182,7 @@ export function PatientProgramServiceOneWorkspace({
             เครื่องมือ Service 1 รายครั้ง
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-            ไม้บรรทัดวัดใจ กราฟวัดลอยจม ตารางชีวิตของฉัน และความฝันของฉัน บันทึกผลใหม่ในทุกครั้งที่รายการของครั้งนั้นกำหนด
-            โดยบันทึกผ่านการจัดบริการรายครั้ง ส่วนนี้แสดงผลที่บันทึกแล้วแบบอ่านอย่างเดียว
+            บันทึกผ่านการจัดบริการรายครั้ง
           </p>
         </div>
         <Link className={buttonClassName({ size: "compact", variant: "secondary" })} href={roundsPath}>

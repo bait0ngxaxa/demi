@@ -87,7 +87,6 @@ export function PatientProgramDetailView({
           { href: `/app/patients/${encodeURIComponent(relationshipId)}`, label: "รายละเอียดผู้ป่วย" },
           { label: "รายละเอียดโปรแกรม" },
         ]}
-        description="ภาพรวมช่วงการดำเนินโปรแกรมของผู้ป่วยภายใต้การดูแลของโรงพยาบาลนี้"
         title="รายละเอียดโปรแกรม"
       />
 
@@ -149,11 +148,8 @@ export function PatientProgramDetailView({
 
         {detail.status === "COMPLETED" ? (
           <Alert variant="neutral">
-            <p className="font-semibold">โปรแกรมนี้จบแล้วและอยู่ในประวัติแบบอ่านอย่างเดียว</p>
-            <p className="mt-1">เลือกส่วนงานด้านล่างเพื่ออ่านบันทึกเดิม ไม่สามารถบันทึกข้อมูลใหม่ในโปรแกรมนี้</p>
+            <p className="font-semibold">โปรแกรมนี้จบแล้ว</p>
           </Alert>
-        ) : !detail.canManage ? (
-          <Alert variant="info">บัญชีนี้อ่านข้อมูลโปรแกรมได้ แต่ไม่มีสิทธิ์จัดการโปรแกรมในขอบเขตนี้</Alert>
         ) : null}
 
         <nav aria-label="ส่วนงานในโปรแกรม" className="border-y border-border py-5">
@@ -206,13 +202,6 @@ export function PatientProgramDetailView({
           {detail.status === "ACTIVE" && detail.canManage ? (
             <Panel>
               <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">การดำเนินการของโปรแกรม</h2>
-              <p className="mt-2 text-sm leading-6 text-text-muted">
-                เมื่อจบแล้วโปรแกรมจะเปลี่ยนเป็นประวัติอ่านอย่างเดียว ไม่สามารถบันทึกข้อมูลใน Service 1 แผนสุขภาพ
-                หรือการติดตามผลเพิ่มได้ และจะไม่สามารถเปิดโปรแกรมเดิมซ้ำได้
-              </p>
-              <p className="mt-3 text-sm leading-6 text-text-muted">
-                การจบโปรแกรมเป็นเพียงการเปลี่ยนสถานะของโปรแกรมไม่ได้หมายถึงผลสำเร็จหรือผลลัพธ์ทางคลินิก
-              </p>
               <div className="mt-5">
                 <PatientProgramCompleteControl programId={detail.programId} />
               </div>

@@ -156,7 +156,6 @@ function FollowupEntry({ context }: { context: StepContext }): React.JSX.Element
     <div className="space-y-2">
       <p className="text-sm leading-6 text-text-muted">
         สัญญาณชีพ ความคืบหน้าตามแผน และคำตอบ “ปรับแผนหรือไม่” ของครั้งนี้บันทึกในแบบบันทึกการติดตามผลชุดเดียว
-        บันทึกเสร็จแล้วระบบจะพากลับมาที่ขั้นตอนถัดไป
       </p>
       <Link className={buttonClassName({ variant: "primary" })} href={newFollowupHref(context, context.nextHref)}>
         บันทึกการติดตามผลของครั้งนี้
@@ -379,7 +378,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
       return editable ? (
         <div className="space-y-2">
           <p className="text-sm leading-6 text-text-muted">
-            บันทึกแบบประเมิน {instrumentLabel} แล้วระบบจะพากลับมาที่ขั้นตอนถัดไป
+            บันทึกแบบประเมิน {instrumentLabel}
           </p>
           <Link
             className={buttonClassName({ variant: "primary" })}
@@ -431,7 +430,6 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
           </Link>
         ) : editable ? (
           <div className="space-y-2">
-            <p className="text-sm leading-6 text-text-muted">สร้างแผนสุขภาพของโปรแกรมบันทึกเสร็จแล้วระบบจะพากลับมาที่ขั้นตอนถัดไป</p>
             <Link className={buttonClassName({ variant: "primary" })} href={`${programPath}/goals/new?${buildRoundReturnQuery(nextHref)}`}>
               สร้างแผนสุขภาพ
             </Link>
@@ -502,7 +500,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
 
       return editable && roundPlanAdjusted === true ? (
         <div className="space-y-2">
-          <p className="text-sm text-text-muted">การติดตามผลของครั้งนี้เลือก “ปรับแผน” สร้างแผนฉบับใหม่ แล้วระบบจะพากลับมาที่ขั้นตอนถัดไป</p>
+          <p className="text-sm text-text-muted">การติดตามผลของครั้งนี้เลือก “ปรับแผน” สร้างแผนฉบับใหม่</p>
           <Link
             className={buttonClassName({ variant: "primary" })}
             href={`${programPath}/goals/new?sourceFollowupId=${encodeURIComponent(detail.followupId)}&${buildRoundReturnQuery(nextHref)}`}
@@ -570,13 +568,11 @@ function RoundSummary({ context }: { context: StepContext }): React.JSX.Element 
             สร้างแผนสุขภาพ
           </Link>
         </Alert>
-      ) : (
+      ) : unresolved.length > 0 ? (
         <p className="text-sm leading-6 text-text-muted">
-          {unresolved.length > 0
-            ? `ต้องมีรายการในแผนที่ทำแล้วอย่างน้อย 1 รายการก่อนจบบริการ (ยังไม่ได้ทำ ${unresolved.length} รายการ)`
-            : "บัญชีนี้ไม่มีสิทธิ์จบบริการครั้งนี้"}
+          {`ต้องมีรายการในแผนที่ทำแล้วอย่างน้อย 1 รายการก่อนจบบริการ (ยังไม่ได้ทำ ${unresolved.length} รายการ)`}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -687,9 +683,9 @@ export function ProgramRoundDetailView({
 
       <div className="space-y-6 pt-6">
         {detail.programStatus === "COMPLETED" ? (
-          <Alert variant="neutral">โปรแกรมนี้จบแล้ว ข้อมูลครั้งนี้เป็นประวัติแบบอ่านอย่างเดียว</Alert>
+          <Alert variant="neutral">โปรแกรมนี้จบแล้ว</Alert>
         ) : status.state === "COMPLETED" ? (
-          <Alert variant="neutral">ครั้งนี้จบบริการแล้ว ข้อมูลเป็นแบบอ่านอย่างเดียว</Alert>
+          <Alert variant="neutral">ครั้งนี้จบบริการแล้ว</Alert>
         ) : status.state === "LOCKED" ? (
           <Alert variant="warning">
             {roundLockedLabel(detail.roundNumber)} จึงจะบันทึกครั้งนี้ได้{" "}
@@ -697,8 +693,6 @@ export function ProgramRoundDetailView({
               ไปที่ครั้งที่ {detail.roundNumber - 1}
             </Link>
           </Alert>
-        ) : !detail.canManage ? (
-          <Alert variant="info">บัญชีนี้อ่านข้อมูลครั้งนี้ได้ แต่ไม่มีสิทธิ์บันทึก ข้าม หรือจบบริการ</Alert>
         ) : null}
 
         {isFollowupRound(detail.roundNumber) ? <FollowupSummaryCard context={context} /> : null}

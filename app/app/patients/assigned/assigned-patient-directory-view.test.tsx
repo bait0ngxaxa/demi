@@ -51,7 +51,8 @@ describe("assigned patient operational directory", () => {
   });
   it("identifies the current assigned scope and offers one care entry per relationship", () => {
     const html = render();
-    expect(html).toContain("แสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบในขณะนี้");
+    expect(html).toContain("ผู้ป่วยที่คุณดูแล");
+    expect(html).not.toContain("แสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบ");
     expect(html).toContain('href="/app"');
     expect(html.match(/href="\/app\/patients\/relationship-1"/gu)).toHaveLength(1);
     expect(html).toContain("เปิดผู้ป่วยเพื่อดูแลต่อ");
@@ -96,7 +97,7 @@ describe("assigned patient operational directory", () => {
     expect(html).toContain('href="/app/patients/assigned?lookupType=HOSPITAL_NUMBER&amp;value=HN-001&amp;classification=RISK"');
     expect(html).toContain('href="/app/patients/assigned?lookupType=HOSPITAL_NUMBER&amp;value=HN-001&amp;page=3&amp;classification=RISK"');
     expect(html).toContain("พบ 51 รายการผู้ป่วยตามการค้นหาและตัวกรอง");
-    expect(html).toContain("HN แบบตรงตัว");
+    expect(html).toContain("HN ต้องตรงทั้งหมด");
   });
 
   it("preserves a Thai partial-name search in pagination", () => {
@@ -184,7 +185,7 @@ describe("assigned patient operational directory", () => {
       hospitalFilter: { hospitalId: "99999999-9999-4999-8999-999999999999", hospitalName: null },
     });
 
-    expect(html).toContain("ไม่พบโรงพยาบาลที่เลือกในขอบเขตที่คุณรับผิดชอบ จึงไม่แสดงผู้ป่วย");
+    expect(html).toContain("ไม่พบโรงพยาบาลที่เลือก");
     expect(html).toContain('href="/app/patients/assigned?lookupType=NAME"');
     expect(html).not.toContain("relationship-1");
   });

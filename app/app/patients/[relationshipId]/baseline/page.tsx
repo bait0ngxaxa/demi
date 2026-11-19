@@ -92,7 +92,6 @@ export default async function PatientBaselinePage({
         <Panel>
           <Alert variant="info">
             <p className="font-semibold">ยังไม่มีข้อมูลตั้งต้น</p>
-            <p className="mt-1">บัญชีนี้มีสิทธิ์อ่านข้อมูลในขอบเขตนี้ แต่ยังไม่มีสิทธิ์บันทึกข้อมูลตั้งต้น</p>
           </Alert>
         </Panel>
       </div>

@@ -235,7 +235,6 @@ function PatientActivationStatusPanel({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="text-lg font-semibold text-text" id="patient-activation-status-heading">บัญชีผู้ป่วย</h3>
-          <p className="mt-1 text-sm leading-6 text-text-muted">ตรวจสอบสถานะบัญชีและดำเนินการเปิดใช้งานในโรงพยาบาลนี้</p>
         </div>
         <StatusBadge variant={statusVariant}>{activationLabel}</StatusBadge>
       </div>
@@ -252,14 +251,14 @@ function PatientActivationStatusPanel({
         ) : null}
       </dl>
       {candidate.activationStatus === "ACTIVE" ? (
-        <p className="mt-4 text-sm leading-6 text-text-muted">บัญชีนี้เปิดใช้งานแล้ว ไม่ต้องออกลิงก์เปิดใช้งาน</p>
+        <p className="mt-4 text-sm leading-6 text-text-muted">บัญชีนี้เปิดใช้งานแล้ว</p>
       ) : candidate.accountStatus === "SUSPENDED" ? (
         <p className="mt-4 text-sm leading-6 text-text-muted">
           บัญชีถูกระงับ การเปิดใช้งานใหม่ไม่พร้อมใช้
           {canIssueRecovery ? " หากต้องการกู้คืนบัญชี ให้ใช้ขั้นตอนยืนยันตัวตนด้านล่าง" : " กรุณาติดต่อแอดมินโรงพยาบาลนี้"}
         </p>
       ) : candidate.activationStatus === "RECONCILIATION_REQUIRED" ? (
-        <p className="mt-4 text-sm leading-6 text-text-muted">ระบบต้องตรวจสอบข้อมูลบัญชีก่อน ไม่สามารถออกลิงก์เปิดใช้งานได้{canIssueRecovery ? " การคืนรหัสผ่านยังเป็นอีกขั้นตอนหนึ่งที่ต้องยืนยันตัวตน" : ""}</p>
+        <p className="mt-4 text-sm leading-6 text-text-muted">ต้องตรวจสอบข้อมูลบัญชีก่อนออกลิงก์เปิดใช้งาน</p>
       ) : candidate.activationStatus === "IN_PROGRESS" ? (
         <p className="mt-4 text-sm leading-6 text-text-muted">ผู้ป่วยเริ่มเปิดใช้งานบัญชีแล้ว กรุณารอให้ขั้นตอนเสร็จสิ้น</p>
       ) : null}
@@ -274,13 +273,12 @@ function PatientActivationStatusPanel({
 
 function PatientNextStepPanel({
   canOpenProgram,
-  isNetworkRead,
   nextStep,
   patientName,
   relationshipId,
 }: {
   canOpenProgram: boolean;
-  isNetworkRead: boolean;
+  /** Never called for READ_ONLY or PROGRAM_NOT_MANAGEABLE: the page omits the card (COPY-DISTILL R5). */
   nextStep: ReturnType<typeof resolvePatientCareNextStep>;
   patientName: string;
   relationshipId: string;
@@ -288,30 +286,24 @@ function PatientNextStepPanel({
   let description: string;
   switch (nextStep.type) {
     case "NONE":
-      description = isNetworkRead
-        ? "การอ่านข้อมูลจากเครือข่ายเป็นแบบอ่านอย่างเดียว จึงไม่มีรายการที่บันทึกต่อได้"
-        : nextStep.reason === "PROGRAM_NOT_MANAGEABLE"
-          ? "บัญชีนี้อ่านโปรแกรมปัจจุบันได้ แต่ไม่มีสิทธิ์จัดการรอบบริการ"
-          : nextStep.reason === "READ_ONLY"
-            ? "บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลตั้งต้นหรือจัดการโปรแกรมในขอบเขตนี้"
-            : "ไม่มีรายการดูแลที่ต้องดำเนินการต่อในขณะนี้";
+      description = "ไม่มีรายการที่ต้องทำต่อ";
       break;
     case "BASELINE":
-      description = "แนะนำให้บันทึกข้อมูลตั้งต้น แต่สามารถเปิดโปรแกรมได้โดยไม่ต้องมีข้อมูลตั้งต้น";
+      description = "แนะนำให้บันทึกข้อมูลตั้งต้นก่อนเปิดโปรแกรม";
       break;
     case "OPEN_PROGRAM":
-      description = "เปิดโปรแกรมใหม่ได้ตามสิทธิ์ ข้อมูลตั้งต้นไม่ใช่เงื่อนไขของการเปิดโปรแกรม";
+      description = "พร้อมเปิดโปรแกรม";
       break;
     case "ROUND":
       description = nextStep.state === "IN_PROGRESS"
-        ? `ทำงานต่อจากครั้งที่ ${nextStep.roundNumber} โดยเปิดครั้งถัดไปเมื่อจบครั้งนี้`
-        : `เริ่มครั้งที่ ${nextStep.roundNumber} แล้วทำตามลำดับทีละครั้ง`;
+        ? `ครั้งที่ ${nextStep.roundNumber} ยังไม่จบ`
+        : `ถึงครั้งที่ ${nextStep.roundNumber}`;
       break;
     case "AFTER":
-      description = "จบทุกครั้งบริการที่เปิดไว้แล้ว บันทึก After เพื่อประเมินผลหลังการดูแล";
+      description = "จบครบทุกครั้งแล้ว บันทึก After";
       break;
     case "PROGRAM":
-      description = "บันทึก After แล้ว เปิดโปรแกรมเพื่อตรวจสอบและจบโปรแกรม";
+      description = "บันทึก After แล้ว จบโปรแกรมได้";
       break;
     case "ROUNDS_OVERVIEW":
       description = "ยังโหลดความคืบหน้ารอบไม่ได้ เปิดภาพรวมการจัดบริการเพื่อตรวจสอบอีกครั้ง";
@@ -419,8 +411,7 @@ function HistoryTab({
             )}
           </li>
           <li className="py-4">
-            <h3 className="font-semibold text-text">โปรแกรมที่จบแล้ว · อ่านอย่างเดียว</h3>
-            <p className="mt-1 text-sm leading-6 text-text-muted">โปรแกรมที่จบแล้วเปิดดูได้โดยไม่แก้ไขข้อมูลเดิม</p>
+            <h3 className="font-semibold text-text">โปรแกรมที่จบแล้ว</h3>
             <CompletedPatientPrograms programs={programs} relationshipId={relationshipId} />
           </li>
           {simpleDestinations.map((destination) => (
@@ -596,7 +587,12 @@ export default async function PatientDetailPage({
           { href: backHref, label: backLabel },
           { label: "รายละเอียดผู้ป่วย" },
         ]}
-        description="ข้อมูลผู้ป่วยและเส้นทางการดูแลในโรงพยาบาลนี้"
+        context={isNetworkRead ? (
+          <p className="flex flex-wrap items-center gap-2 text-sm text-header-muted">
+            <StatusBadge variant="neutral">ดูอย่างเดียว</StatusBadge>
+            <span className="break-words">{patient.hospital.name} · การเปิดดูถูกบันทึก</span>
+          </p>
+        ) : undefined}
         title={patient.displayName}
       />
 
@@ -608,19 +604,15 @@ export default async function PatientDetailPage({
         roundsOverview={roundsOverview}
       />
 
-      {isNetworkRead ? (
-        <Alert className="mt-5" variant="info">
-          ผู้ป่วยของ {patient.hospital.name} ซึ่งเป็นลูกข่ายในเครือข่ายของคุณ ดูข้อมูลได้อย่างเดียว แก้ไขหรือบันทึกข้อมูลไม่ได้ และทุกการเปิดดูจะถูกบันทึกไว้
-        </Alert>
-      ) : null}
-
-      <PatientNextStepPanel
-        canOpenProgram={programContext.canOpen}
-        isNetworkRead={isNetworkRead}
-        nextStep={nextStep}
-        patientName={patient.displayName}
-        relationshipId={patient.patientHospitalRelationshipId}
-      />
+      {/* COPY-DISTILL R5: an actor who cannot act gets no next-step card, not a permission sentence. */}
+      {isNetworkRead || (nextStep.type === "NONE" && nextStep.reason !== "NO_ACTION") ? null : (
+        <PatientNextStepPanel
+          canOpenProgram={programContext.canOpen}
+          nextStep={nextStep}
+          patientName={patient.displayName}
+          relationshipId={patient.patientHospitalRelationshipId}
+        />
+      )}
 
       <nav aria-label="แท็บรายละเอียดผู้ป่วย" className="mt-6 overflow-x-auto border-b border-border">
         <ul className="flex min-w-max gap-2">
@@ -675,7 +667,7 @@ export default async function PatientDetailPage({
             )}
             <PatientHealthHistorySection actor={actor} relationshipId={relationshipId} />
             <p className="rounded-control bg-info-soft px-4 py-3 text-sm leading-6 text-info">
-              สถานะนี้เป็นสถานะปัจจุบันของผู้ป่วยและใช้ร่วมกันทุกโรงพยาบาลที่ดูแลผู้ป่วยรายนี้
+              สถานะนี้ใช้ร่วมกันทุกโรงพยาบาลที่ดูแลผู้ป่วยรายนี้
             </p>
             <PatientClassificationView context={classificationContext} />
             <PatientSelfMeasurementSection actor={actor} cursor={selfMeasurementCursor} relationshipId={relationshipId} />
@@ -697,7 +689,6 @@ export default async function PatientDetailPage({
             {canManageAssignment ? (
               <Panel>
                 <h3 className="font-semibold text-text">ผู้รับผิดชอบ</h3>
-                <p className="mt-1 text-sm leading-6 text-text-muted">ดูหรือจัดการการมอบหมาย อสม. ให้ผู้ป่วยรายนี้</p>
                 <Link
                   className={`${buttonClassName({ variant: "secondary" })} mt-4`}
                   href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}/assignment`}

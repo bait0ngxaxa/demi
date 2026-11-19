@@ -141,7 +141,8 @@ describe("Patient care journey and Program workspace", () => {
       detail: { ...detail, status: "COMPLETED", completedAt: now },
       finalAssessment: { ...finalAssessment, programStatus: "COMPLETED" },
     });
-    expect(html).toContain("อยู่ในประวัติแบบอ่านอย่างเดียว");
+    expect(html).toContain("โปรแกรมนี้จบแล้ว");
+    expect(html).not.toContain("อ่านอย่างเดียว");
     expect(html).toContain("บันทึกในโปรแกรม");
     expect(html).not.toContain("<form");
     expect(html).not.toContain("/goals/new");
@@ -160,7 +161,8 @@ describe("Patient care journey and Program workspace", () => {
 
   it("honors read-only and Follow-up capability flags independently", () => {
     const html = renderProgram({ detail: { ...detail, canManage: false }, followupHistory: { ...history, canRecord: false } });
-    expect(html).toContain("ไม่มีสิทธิ์จัดการโปรแกรม");
+    // COPY-DISTILL R5: no permission sentence; read-only is the absence of controls.
+    expect(html).not.toContain("ไม่มีสิทธิ์");
     expect(html).not.toContain("<form");
     expect(html).not.toContain("/goals/new");
     expect(html).not.toContain("/followups/new");

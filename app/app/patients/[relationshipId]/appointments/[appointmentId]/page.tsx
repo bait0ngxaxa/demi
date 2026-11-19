@@ -185,9 +185,9 @@ function AppointmentDetailView({
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง</dt>
+              <dt className="text-sm text-text-muted">อสม. ตอนสร้างนัด</dt>
               <dd className="mt-1 break-words font-semibold text-text">
-                {detail.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
+                {detail.osmAtCreationDisplayName ?? "ไม่มีข้อมูล"}
               </dd>
               <dd className="mt-1 text-sm leading-6 text-text-muted">เป็นข้อมูลเมื่อสร้างนัด ไม่ยืนยันผู้รับผิดชอบปัจจุบันหรือการตอบรับงาน</dd>
             </div>

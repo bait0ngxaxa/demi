@@ -140,7 +140,7 @@ describe("Patient Evidence page workflow", () => {
 
     expect(containsString(page, "หลักฐาน / รูปภาพสถานะ")).toBe(true);
     expect(containsString(page, "ยังไม่มีรูปหลักฐาน")).toBe(true);
-    expect(containsString(page, "ดูหลักฐาน")).toBe(true);
+    expect(containsString(page, "หลักฐานที่บันทึกไว้")).toBe(true);
     expect(page).toBeTruthy();
   });
 
@@ -153,7 +153,7 @@ describe("Patient Evidence page workflow", () => {
     mockedGetPageContext.mockResolvedValueOnce(context({ canCreate: false }));
     const readOnlyPage = await PatientEvidencePage({ params: Promise.resolve({ relationshipId }) });
 
-    expect(containsString(readOnlyPage, "ไม่มีสิทธิ์เพิ่มรูปหลักฐาน")).toBe(true);
+    expect(containsString(readOnlyPage, "ไม่มีสิทธิ์เพิ่มรูปหลักฐาน")).toBe(false);
   });
 
   it("shows the remove action only on photos the actor may remove (N4)", async () => {

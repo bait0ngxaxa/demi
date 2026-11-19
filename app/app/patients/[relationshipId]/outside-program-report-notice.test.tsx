@@ -25,7 +25,7 @@ const patient = {
   hospitalNumber: null,
   hospital: { id: "11111111-1111-4111-8111-111111111111", name: "โรงพยาบาลทดสอบ" },
 };
-const NOTICE = "บันทึกนอกโปรแกรมจึงจะไม่อยู่ในรายงานโรงพยาบาลตามโปรแกรม (ไฟล์ Excel)";
+const NOTICE = "บันทึกนอกโปรแกรม จะไม่อยู่ในรายงานโปรแกรม";
 
 function screening(withProgram: boolean): string {
   return renderToStaticMarkup(createElement(ScreeningForm, {
@@ -59,12 +59,12 @@ function followup(withProgram: boolean): string {
 
 describe("relationship-scope care forms (P1 Part D)", () => {
   it("tell staff a screening outside a Program will not appear in the Program report", () => {
-    expect(screening(false)).toContain(`แบบประเมินนี้${NOTICE}`);
+    expect(screening(false)).toContain(NOTICE);
     expect(screening(true)).not.toContain(NOTICE);
   });
 
   it("tell staff a follow-up outside a Program will not appear in the Program report", () => {
-    expect(followup(false)).toContain(`การติดตามผลนี้${NOTICE}`);
+    expect(followup(false)).toContain(NOTICE);
     expect(followup(true)).not.toContain(NOTICE);
   });
 });

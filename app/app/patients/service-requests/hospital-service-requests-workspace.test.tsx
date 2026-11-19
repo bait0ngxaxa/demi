@@ -84,8 +84,8 @@ describe("Hospital request review workspace", () => {
     expect(markup.indexOf('group=APPROVED')).toBeLessThan(markup.indexOf('group=HISTORY'));
     expect(markup).toContain('aria-current="page"');
     expect(markup).toContain("ไม่มีคำขอรอตรวจสอบในกลุ่มนี้");
-    expect(markup).toContain("รวมคำขอจากทุกโรงพยาบาล");
-    expect(markup).toContain("หน้านี้ไม่ได้กรองตามโรงพยาบาล");
+    expect(markup).not.toContain("ที่คุณมีสิทธิ์ตรวจสอบ");
+    expect(markup).not.toContain("หน้านี้ไม่ได้กรองตามโรงพยาบาล");
     expect(markup).not.toContain("พบ 0");
     expect(markup).not.toContain("hospitalId=");
   });
@@ -159,7 +159,7 @@ describe("Hospital request review workspace", () => {
 
   it.each(["STARTED", "REJECTED", "WITHDRAWN"] as const)("renders %s history read-only", (status) => {
     const markup = render([{ ...request, status }], { group: "HISTORY" });
-    expect(markup).toContain("ประวัติคำขอ · อ่านอย่างเดียว");
+    expect(markup).toContain("ประวัติคำขอ");
     expect(markup).not.toContain("<button");
     if (status !== "STARTED") expect(markup).not.toContain("#patient-care");
   });

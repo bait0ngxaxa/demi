@@ -33,9 +33,9 @@ describe("Patient Evidence form constraints", () => {
     expect(markup).toContain('accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"');
     expect(markup).toContain('capture="environment"');
     expect(markup).toContain('maxLength="500"');
-    expect(markup).toContain("JPEG, PNG หรือ WEBP");
-    expect(markup).toContain("เลือกรูปได้สูงสุด 25 MB");
-    expect(markup).toContain("ระบบจะลดขนาดรูปให้อัตโนมัติก่อนอัปโหลด");
+    expect(markup).toContain("JPG, PNG หรือ WEBP ไม่เกิน 25 MB");
+    expect(markup).toContain("JPG, PNG หรือ WEBP ไม่เกิน 25 MB");
+    expect(markup).not.toContain("ฝั่งเซิร์ฟเวอร์");
     expect(markup).not.toContain("ไม่เกิน 5 MB");
     expect(markup).toContain("บันทึกหลักฐาน");
     expect(markup).not.toContain("ลบ");

@@ -358,7 +358,7 @@ describe("Patient detail page", () => {
 
     expect(containsString(page, "ข้อมูลตั้งต้น")).toBe(true);
     expect(containsString(page, "ยังไม่มีข้อมูลตั้งต้น")).toBe(true);
-    expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้น แต่สามารถเปิดโปรแกรมได้โดยไม่ต้องมีข้อมูลตั้งต้น")).toBe(true);
+    expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้นก่อนเปิดโปรแกรม")).toBe(true);
     expect(containsString(page, "บันทึกข้อมูลตั้งต้น")).toBe(true);
     expect(primaryActionCount(page)).toBe(1);
     expect(elements(page).some((element) => element.type === PatientProgramOpenControl && element.props.variant === "secondary")).toBe(true);
@@ -416,7 +416,7 @@ describe("Patient detail page", () => {
 
     const page = await renderPage("history");
 
-    expect(containsString(page, "โปรแกรมที่จบแล้ว · อ่านอย่างเดียว")).toBe(true);
+    expect(containsString(page, "โปรแกรมที่จบแล้ว")).toBe(true);
     expect(containsString(page, "/programs/completed-program")).toBe(true);
     expect(containsString(page, "ดูโปรแกรมที่จบแล้ว")).toBe(true);
     expect(primaryActionCount(page)).toBe(1);
@@ -438,10 +438,10 @@ describe("Patient detail page", () => {
     const page = await renderPage();
 
     expect(containsString(page, "กำลังดำเนินการ")).toBe(true);
-    expect(containsString(page, "เริ่มครั้งที่ 1")).toBe(true);
+    expect(containsString(page, "ถึงครั้งที่ 1")).toBe(true);
     expect(containsString(page, "จัดบริการแล้ว 0/6")).toBe(true);
     expect(containsString(page, "สถานะผู้ป่วย")).toBe(true);
-    expect(containsString(page, "ข้อมูลตั้งต้นแนะนำสำหรับการดูแล แต่ไม่ใช่เงื่อนไขของการเปิดโปรแกรม")).toBe(true);
+    expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้นก่อนเปิดโปรแกรม")).toBe(true);
     expect(containsString(page, "/rounds/1")).toBe(true);
     expect(containsString(page, "ไม่จำเป็นต้องทำตามลำดับ")).toBe(false);
     for (const anchor of ["#program-service-one", "#program-goals", "#program-followups", "#program-final"]) {
@@ -455,14 +455,14 @@ describe("Patient detail page", () => {
       label: "NOT_STARTED round",
       states: ["NOT_STARTED", "LOCKED", "LOCKED", "LOCKED", "LOCKED", "LOCKED"] as const,
       after: "LOCKED" as const,
-      expectedLabel: "เริ่มครั้งที่ 1",
+      expectedLabel: "ถึงครั้งที่ 1",
       expectedHref: "/rounds/1",
     },
     {
       label: "IN_PROGRESS round",
       states: ["COMPLETED", "IN_PROGRESS", "LOCKED", "LOCKED", "LOCKED", "LOCKED"] as const,
       after: "LOCKED" as const,
-      expectedLabel: "ทำงานต่อจากครั้งที่ 2",
+      expectedLabel: "ครั้งที่ 2 ยังไม่จบ",
       expectedHref: "/rounds/2",
     },
     {
@@ -532,7 +532,7 @@ describe("Patient detail page", () => {
     const page = await renderPage("profile");
 
     expect(elements(page).some((element) => element.type === PatientClassificationView)).toBe(true);
-    expect(containsString(page, "สถานะนี้เป็นสถานะปัจจุบันของผู้ป่วยและใช้ร่วมกันทุกโรงพยาบาลที่ดูแลผู้ป่วยรายนี้")).toBe(true);
+    expect(containsString(page, "สถานะนี้ใช้ร่วมกันทุกโรงพยาบาลที่ดูแลผู้ป่วยรายนี้")).toBe(true);
     expect(primaryActionCount(page)).toBe(1);
   });
 
@@ -599,7 +599,9 @@ describe("Patient detail page", () => {
 
     const page = await renderPage();
 
-    expect(containsString(page, "ทุกการเปิดดูจะถูกบันทึกไว้")).toBe(true);
+    expect(containsString(page, "ดูอย่างเดียว")).toBe(true);
+    expect(containsString(page, "การเปิดดูถูกบันทึก")).toBe(true);
+    expect(containsString(page, "ขั้นตอนถัดไป")).toBe(false);
     expect(primaryActionCount(page)).toBe(0);
     expect(elements(page).some((element) => element.type === PatientProgramOpenControl)).toBe(false);
   });

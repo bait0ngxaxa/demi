@@ -41,7 +41,7 @@ const taskPresentation: Record<AssignedPatientTaskMode, {
 }> = {
   screening: {
     title: "คัดกรองผู้ป่วย",
-    description: "เลือกผู้ป่วยที่ได้รับมอบหมาย ระบบจะแสดงแบบคัดกรองตามสิทธิ์ปัจจุบันของคุณ",
+    description: "เลือกผู้ป่วยที่จะคัดกรอง",
     selectionAction: "เริ่มคัดกรองผู้ป่วยรายนี้",
   },
 };
@@ -162,11 +162,11 @@ export function AssignedPatientDirectoryView({
   return (
     <div className="content-workspace break-words">
       <PageHeader
-        actions={<StatusBadge variant="info">ขอบเขตที่รับผิดชอบ</StatusBadge>}
+        actions={<StatusBadge variant="info">ผู้ป่วยที่คุณดูแล</StatusBadge>}
         breadcrumbs={[{ href: "/app", label: "พื้นที่ทำงาน" }, { label: "ผู้ป่วยที่รับผิดชอบ" }]}
         description={taskMode
           ? taskPresentation[taskMode].description
-          : "เลือกผู้ป่วยเพื่อดูโปรแกรมปัจจุบัน บันทึกการดูแล และประวัติที่คุณมีสิทธิ์ดู รายชื่อแสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบอยู่ในโรงพยาบาลที่ใช้งานได้"}
+          : undefined}
         title={taskMode ? taskPresentation[taskMode].title : "ผู้ป่วยที่รับผิดชอบ"}
       />
 
@@ -174,7 +174,7 @@ export function AssignedPatientDirectoryView({
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ค้นหาผู้ป่วย</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวในรายการที่ได้รับมอบหมาย
+            ชื่อพิมพ์บางส่วนได้ HN ต้องตรงทั้งหมด
           </p>
           <Form action="/app/patients/assigned" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem] @5xl/workspace:items-end">
             {taskMode ? <input name="task" type="hidden" value={taskMode} /> : null}
@@ -217,9 +217,6 @@ export function AssignedPatientDirectoryView({
               ) : null}
             </div>
           </Form>
-          <p className="mt-3 text-xs leading-5 text-text-subtle">
-            แสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบในขณะนี้
-          </p>
           {errorMessage ? (
             <Alert className="mt-5" variant="danger">
               <p className="font-semibold">ไม่สามารถค้นหาได้</p>
@@ -233,7 +230,7 @@ export function AssignedPatientDirectoryView({
             <p className="text-sm leading-6 text-text">
               {hospitalFilter.hospitalName
                 ? <>แสดงเฉพาะผู้ป่วยของ<span className="font-semibold">{hospitalFilter.hospitalName}</span></>
-                : "ไม่พบโรงพยาบาลที่เลือกในขอบเขตที่คุณรับผิดชอบ จึงไม่แสดงผู้ป่วย"}
+                : "ไม่พบโรงพยาบาลที่เลือก"}
             </p>
             <Link
               className="inline-flex min-h-11 shrink-0 items-center rounded-control text-sm font-semibold text-brand-strong underline underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
@@ -258,7 +255,6 @@ export function AssignedPatientDirectoryView({
                 <h2 className="text-xl font-semibold tracking-[-0.02em]" id="assigned-patient-results-heading">
                   {taskMode ? "เลือกผู้ป่วยที่รับผิดชอบ" : "รายชื่อผู้ป่วยที่รับผิดชอบ"}
                 </h2>
-                <p className="mt-1 text-sm text-text-muted">รายชื่อแยกตามโรงพยาบาล โปรดตรวจสอบชื่อโรงพยาบาลและ HN ก่อนเปิดข้อมูลผู้ป่วย</p>
               </div>
               <p className="text-sm text-text-muted">พบ {result.total} รายการผู้ป่วย{hasFilters ? "ตามการค้นหาและตัวกรอง" : "ที่รับผิดชอบ"}</p>
             </div>
@@ -281,8 +277,8 @@ export function AssignedPatientDirectoryView({
                 </p>
                 <p className="mt-2 text-sm leading-6 text-text-muted">
                   {hasFilters
-                    ? "ลองเปลี่ยนคำค้นหา ตรวจสอบ HN แบบตรงตัว หรือล้างตัวกรองเพื่อดูผู้ป่วยที่รับผิดชอบทั้งหมด"
-                    : "รายชื่อนี้แสดงเฉพาะผู้ป่วยที่มีการมอบหมายและสิทธิ์ดูแลใช้งานอยู่ หากต้องการตรวจสอบการมอบหมาย กรุณาติดต่อแอดมินโรงพยาบาล"}
+                    ? "ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง"
+                    : "หากรายชื่อไม่ครบ ติดต่อแอดมินโรงพยาบาล"}
                 </p>
               </div>
             )}
