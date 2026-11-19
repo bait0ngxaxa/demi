@@ -63,8 +63,9 @@ describe("account security form presentation", () => {
     ]) {
       expect(markup).toContain(`name="${field}"`);
     }
-    expect(markup).toContain("ข้อมูลนี้ใช้สำหรับโรงพยาบาลนี้");
-    expect(markup).toContain("ยังไม่ได้บันทึกแยกสำหรับโรงพยาบาลนี้");
+    // COPY-DISTILL F8: only the legacy-fallback line remains.
+    expect(markup).toContain("ข้อมูลนี้มาจากโปรไฟล์เดิม กดบันทึกเพื่อใช้กับโรงพยาบาลนี้");
+    expect(markup).not.toContain("ไม่ได้ให้สิทธิ์ดูแล");
     expect(markup).toContain('name="expectedVersion"');
     expect(markup).not.toContain("nationalId");
     expect(markup).not.toContain("วันเกิด");
