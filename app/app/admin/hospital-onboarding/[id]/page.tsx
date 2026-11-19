@@ -83,7 +83,6 @@ export default async function HospitalOnboardingDetailPage({
           { href: "/app/admin/hospital-onboarding", label: "คำขอขึ้นทะเบียนโรงพยาบาล" },
           { label: "รายละเอียดคำขอ" },
         ]}
-        description="ตรวจสอบข้อมูลที่จำเป็นต่อการตัดสินใจของผู้ดูแลระบบ DEMI"
         title="รายละเอียดคำขอ"
       />
 

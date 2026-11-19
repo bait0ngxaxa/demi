@@ -93,7 +93,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
             <p className="mt-2 text-sm leading-6 text-text-muted">
               {replacement
                 ? "โรงพยาบาลนี้ยังไม่มีแอดมินโรงพยาบาลที่ใช้งานได้ แอดมินคนใหม่จะจัดการเจ้าหน้าที่ อสม. และเครือข่ายของโรงพยาบาลเอง"
-                : "อีกทางหนึ่งนอกจากคำขอขึ้นทะเบียนสาธารณะ เมื่อผู้ถูกเชิญเปิดใช้งานหรือตอบรับ โรงพยาบาลจะเปิดใช้งานทันที ระหว่างที่คำเชิญเปิดอยู่ โรงพยาบาลจะไม่แสดงในหน้าขอขึ้นทะเบียน"}
+                : "เมื่อผู้ถูกเชิญตอบรับ โรงพยาบาลจะเปิดใช้งานทันที ระหว่างที่คำเชิญเปิดอยู่จะไม่แสดงในหน้าขอขึ้นทะเบียน"}
             </p>
           </div>
           {status ? <StatusBadge variant={status.variant}>{status.label}</StatusBadge> : null}

@@ -188,9 +188,6 @@ export function OsmRelationshipControls({
   return (
     <Panel>
       <h2 className="text-xl font-semibold tracking-[-0.02em]">จัดการสิทธิ์การทำงานของ อสม.</h2>
-      <p className="mt-2 text-sm leading-6 text-text-muted">
-        การดำเนินการมีผลเฉพาะสิทธิ์การทำงานของ อสม. รายนี้ในโรงพยาบาลนี้ ไม่เปลี่ยนบัญชี บทบาท อสม. หรือข้อมูลผู้ป่วย
-      </p>
 
       <UnknownOutcomeAlert
         active={session.unconfirmed && latest?.kind !== "suspend"}

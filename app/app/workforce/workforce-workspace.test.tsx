@@ -55,7 +55,7 @@ describe("OWNER workforce roster", () => {
     const html = render();
     expect(html).toContain("โรงพยาบาลที่จัดการ");
     expect(html).toContain(`value="${second.id}" selected=""`);
-    expect(html).toContain("รายชื่อและการดำเนินการเป็นของ โรงพยาบาล ข เท่านั้น");
+    expect(html).not.toContain("ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ");
     expect(html).toContain(`href="/app/workforce/new?hospitalId=${second.id}&amp;step=1"`);
     expect(html).toContain(`href="/app/workforce/import?hospitalId=${second.id}&amp;search=%E0%B8%AA%E0%B8%A1&amp;status=PROVISIONED&amp;staffCursor=staff-cursor&amp;osmCursor=osm-cursor"`);
     expect(html).toContain(`href="/app/workforce/staff/${row.id}"`);

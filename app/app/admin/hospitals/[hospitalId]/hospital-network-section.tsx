@@ -63,7 +63,7 @@ export function HospitalNetworkSection({
           <StatusBadge variant={network.role ? "info" : "neutral"}>{networkRoleLabel(network.role)}</StatusBadge>
         </div>
         <p className="mt-2 text-sm leading-6 text-text-muted">
-          แม่ข่ายเลือกลูกข่ายเข้าเครือข่ายได้เอง และดูผู้ป่วยของลูกข่ายแบบอ่านอย่างเดียว ลูกข่ายจะถูกเลือกได้เมื่อขึ้นทะเบียนใช้งานแล้ว
+          เลือกลูกข่ายได้เมื่อขึ้นทะเบียนใช้งานแล้ว
           {hasActiveAreas ? " โรงพยาบาลนี้ยังเชื่อมกับเครือข่ายอยู่ จึงต้องนำออกหรือโอนก่อนเปลี่ยนประเภท" : ""}
         </p>
         {hospital.status === "RETIRED" ? (

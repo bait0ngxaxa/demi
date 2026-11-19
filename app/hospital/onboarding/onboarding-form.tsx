@@ -143,8 +143,7 @@ export function HospitalOnboardingForm({ legal }: HospitalOnboardingFormProps) {
   return (
     <form action={formAction} className="space-y-7" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
       <div className="rounded-[12px] bg-brand-soft px-4 py-3 text-sm leading-6 text-brand-deep">
-        ข้อมูลที่ส่งจะใช้เพื่อจับคู่ตัวตนและตรวจสอบคำขอเท่านั้น
-        ผู้ดูแลระบบ DEMI จะอนุมัติสิทธิ์ของโรงพยาบาลภายหลัง
+        ผู้ดูแลระบบ DEMI จะตรวจสอบและอนุมัติคำขอ
       </div>
 
       <fieldset

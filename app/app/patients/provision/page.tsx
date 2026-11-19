@@ -59,12 +59,11 @@ export default async function PatientProvisioningPage({
       <div className="content-workspace">
         <PageHeader
           breadcrumbs={[{ href: "/app", label: "พื้นที่ทำงาน" }, { label: "นำเข้าผู้ป่วย" }]}
-          description="นำเข้าผู้ป่วยได้เฉพาะในโรงพยาบาลที่บัญชีนี้มีขอบเขตใช้งานอยู่"
           title="นำเข้าผู้ป่วย"
         />
         <Alert className="mt-6" variant="warning">
           <p className="font-semibold">ไม่พบโรงพยาบาลที่เปิดให้ดำเนินการ</p>
-          <p className="mt-1">บัญชีนี้ยังไม่มีสิทธิ์นำเข้าผู้ป่วยในโรงพยาบาลใด กรุณาติดต่อแอดมินโรงพยาบาลเพื่อตรวจสอบสิทธิ์</p>
+          <p className="mt-1">กรุณาติดต่อแอดมินโรงพยาบาล</p>
         </Alert>
         <Link className={buttonClassName({ className: "mt-5", variant: "secondary" })} href="/app">
           กลับพื้นที่ทำงาน

@@ -60,7 +60,7 @@ export function HospitalContentComposerImages({
   return (
     <section aria-labelledby="hospital-content-composer-images-heading" className="border-t border-border pt-5">
       <h3 className="text-base font-semibold text-text" id="hospital-content-composer-images-heading">ภาพประกอบ (ไม่บังคับ)</h3>
-      <p className="mt-1 text-sm leading-6 text-text-muted">เพิ่มรูป JPEG, PNG หรือ WEBP ได้ไม่เกิน {HOSPITAL_CONTENT_IMAGE_LIMIT} รูป ระบบจะปรับขนาดก่อนอัปโหลด ลำดับที่เห็นคือลำดับที่ผู้อ่านจะเห็น</p>
+      <p className="mt-1 text-sm leading-6 text-text-muted">JPG, PNG หรือ WEBP ไม่เกิน {HOSPITAL_CONTENT_IMAGE_LIMIT} รูป ผู้อ่านเห็นตามลำดับนี้</p>
       {images.length > 0 ? (
         <HospitalContentImageOrderList
           disabled={disabled}

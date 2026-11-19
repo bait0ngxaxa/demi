@@ -266,7 +266,7 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("วันที่ทำได้ / อัตราความสำเร็จ: 2/3 วัน · 67%");
     expect(markup).toContain("ปรับแผนใหม่: ไม่ปรับ · อุปสรรค: มี");
     expect(markup).toContain("บันทึกว่าทำได้บางส่วน");
-    expect(markup).toContain("ไม่ใช่คะแนนผลสำเร็จ");
+    expect(markup).not.toContain("ไม่ใช่คะแนนผลสำเร็จ");
     expect(markup).toContain("ผลลัพธ์ที่ได้: ไม่มีแหล่งข้อมูลในระบบ");
     expect(markup).toContain("ส่งออก Excel");
   });
@@ -281,12 +281,13 @@ describe("Hospital reporting dashboard presentation", () => {
       audience: "GLOBAL_ADMIN",
     }));
 
-    expect(markup).toContain("ดูรายงานผู้ป่วยและโปรแกรมของโรงพยาบาลที่เลือกเท่านั้น");
+    expect(markup).toContain("ไม่รวมแม่ข่าย ลูกข่าย หรือหน่วยอื่น");
     expect(markup).toContain("ส่งออก Excel");
     expect(markup).not.toContain("/app/patients/");
-    expect(markup).toContain("การดูรายละเอียดโปรแกรมต้องมีสิทธิ์ในโรงพยาบาลโดยตรง");
-    expect(markup).toContain("รายงานนี้ใช้ข้อมูลของโรงพยาบาลที่เลือกเท่านั้น");
-    expect(markup).toContain("รายงานเฉพาะโรงพยาบาลที่เลือก");
+    // COPY-DISTILL R5: no Program-detail link and no permission sentence for ADMIN-only users.
+    expect(markup).not.toContain("ต้องมีสิทธิ์");
+    expect(markup).not.toContain("รายงานนี้ใช้ข้อมูลของโรงพยาบาลที่เลือกเท่านั้น");
+    expect(markup).not.toContain("รายงานเฉพาะโรงพยาบาลที่เลือก");
     expect(markup).not.toContain("exact-Hospital");
     expect(markup).not.toContain("Platform ADMIN");
     expect(markup).toContain("ไฟล์ Excel ที่จะส่งออก");

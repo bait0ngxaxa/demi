@@ -102,7 +102,6 @@ export function WorkforceWorkspace({
           { label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` },
           { label: "จัดการเจ้าหน้าที่และ อสม." },
         ]}
-        description="จัดการรายชื่อเจ้าหน้าที่โรงพยาบาลและ อสม. ในโรงพยาบาลที่คุณเป็นแอดมิน"
         title="จัดการเจ้าหน้าที่โรงพยาบาลและ อสม."
       />
 
@@ -129,9 +128,6 @@ export function WorkforceWorkspace({
             ))}
           </Select>
           {hospitalSwitching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
-          <p className="mt-2 text-sm leading-6 text-muted">
-            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} เท่านั้น สำหรับแอดมินโรงพยาบาล ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
-          </p>
         </Panel>
 
         <div className="mt-6 flex flex-wrap items-center gap-2">

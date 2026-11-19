@@ -59,7 +59,7 @@ export function WorkforceManagementControls({ detail }: { detail: WorkforceDetai
         <Alert variant="info">
           <p className="font-semibold">มุมมองสำหรับเจ้าหน้าที่โรงพยาบาล</p>
           <p className="mt-1">
-            ในหน้านี้ เจ้าหน้าที่ดูข้อมูล อสม. ได้ การเปลี่ยนสิทธิ์ ยกเลิกลิงก์ และรีเซ็ตรหัสผ่านทำได้เฉพาะแอดมินโรงพยาบาล
+            ติดต่อแอดมินโรงพยาบาลเพื่อเปลี่ยนสิทธิ์ ยกเลิกลิงก์ หรือรีเซ็ตรหัสผ่าน
           </p>
         </Alert>
       ) : null}

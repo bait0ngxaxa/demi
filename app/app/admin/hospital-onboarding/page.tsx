@@ -58,7 +58,7 @@ export default async function HospitalOnboardingReviewPage({
       <PageHeader
         actions={pending.total > 0 ? <StatusBadge variant="info">รอตรวจสอบ {pending.total.toLocaleString("th-TH")} รายการ</StatusBadge> : undefined}
         breadcrumbs={[{ label: "ผู้ดูแลระบบ DEMI" }, { label: "คำขอขึ้นทะเบียนโรงพยาบาล" }]}
-        description="ตรวจสอบข้อมูลที่ผู้สมัครส่งมา แล้วเลือกอนุมัติหรือปฏิเสธคำขอจากฝั่ง DEMI"
+        description="ตรวจสอบคำขอ แล้วอนุมัติหรือปฏิเสธ"
         title="คำขอขึ้นทะเบียนโรงพยาบาล"
       />
 

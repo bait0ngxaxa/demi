@@ -37,7 +37,7 @@ export function CaregiverPasswordResetSearch({ hospitalId, hospitalName }: { hos
   return (
     <section aria-labelledby="caregiver-reset-heading" className="mt-6 border-t border-line pt-6">
       <h2 className="text-lg font-semibold text-ink" id="caregiver-reset-heading">รีเซ็ตรหัสผ่านบัญชีผู้ดูแลญาติ</h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">ค้นหาด้วยเลขบัตรประชาชนแบบตรงกัน ระบบจะแสดงเฉพาะบัญชีที่มีบทบาทผู้ดูแลญาติอย่างเดียวและดูแลผู้ป่วยของโรงพยาบาลนี้เท่านั้น</p>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">ค้นหาด้วยเลขบัตรประชาชนแบบตรงกัน</p>
       <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={(event) => void search(event)}>
         <label className="grid flex-1 gap-1 text-sm font-medium" htmlFor="caregiver-reset-national-id">
           เลขบัตรประชาชน

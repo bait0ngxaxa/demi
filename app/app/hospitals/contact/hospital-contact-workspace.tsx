@@ -274,7 +274,6 @@ export function HospitalContactWorkspace({
       <div className="max-w-3xl">
         <PageHeader
           breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ตั้งค่าโรงพยาบาล", href: `/app/hospitals/settings?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ข้อมูลติดต่อโรงพยาบาล" }]}
-          description="จัดการข้อมูลติดต่อของโรงพยาบาลที่คุณเป็นแอดมินโดยตรง"
           title="ข้อมูลติดต่อโรงพยาบาล"
         />
         <Alert className="mt-6" variant="warning">
@@ -289,7 +288,7 @@ export function HospitalContactWorkspace({
     <div className="max-w-3xl">
       <PageHeader
         breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ตั้งค่าโรงพยาบาล", href: `/app/hospitals/settings?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ข้อมูลติดต่อโรงพยาบาล" }]}
-        description="ปรับปรุงข้อมูลติดต่อที่โรงพยาบาลให้ไว้สำหรับผู้ป่วย"
+        description="ข้อมูลที่ผู้ป่วยเห็น"
         title="ข้อมูลติดต่อโรงพยาบาล"
       />
 
@@ -458,7 +457,7 @@ export function HospitalContactWorkspace({
                 value={draft.addressText}
               />
               <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-contact-address-description">
-                ระบุที่อยู่เป็นข้อความธรรมดา สามารถขึ้นบรรทัดใหม่และเว้นวรรคตามต้องการ
+                ขึ้นบรรทัดใหม่ได้
               </p>
               <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-contact-address-error">
                 {mutationState.status === "ERROR" ? mutationState.fieldErrors?.addressText ?? "" : ""}
@@ -484,7 +483,7 @@ export function HospitalContactWorkspace({
                 value={draft.phoneNumber}
               />
               <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-contact-phone-description">
-                กรอกหมายเลขและข้อความต่อสายที่ต้องการแสดง ผู้ป่วยจะเห็นเป็นข้อความ
+                ผู้ป่วยเห็นตามที่กรอก รวมข้อความต่อสาย
               </p>
               <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-contact-phone-error">
                 {mutationState.status === "ERROR" ? mutationState.fieldErrors?.phoneNumber ?? "" : ""}
@@ -493,7 +492,7 @@ export function HospitalContactWorkspace({
 
             <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm leading-6 text-text-muted">
-                เว้นช่องว่างเพื่อล้างข้อมูลได้ ทั้งสองช่องเป็นข้อมูลไม่บังคับ
+                ไม่บังคับ เว้นว่างเพื่อล้างข้อมูล
               </p>
               <Button disabled={!isDirty || isPending || reconciliationRequired} loading={isPending} type="submit">
                 {isPending ? "กำลังบันทึก..." : "บันทึกข้อมูลติดต่อ"}

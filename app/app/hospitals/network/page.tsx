@@ -54,7 +54,7 @@ export default async function HospitalNetworkPage({
     <div className="content-workspace">
       <PageHeader
         breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "จัดการลูกข่าย" }]}
-        description="สร้าง รพ.สต. และหน่วยบริการลูกข่ายพร้อมเชิญแอดมินคนแรก เพิ่มหรือนำลูกข่ายออกจากเครือข่าย เมื่อลูกข่ายเปิดใช้งานแล้ว แอดมินและเจ้าหน้าที่ของแม่ข่ายจะดูรายชื่อและข้อมูลผู้ป่วยของลูกข่ายได้แบบอ่านอย่างเดียว"
+        description="สร้างลูกข่ายและเชิญแอดมินคนแรก"
         title="จัดการลูกข่าย"
       />
 

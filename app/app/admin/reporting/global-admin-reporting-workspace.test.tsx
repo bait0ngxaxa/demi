@@ -82,7 +82,7 @@ describe("Global Admin reporting workspace", () => {
     expect(markup).not.toContain("DEMO-CHILD");
     expect(markup).not.toContain("DEMO-STANDALONE");
     expect(markup).toContain("สถานะโรงพยาบาล");
-    expect(markup).toContain("ดูโครงสร้างโรงพยาบาลและรายงานของแห่งที่เลือก ข้อมูลผู้ป่วยและโปรแกรมจำกัดอยู่ในโรงพยาบาลนั้น ไม่รวมแม่ข่ายหรือลูกข่าย");
+    expect(markup).toContain("รายงานของโรงพยาบาลที่เลือก ไม่รวมแม่ข่ายหรือลูกข่าย");
     expect(markup).not.toContain("เปิดใช้เฉพาะ ADMIN");
     expect(markup).not.toContain("สภาพแวดล้อม demo");
     expect(markup).toContain("โรงพยาบาลแม่ข่ายทดสอบ");

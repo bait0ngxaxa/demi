@@ -58,7 +58,7 @@ describe("Parent-to-Child Hospital report workspace", () => {
 
     expect(markup).toContain("โรงพยาบาลลูกข่ายสังเคราะห์");
     expect(markup).toContain("โรงพยาบาลแม่ข่ายสังเคราะห์");
-    expect(markup).toContain("รายงานโรงพยาบาลลูกข่ายผ่านสิทธิ์เจ้าหน้าที่โรงพยาบาลแม่ข่าย");
+    expect(markup).toContain("ลูกข่าย · ดูอย่างเดียว");
     expect(markup).not.toContain("Child Hospital");
     expect(markup).toContain("ภาพรวมรายงาน");
     expect(markup).toContain("ขั้นตอนบริการ");

@@ -246,9 +246,6 @@ export function StaffMembershipControls({
       {ownerControls}
       <Panel>
         <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="staff-membership-controls-heading" tabIndex={-1}>จัดการสิทธิ์เจ้าหน้าที่</h2>
-        <p className="mt-2 text-sm leading-6 text-text-muted">
-          การดำเนินการมีผลเฉพาะสิทธิ์การทำงานของเจ้าหน้าที่รายนี้ในโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชีหรือสิทธิ์ในโรงพยาบาลอื่น
-        </p>
 
         <UnknownOutcomeAlert
           active={session.unconfirmed && latest?.kind !== "suspend" && !(professionDialogOpen && latest?.kind === "profession")}
@@ -345,7 +342,7 @@ export function StaffMembershipControls({
             <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
             <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
             <p className="text-sm leading-6 text-text-muted">
-              พักสิทธิ์การทำงานของเจ้าหน้าที่รายนี้เฉพาะในโรงพยาบาลนี้ บัญชีผู้ใช้และสิทธิ์ในโรงพยาบาลอื่นจะคงเดิม
+              พักสิทธิ์การทำงานในโรงพยาบาลนี้ชั่วคราว
             </p>
             <Button
               className="mt-3"

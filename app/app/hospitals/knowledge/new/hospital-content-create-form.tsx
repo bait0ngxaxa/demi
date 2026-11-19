@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type FormEvent, type MouseEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { CharacterCount } from "@/components/ui/character-count";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { notify } from "@/components/ui/notify";
@@ -15,6 +16,7 @@ import {
   HOSPITAL_CONTENT_CATEGORY_LABELS,
   HOSPITAL_CONTENT_IMAGE_LIMIT,
   HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE,
+  HOSPITAL_CONTENT_TITLE_MAX_CODE_UNITS,
 } from "@/modules/hospital-content/domain/hospital-content";
 import {
   runHospitalContentPublishFlow,
@@ -652,7 +654,7 @@ export function HospitalContentCreateForm({
           { label: "ข่าวสารและความรู้", href: `/app/hospitals/knowledge?hospitalId=${encodeURIComponent(selectedHospitalId)}` },
           { label: "สร้างฉบับร่าง" },
         ]}
-        description="กรอกเนื้อหา เพิ่มรูปได้ไม่เกิน 3 รูป แล้วเผยแพร่ทันที หรือบันทึกเป็นฉบับร่างไว้ก่อน"
+        description="รูปได้ไม่เกิน 3 รูป"
         title="สร้างข่าวสารและความรู้"
       />
 
@@ -747,9 +749,6 @@ export function HospitalContentCreateForm({
       {activeMarker ? (
         <Panel aria-labelledby="hospital-content-recovery-heading" className="mt-5">
           <h2 className="text-lg font-semibold text-text" id="hospital-content-recovery-heading">ตรวจสอบคำขอสร้างฉบับร่าง</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-            การค้นหาใช้เฉพาะรหัสคำขอและโรงพยาบาลที่เลือก ข้อความบทความไม่ได้เก็บไว้ในเบราว์เซอร์
-          </p>
           {!recoveryHospitalMatches ? (
             <div className="mt-4">
               <p className="text-sm leading-6 text-text">คำขอนี้ผูกกับโรงพยาบาลอื่น กรุณากลับไปยังโรงพยาบาลของคำขอเดิมก่อนตรวจสอบ</p>
@@ -797,14 +796,11 @@ export function HospitalContentCreateForm({
         <>
           <Panel aria-labelledby="hospital-content-create-heading" className="mt-6">
             <h2 className="text-lg font-semibold text-text" id="hospital-content-create-heading">ข้อมูลฉบับร่าง</h2>
-            <p className="mt-2 text-sm leading-6 text-text-muted">
-              ข่าวสารและความรู้เป็นข้อมูลที่โรงพยาบาลจัดทำ โรงพยาบาลผู้เผยแพร่รับผิดชอบความถูกต้องของเนื้อหา
-            </p>
 
             {storageUnavailable ? (
               <Alert className="mt-4" variant="warning">
                 <p className="font-semibold">พื้นที่กู้คืนคำขอไม่พร้อมใช้งาน</p>
-                <p className="mt-1">ระบบจะยังไม่ส่งคำขอสร้าง เพื่อให้ตรวจสอบผลเดิมได้หากการเชื่อมต่อขาดหาย</p>
+                <p className="mt-1">เบราว์เซอร์นี้ไม่อนุญาตให้เก็บข้อมูลชั่วคราว ลองปิดโหมดส่วนตัวหรือใช้เบราว์เซอร์อื่น</p>
               </Alert>
             ) : null}
 
@@ -827,7 +823,7 @@ export function HospitalContentCreateForm({
                     setDraft((current) => ({ ...current, title: nextValue }));
                   }}
                 />
-                <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-title-description">หัวข้อหนึ่งบรรทัด ไม่เกิน 200 ตัวอักษรหลังตัดช่องว่างหัวท้าย</p>
+                <CharacterCount className="mt-2" id="hospital-content-title-description" max={HOSPITAL_CONTENT_TITLE_MAX_CODE_UNITS} value={draft.title} />
                 <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-title-error">{fieldMessage(actionState, "title")}</p>
               </div>
 
@@ -849,7 +845,7 @@ export function HospitalContentCreateForm({
                     setDraft((current) => ({ ...current, body: nextValue }));
                   }}
                 />
-                <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-body-description">ข้อความธรรมดา ระบบคงบรรทัดใหม่และไม่แปล Markdown หรือ HTML</p>
+                <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-body-description">ข้อความธรรมดา ไม่รองรับ Markdown หรือ HTML</p>
                 <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-body-error">{fieldMessage(actionState, "body")}</p>
               </div>
 
@@ -875,7 +871,7 @@ export function HospitalContentCreateForm({
                     <option key={category} value={category}>{HOSPITAL_CONTENT_CATEGORY_LABELS[category]}</option>
                   ))}
                 </select>
-                <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-category-description">เลือกหนึ่งหมวดหมู่ก่อนบันทึก ระบบไม่มีหมวดหมู่เริ่มต้น</p>
+                <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-category-description">เลือกหนึ่งหมวดหมู่</p>
                 <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-category-error">{fieldMessage(actionState, "category")}</p>
               </div>
 
@@ -896,7 +892,7 @@ export function HospitalContentCreateForm({
                     setDraft((current) => ({ ...current, sourceText: nextValue }));
                   }}
                 />
-                <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-source-description">ระบุข้อความอ้างอิงหนึ่งรายการ ระบบจะแสดงเป็นข้อความธรรมดาและไม่ตรวจสอบแหล่งที่มา</p>
+                <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-source-description">ข้อความอ้างอิงหนึ่งรายการ ไม่ทำเป็นลิงก์</p>
                 <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-source-error">{fieldMessage(actionState, "sourceText")}</p>
               </div>
 

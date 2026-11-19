@@ -6,7 +6,6 @@ import Form from "next/form";
 import Link from "next/link";
 import { useState } from "react";
 
-import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { LocalNavigation } from "@/components/ui/local-navigation";
 import { PageHeader } from "@/components/ui/page-header";
@@ -134,12 +133,12 @@ function HospitalReportingHierarchy({ hierarchy, network }: {
   </p>;
 }
 
-function SummaryMetric({ label, value, hint }: { label: string; value: number; hint: string }): React.JSX.Element {
+function SummaryMetric({ label, value, hint }: { label: string; value: number; hint?: string }): React.JSX.Element {
   return (
     <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
       <dt className="text-sm text-text-muted">{label}</dt>
       <dd className="mt-1 text-2xl font-semibold tabular-nums text-text">{value.toLocaleString("th-TH")}</dd>
-      <p className="mt-1 text-xs leading-5 text-text-muted">{hint}</p>
+      {hint ? <p className="mt-1 text-xs leading-5 text-text-muted">{hint}</p> : null}
     </div>
   );
 }
@@ -195,7 +194,7 @@ function ProgramDetailAccess({
 }: {
   program: HospitalReportProgramRow;
   allowed: boolean;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   return allowed ? (
     <Link
       className={buttonClassName({ variant: "secondary", size: "compact" })}
@@ -203,11 +202,7 @@ function ProgramDetailAccess({
     >
       เปิดรายละเอียดโปรแกรม
     </Link>
-  ) : (
-    <p className="text-right text-xs leading-5 text-text-muted">
-      การดูรายละเอียดโปรแกรมต้องมีสิทธิ์ในโรงพยาบาลโดยตรง
-    </p>
-  );
+  ) : null;
 }
 
 function ProgramOverview({
@@ -288,7 +283,7 @@ function ProgramOverview({
       </div>
 
       <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="break-words text-xs text-text-muted">ระยะเวลาที่ป่วย: {program.illnessDuration.state === "RECORDED" ? `${program.illnessDuration.value} ปี` : "ไม่ทราบปีวินิจฉัย"} · สถานะโปรแกรมไม่ใช่ผลลัพธ์ทางคลินิก</p>
+        <p className="break-words text-xs text-text-muted">ระยะเวลาที่ป่วย: {program.illnessDuration.state === "RECORDED" ? `${program.illnessDuration.value} ปี` : "ไม่ทราบปีวินิจฉัย"}</p>
         <ProgramDetailAccess allowed={allowProgramDetail} program={program} />
       </div>
     </Panel>
@@ -395,7 +390,6 @@ function ServiceProgram({
         <section aria-labelledby={`service-one-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
           <h4 className="mb-3 font-semibold text-text" id={`service-one-${program.patientProgramId}`}>บริการ 1 · รู้จักตัวเอง</h4>
           <ServiceOne program={program} />
-          <p className="mt-4 text-sm text-text-muted">สถานะนี้แสดงการมีบันทึกในระบบ ไม่ยืนยันการส่งมอบบริการหรือผลการรักษา</p>
         </section>
 
         <section aria-labelledby={`service-goal-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5">
@@ -578,17 +572,14 @@ export function HospitalReportWorkspace({
           ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
           : [{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}
         description={isGlobalAdmin
-          ? "ดูรายงานผู้ป่วยและโปรแกรมของโรงพยาบาลที่เลือกเท่านั้น"
-          : "ดูข้อมูลผู้ป่วยตามโปรแกรมและตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"}
+          ? "ไม่รวมแม่ข่าย ลูกข่าย หรือหน่วยอื่น"
+          : undefined}
         title="รายงานโรงพยาบาล"
       />
 
 
       {isGlobalAdmin ? (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <p className="max-w-3xl text-sm leading-6 text-text-muted">
-            รายงานนี้ใช้ข้อมูลของโรงพยาบาลที่เลือกเท่านั้น ไม่รวมผู้ป่วยจากโรงพยาบาลแม่ข่าย ลูกข่าย หรือหน่วยอื่น
-          </p>
           <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/admin/reporting" prefetch={false}>
             กลับไปภาพรวมและเลือกโรงพยาบาล
           </Link>
@@ -606,7 +597,6 @@ export function HospitalReportWorkspace({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge variant={hierarchyStatusVariant(hierarchy.hospital.status)}>{hierarchyStatusLabel(hierarchy.hospital.status)}</StatusBadge>
-            <p className="text-sm text-text-muted">{isGlobalAdmin ? "รายงานเฉพาะโรงพยาบาลที่เลือก" : "เจ้าหน้าที่โรงพยาบาลนี้เข้าถึงได้โดยตรง"}</p>
           </div>
         </div>
 
@@ -635,8 +625,8 @@ export function HospitalReportWorkspace({
         <dl aria-label="ตัวเลขสรุปของรายงาน" className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @3xl/workspace:grid-cols-3 @7xl/workspace:grid-cols-6">
           <SummaryMetric hint="นับแยกตามโรงพยาบาล ผู้ป่วยคนเดียวกันอาจมีมากกว่าหนึ่งรายการ" label="รายการผู้ป่วยในโรงพยาบาล" value={page.counts.patientHospitalRelationships.value} />
           <SummaryMetric hint="ผู้ป่วยหนึ่งคนอาจมีหลายโปรแกรม" label="โปรแกรมทั้งหมด" value={page.counts.programs.total} />
-          <SummaryMetric hint="สถานะโปรแกรมไม่ใช่ผลลัพธ์ทางคลินิก" label="โปรแกรมที่กำลังดำเนิน" value={page.counts.programs.active} />
-          <SummaryMetric hint="สิ้นสุดแล้วไม่ได้หมายถึงประสบความสำเร็จทางการรักษา" label="โปรแกรมที่สิ้นสุดแล้ว" value={page.counts.programs.completed} />
+          <SummaryMetric label="โปรแกรมที่กำลังดำเนิน" value={page.counts.programs.active} />
+          <SummaryMetric label="โปรแกรมที่สิ้นสุดแล้ว" value={page.counts.programs.completed} />
           <SummaryMetric hint="นับรายการผู้ป่วยที่ยังไม่มีโปรแกรมในโรงพยาบาลนี้" label="รายการผู้ป่วยที่ยังไม่มีโปรแกรม" value={page.counts.relationshipsWithoutProgram.value} />
           <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
             <dt className="text-sm text-text-muted">DM / Pre-DM</dt>
@@ -712,12 +702,11 @@ export function HospitalReportWorkspace({
           </h2>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
             {view === "overview"
-              ? "แต่ละแถวแสดงข้อมูลของหนึ่งโปรแกรม กดเพื่อขยายรายละเอียด ผู้ป่วยคนเดียวอาจมีหลายโปรแกรม ระบบจะแจ้งเมื่อข้อมูลยังไม่ถูกบันทึกหรือไม่มีแหล่งข้อมูลรองรับ"
-              : "ตรวจการมีบันทึกของแต่ละบริการ เป้าหมายที่ตั้งไว้ และความคืบหน้าที่บันทึกไว้ โดยการมีบันทึกไม่ยืนยันว่าบริการส่งมอบหรือเกิดผลสำเร็จ"}
+              ? "แต่ละแถวคือหนึ่งโปรแกรม กดเพื่อขยาย ผู้ป่วยหนึ่งคนอาจมีหลายโปรแกรม"
+              : "การมีบันทึกของแต่ละบริการ เป้าหมาย และความคืบหน้า"}
           </p>
         </div>
 
-        {view === "service" ? <Alert className="mb-4" variant="info">แผนสุขภาพแสดงเป้าหมายที่บันทึกไว้ ส่วนการติดตามผลแสดงข้อมูลที่มีการบันทึก สถานะเหล่านี้ไม่ใช่คะแนนผลสำเร็จและไม่ได้ยืนยันการส่งมอบบริการหรือผลการรักษา</Alert> : null}
 
         {page.page.items.length === 0 && page.counts.programs.total === 0 ? (
           <Panel>

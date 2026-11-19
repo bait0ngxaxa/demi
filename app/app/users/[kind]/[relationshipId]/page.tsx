@@ -157,7 +157,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
                 เลขบัตรประชาชนแก้ไขไม่ได้ หากเลขผิด ให้ “ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน” (เมื่อระบบอนุญาต) แล้วเพิ่มข้อมูลใหม่ด้วยเลขที่ถูกต้อง
               </p>
               {removed ? (
-                <p className="text-sm text-text-muted">ข้อมูลที่สิ้นสุดการดูแลหรือสิทธิ์แล้วแก้ไขไม่ได้</p>
+                null
               ) : detail.singleHospital ? (
                 <PatientNameCorrectionForm
                   familyName={detail.familyName}
@@ -247,7 +247,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
               />
             ) : (
               <div className="text-sm leading-6 text-text-muted">
-                <p>ลบข้อมูลผู้ใช้นี้ไม่ได้ โปรดตรวจสอบเหตุผลด้านล่าง เพื่อเลือกขั้นตอนที่ตรงกับข้อมูลและเก็บประวัติไว้</p>
+                <p>ลบข้อมูลผู้ใช้นี้ไม่ได้ เพราะ</p>
                 <ul className="mt-2 list-disc pl-5">
                   {detail.deletionBlockers.map((blocker) => <li key={blocker}>{DELETION_BLOCKER_LABELS[blocker]}</li>)}
                 </ul>
