@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isMealCivilDate, MEAL_CATEGORIES, MEAL_CURSOR_MAX_LENGTH } from "../domain/personal-meal";
+import { isMealCivilDate, MEAL_CATEGORIES, MEAL_CURSOR_MAX_LENGTH, MEAL_DESCRIPTION_MAX, MEAL_DESCRIPTION_RAW_MAX } from "../domain/personal-meal";
 
 export const mealIdSchema = z.string().length(36).uuid().transform((value) => value.toLowerCase());
 export const mealVersionSchema = z.string().max(40).datetime({ offset: true })
@@ -7,8 +7,8 @@ export const mealVersionSchema = z.string().max(40).datetime({ offset: true })
 export const mealDateSchema = z.string().length(10).refine(isMealCivilDate);
 const fields = {
   category: z.enum(MEAL_CATEGORIES), occurredOn: mealDateSchema,
-  description: z.string().max(2000).nullable().optional().transform((value) => value?.trim() || null)
-    .pipe(z.string().max(1000).nullable()),
+  description: z.string().max(MEAL_DESCRIPTION_RAW_MAX).nullable().optional().transform((value) => value?.trim() || null)
+    .pipe(z.string().max(MEAL_DESCRIPTION_MAX).nullable()),
 };
 const version = { entryId: mealIdSchema, expectedUpdatedAt: mealVersionSchema };
 export const mealCreateSchema = z.object({ submissionNonce: mealIdSchema, ...fields }).strict();

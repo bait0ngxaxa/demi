@@ -125,7 +125,7 @@ it("checks invitation status after a lost accept response without replaying the 
   expect(mocks.preview).toHaveBeenLastCalledWith(token);
   expect(reload).not.toHaveBeenCalled();
   expect(mocks.accept).toHaveBeenCalledOnce();
-  expect(container.textContent).toContain("คำเชิญนี้เป็นสถานะสิ้นสุดแล้ว");
+  expect(container.textContent).toContain("คำเชิญนี้ใช้ไม่ได้แล้ว");
   expect(container.querySelector('[role="alert"] button')).toBeNull();
   const unloadAfterVerification = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(unloadAfterVerification);
@@ -167,6 +167,6 @@ it("allows a deliberate answer only after verification confirms the invitation i
 
   expect(mocks.accept).toHaveBeenCalledOnce();
   expect(mocks.preview).toHaveBeenLastCalledWith(token);
-  expect(container.textContent).toContain("ตรวจสอบแล้วว่าคำเชิญยังรอตอบรับ");
+  expect(container.textContent).toContain("คำเชิญยังรอคุณตอบรับ");
   expect(acceptButton()?.disabled).toBe(false);
 });

@@ -280,7 +280,7 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
     expect(recoveryAlert?.getAttribute("role")).toBe("status");
     expect(recoveryAlert?.parentElement?.closest('[role="status"]')).toBeNull();
     expect(host.textContent.match(/ยังยืนยันผลการบันทึกไม่ได้/gu)).toHaveLength(1);
-    expect(host.textContent).toContain("การตรวจสอบจะส่งข้อมูลเดิมอีกครั้ง");
+    expect(host.textContent).toContain("ยังยืนยันผลการบันทึกไม่ได้");
     mock[kind].mockResolvedValueOnce({ status: "ERROR", message: "ลองใหม่" });
     await act(() => button("ตรวจสอบผลการบันทึก").click());
     expect(saved()).toBeNull();

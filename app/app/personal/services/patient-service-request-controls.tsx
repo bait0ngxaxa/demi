@@ -38,7 +38,7 @@ type PatientAssignedOsm = {
   displayName: string;
 };
 
-const NO_PREFERRED_OSM = "ไม่ระบุ — ให้โรงพยาบาลจัดให้";
+const NO_PREFERRED_OSM = "ให้โรงพยาบาลเลือก";
 
 const SLOT_OPTIONS: readonly PatientServiceRequestSlot[] = ["MORNING", "AFTERNOON", "ANY"];
 
@@ -156,7 +156,7 @@ export function PatientServiceRequestForm({
           variant="osm"
         />
         <p className="text-sm leading-6 text-text-muted">
-          โรงพยาบาลเป็นผู้ยืนยัน อสม. ที่ไปเยี่ยม การเลือก อสม. ท่านอื่นเป็นการเยี่ยมครั้งนี้เท่านั้น ไม่เปลี่ยนผู้ดูแลของคุณ
+          เลือก อสม. ท่านอื่นได้ สำหรับครั้งนี้เท่านั้น
         </p>
       </div>
 
@@ -175,8 +175,7 @@ export function PatientServiceRequestForm({
 
       {state.status === "SUCCESS" ? (
         <Alert variant="success">
-          <p className="font-semibold">ส่งคำขอแล้ว</p>
-          <p className="mt-1">สถานะปัจจุบัน: รอโรงพยาบาลยืนยัน โรงพยาบาลจะยืนยันวันเวลานัดให้</p>
+          <p className="font-semibold">ส่งคำขอแล้ว รอโรงพยาบาลยืนยันวันเวลา</p>
         </Alert>
       ) : null}
       {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
@@ -231,8 +230,7 @@ export function WithdrawPatientServiceRequestButton({
                 <div><dt className="text-sm">วันที่และช่วงเวลาที่สะดวก</dt><dd className="font-semibold text-text">{preferredVisit}</dd></div>
               </dl>
               <Alert variant="warning">
-                <p>เมื่อยืนยัน คำขอนี้จะเปลี่ยนเป็นถอนแล้ว และโรงพยาบาลจะไม่ดำเนินการคำขอนี้ต่อ</p>
-                <p className="mt-1">การถอนคำขอไม่ใช่การยกเลิกนัดหมายที่สร้างแล้ว</p>
+                <p>โรงพยาบาลจะไม่ดำเนินการคำขอนี้ต่อ นัดหมายที่สร้างแล้วไม่ถูกยกเลิก</p>
               </Alert>
             </>
           ),
@@ -287,7 +285,7 @@ export function PatientServiceRequestHistoryItem({
         <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
           <div className="min-w-0">
             <dt className="text-sm font-semibold text-text-muted">อสม. ที่ต้องการ</dt>
-            <dd className="mt-1 break-words text-text">{request.preferredOsmName ?? "ให้โรงพยาบาลจัดให้"}</dd>
+            <dd className="mt-1 break-words text-text">{request.preferredOsmName ?? "ให้โรงพยาบาลเลือก"}</dd>
           </div>
           {request.preferredDate && request.preferredSlot ? (
             <div className="min-w-0">

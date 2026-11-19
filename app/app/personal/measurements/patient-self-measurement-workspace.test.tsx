@@ -113,7 +113,7 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(disclosure().open).toBe(true);
     expect(query("summary").textContent).toContain("บันทึกค่าใหม่");
     expect(query('[aria-labelledby="measurement-history"]').textContent).toContain("ยังไม่มีรายการที่บันทึกเอง");
-    expect(query('[aria-labelledby="measurement-history"]').textContent).toContain("จากส่วนด้านบน");
+    expect(query('[aria-labelledby="measurement-history"]').textContent).toContain("ยังไม่มีรายการที่บันทึกเอง");
     expect(container.querySelector('ul[aria-label="ประวัติค่าวัดที่บันทึกเอง"]')).toBeNull();
   });
 

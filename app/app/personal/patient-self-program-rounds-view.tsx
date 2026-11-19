@@ -46,7 +46,7 @@ export function PatientSelfProgramRoundsView({
           { href: programHref, label: "โปรแกรม" },
           { label: "ประวัติการรับบริการรายครั้ง" },
         ]}
-        description={rounds.rounds.some((round) => round.canSelfRecord) ? "บันทึกรายการของคุณในครั้งที่เปิดอยู่ และดูประวัติการรับบริการ" : "สรุปสิ่งที่บันทึกไว้ในแต่ละครั้ง ข้อมูลนี้อ่านอย่างเดียวและไม่ใช่การประเมินผลสุขภาพ"}
+        description={rounds.rounds.some((round) => round.canSelfRecord) ? "บันทึกรายการของคุณในครั้งที่เปิดอยู่" : undefined}
         title="การรับบริการรายครั้ง"
       />
 

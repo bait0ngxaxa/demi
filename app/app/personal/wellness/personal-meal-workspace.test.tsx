@@ -24,7 +24,7 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
     expect(create).toContain(`value="${today}"`); expect(edit).toContain('value="2026-10-04"');
     for (const html of [create, edit]) {
       expect(html).toContain('type="date"'); expect(html).not.toMatch(/\smax=/u);
-      expect(html).toContain("วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)");
+      expect(html).toContain("วันนี้หรือย้อนหลัง"); expect(html).not.toContain("Asia/Bangkok");
     }
   });
   it("consumed create blocks same-nonce submission and offers explicit new intent", () => {
@@ -46,7 +46,7 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
     // Keep the editor's local blocked state deterministic.
     simulation.confirming = true;
     const empty = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
-    expect(empty).toContain("ยังไม่มีบันทึกมื้ออาหาร"); expect(empty).toContain("ข้อมูลที่คุณบันทึก");
+    expect(empty).toContain("ยังไม่มีบันทึกมื้ออาหาร"); expect(empty).not.toContain("จะถูกบันทึกเมื่อคุณกดปุ่ม");
     for (const text of ["การออกกำลังกาย", "เป้าหมายน้ำหนัก", "คะแนน", "แคลอรี", "แพทย์รับรอง", "ครบทุกมื้อ"]) expect(empty).not.toContain(text);
     const history = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [row], nextCursor: "opaque" }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
     expect(history).toContain("ดูรายการก่อนหน้า"); expect(history).not.toContain("?cursor="); expect(history).not.toContain("opaque");

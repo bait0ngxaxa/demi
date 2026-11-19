@@ -36,7 +36,7 @@ function MedicationReminderPreference({ initial }: { initial: OwnMedicationLineR
   }
   return <section className="mt-5 border-t border-border pt-5" aria-labelledby="medication-line-reminder-heading">
     <h2 className="text-lg font-semibold text-text" id="medication-line-reminder-heading">การแจ้งเตือนยา</h2>
-    <p className="mt-2 text-sm leading-6 text-text-muted">ส่งข้อความ LINE เมื่อถึงเวลาที่คุณตั้งไว้สำหรับยาที่ยังใช้งานอยู่ ข้อความจะไม่ระบุชื่อยา และระบบจะปิดการส่งเมื่อคุณหยุดยา ปิดการแจ้งเตือน หรือบัญชี LINE ใช้งานไม่ได้</p>
+    <p className="mt-2 text-sm leading-6 text-text-muted">แจ้งทาง LINE ตามเวลาที่คุณตั้งไว้ ข้อความไม่ระบุชื่อยา</p>
     <p className="mt-2 text-sm font-medium text-text" aria-live="polite">สถานะ: {enabled ? "เปิด" : "ปิด"}</p>
     {!canEnable && !enabled ? <p className="mt-2 text-sm text-text-muted">เชื่อมบัญชี LINE ก่อนจึงจะเปิดการแจ้งเตือนได้ <LineAccountLink className="font-medium text-brand-strong underline underline-offset-4">จัดการบัญชี LINE</LineAccountLink></p> : null}
     {message ? <Alert className="mt-3" variant="warning">{message}</Alert> : null}
@@ -108,7 +108,7 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
         <div className="max-w-xl">
           <label className="mb-2 block text-sm font-medium text-text" htmlFor="contact-email">อีเมลสำหรับติดต่อ</label>
           <Input autoComplete="email" id="contact-email" maxLength={320} onChange={(event) => setEmail(event.currentTarget.value)} type="email" value={email} />
-          <p className="mt-2 text-sm leading-6 text-text-muted">อีเมลนี้ใช้เป็นข้อมูลติดต่อเท่านั้น ยังไม่ได้ยืนยัน และจะไม่ใช้เข้าสู่ระบบหรือกู้คืนบัญชี</p>
+          <p className="mt-2 text-sm leading-6 text-text-muted">ใช้สำหรับติดต่อเท่านั้น ไม่ใช้เข้าสู่ระบบ</p>
         </div>
         {/* A success is announced by its Toast; other messages keep the Alert's live role. */}
         {message && !(message.variant === "success" && dirty) ? <Alert role={message.variant === "success" ? "none" : undefined} variant={message.variant}>{message.text}</Alert> : null}
@@ -119,11 +119,11 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
     {patient ? <section aria-labelledby="notification-settings-heading" className="border-t border-border pt-6">
       <h2 className="text-xl font-semibold text-text" id="notification-settings-heading">การแจ้งเตือน</h2>
       <AppointmentNotificationPreference initial={patient.appointment} />
-      {patient.medication ? <MedicationReminderPreference initial={patient.medication} /> : <p className="mt-5 text-sm text-text-muted">การตั้งค่าแจ้งเตือนยาเปิดได้เมื่อบัญชีผู้ป่วยและโรงพยาบาลยังเปิดใช้งานอยู่</p>}
+      {patient.medication ? <MedicationReminderPreference initial={patient.medication} /> : <p className="mt-5 text-sm text-text-muted">ยังเปิดการแจ้งเตือนยาไม่ได้</p>}
     </section> : null}
     {patient ? <section aria-labelledby="phone-settings-heading" className="border-t border-border pt-6">
       <h2 className="text-xl font-semibold text-text" id="phone-settings-heading">เบอร์โทรศัพท์ผู้ป่วย</h2>
-      <p className="mt-2 text-sm leading-6 text-text-muted">เบอร์โทรศัพท์จัดเก็บแยกตามโรงพยาบาลและแก้ไขได้จากข้อมูลโปรไฟล์ผู้ป่วย</p>
+      <p className="mt-2 text-sm leading-6 text-text-muted">แก้ไขเบอร์โทรศัพท์ได้ที่ข้อมูลของฉัน</p>
       <Link className="mt-3 inline-flex min-h-11 items-center rounded-control font-medium text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href="/app/personal/profile">ไปที่ข้อมูลของฉัน</Link>
     </section> : null}
   </div>;

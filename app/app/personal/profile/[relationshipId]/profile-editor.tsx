@@ -193,17 +193,13 @@ export function PatientHospitalProfileEditor({
       />
 
       <Panel className="mt-6">
-        <p className="text-sm font-semibold leading-6 text-text">
-          ข้อมูลนี้ใช้สำหรับโรงพยาบาลนี้ และอาจแตกต่างจากข้อมูลของโรงพยาบาลอื่น
-        </p>
         {profile.source === "LEGACY_FALLBACK" ? (
-          <p className="mt-2 break-words text-sm leading-6 text-text-muted">
-            ค่าที่แสดงมาจากข้อมูลโปรไฟล์เดิม ยังไม่ได้บันทึกแยกสำหรับโรงพยาบาลนี้
-            เมื่อบันทึกแล้ว ค่าของโรงพยาบาลนี้จะเป็นข้อมูลเฉพาะและใช้แทนค่าเดิมที่แสดงในหน้านี้
+          <p className="mb-6 break-words text-sm leading-6 text-text-muted">
+            ข้อมูลนี้มาจากโปรไฟล์เดิม กดบันทึกเพื่อใช้กับโรงพยาบาลนี้
           </p>
         ) : null}
 
-        <section aria-labelledby="hospital-local-profile-identity" className="mt-6 border-t border-border pt-5">
+        <section aria-labelledby="hospital-local-profile-identity">
           <h2 className="text-lg font-semibold text-text" id="hospital-local-profile-identity">
             ข้อมูลระบุตัวตนที่แก้ไขไม่ได้
           </h2>
@@ -228,8 +224,7 @@ export function PatientHospitalProfileEditor({
             ข้อมูลทั่วไปและข้อมูลติดต่อ
           </h2>
           <p className="mt-2 break-words text-sm leading-6 text-text-muted">
-            เว้นว่างเพื่อล้างค่าที่ไม่ต้องการบันทึก ข้อมูลผู้ติดต่อกรณีฉุกเฉินเป็นข้อมูลติดต่อเท่านั้น
-            ไม่ได้ให้สิทธิ์ดูแล ตัดสินใจแทน ให้ความยินยอม หรือเข้าถึงบัญชีของคุณ
+            เว้นว่างเพื่อล้างค่า
           </p>
           <ProfileEditorForm profile={profile} />
         </section>

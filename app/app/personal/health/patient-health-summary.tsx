@@ -83,7 +83,6 @@ export function PatientHealthSummary({ hospitals, selected, summary }: {
   return <div className="min-w-0 max-w-4xl">
     <PageHeader
       title="ข้อมูลสุขภาพ"
-      description="สรุปข้อมูลสุขภาพของคุณจากโรงพยาบาลที่เลือก"
       context={<HomeHospitalChip action="/app/personal/health" fieldName="relationshipId" selectId="health-hospital"
         groups={[{ label: null, options: hospitals.map((hospital) => ({ value: hospital.relationshipId, label: hospital.hospitalName })) }]}
         selectedLabel={selected?.hospitalName ?? null} selectedValue={id ?? null} />}
@@ -102,7 +101,7 @@ export function PatientHealthSummary({ hospitals, selected, summary }: {
       </section>
       <section aria-labelledby="health-measurements" className="mt-8">
         <h2 className="text-xl font-semibold text-text" id="health-measurements">ค่าร่างกายล่าสุด</h2>
-        <p className="mt-2 text-sm text-text-muted">ค่าที่เจ้าหน้าที่บันทึก แสดงค่าล่าสุดแยกตามรายการ</p>
+        <p className="mt-2 text-sm text-text-muted">ค่าที่เจ้าหน้าที่บันทึก</p>
         {summary.readFailures.measurements ? <HealthReadFailure retryHref={retryHref} /> : null}
         <div className="grid gap-x-8 sm:grid-cols-2">
           <HealthItem number={3} title="น้ำหนัก"><Measurement fact={summary.measurements?.weight ?? null} unit="กก." unavailable={summary.readFailures.measurements} /></HealthItem>
@@ -113,7 +112,7 @@ export function PatientHealthSummary({ hospitals, selected, summary }: {
           <HealthItem number={6} title="รอบเอว"><Measurement fact={summary.measurements?.waistCircumference ?? null} unit="ซม." unavailable={summary.readFailures.measurements} /></HealthItem>
         </div>
         <div className="mt-4 space-y-3">
-          <p className="text-sm text-text-muted">ค่าที่วัดเอง · ไม่ใช่ค่าที่บันทึกโดยเจ้าหน้าที่</p>
+          <p className="text-sm text-text-muted">ค่าที่วัดเอง</p>
           {summary.readFailures.selfMeasurement ? <HealthReadFailure retryHref={retryHref} /> : summary.selfMeasurement ? <PatientSelfMeasurementRecordCard item={summary.selfMeasurement} /> : <p className="text-text-muted">คุณยังไม่ได้บันทึกค่าที่วัดเอง</p>}
           <Link className={linkClass} href="/app/personal/measurements">บันทึกค่าใหม่ / ดูค่าที่วัดเอง</Link>
         </div>

@@ -24,7 +24,7 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
     expect(create).toContain(`value="${today}"`); expect(edit).toContain('value="2026-10-04"');
     for (const html of [create, edit]) {
       expect(html).toContain('type="date"'); expect(html).not.toMatch(/type="date"[^>]*\smax=/u);
-      expect(html).toContain("วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)");
+      expect(html).toContain("วันนี้หรือย้อนหลัง"); expect(html).not.toContain("Asia/Bangkok");
     }
   });
   it("consumed create blocks same-nonce submission and offers explicit new intent", () => {

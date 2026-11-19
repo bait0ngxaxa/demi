@@ -161,7 +161,7 @@ describe("Daily Wellness interactions", () => {
     await act(() => kind === "meal" ? host.querySelector<HTMLInputElement>('[name="category"][value="SNACK"]')?.click() : button("เดิน").click());
     await act(() => button(kind === "meal" ? "บันทึกมื้ออาหาร" : "บันทึกการออกกำลังกาย").click());
     await chooseDate("2026-10-01");
-    expect(mock.daily).not.toHaveBeenCalled(); expect(host.textContent).toContain("ทบทวนผลคำขอเดิมก่อนเปลี่ยนวัน");
+    expect(mock.daily).not.toHaveBeenCalled(); expect(host.textContent).toContain("กรุณารอให้บันทึกเสร็จก่อนเปลี่ยนวัน");
     await act(() => button("ตรวจสอบผลการบันทึก").click());
     expect(create).toHaveBeenCalledTimes(2);
     expect(create.mock.calls.map((args) => args[1].get("submissionNonce"))).toEqual([initialNonce, initialNonce]);

@@ -2,9 +2,10 @@
 import { useActionState, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { CharacterCount } from "@/components/ui/character-count";
 import { Input, inputClassName } from "@/components/ui/input";
 import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
-import { MEAL_CATEGORIES, MEAL_CATEGORY_LABELS, type PersonalMealDto } from "@/modules/meals/domain/personal-meal";
+import { MEAL_CATEGORIES, MEAL_CATEGORY_LABELS, MEAL_DESCRIPTION_MAX, MEAL_DESCRIPTION_RAW_MAX, type PersonalMealDto } from "@/modules/meals/domain/personal-meal";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
 import { createPersonalMealAction, updatePersonalMealAction, deletePersonalMealAction } from "@/modules/meals/transport/server-actions";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
@@ -90,17 +91,17 @@ export function MealEditor({ item, today, maxDate, nonce, coordination, initialD
       <h4 ref={detailsHeading} tabIndex={-1} className="text-base font-semibold">รายละเอียดมื้ออาหาร</h4>
       <div className="space-y-2"><label htmlFor={`${prefix}-date`} className="block text-sm font-medium">วันที่รับประทาน</label>
         <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" max={maxDate} value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
-        <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)"}</p></div>
+        <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือย้อนหลัง"}</p></div>
       <div className="space-y-2"><label htmlFor={`${prefix}-description`} className="block text-sm font-medium">รายละเอียด (ไม่บังคับ)</label>
-        <textarea id={`${prefix}-description`} className={`${inputClassName} py-3`} name="description" rows={4} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.description)} aria-describedby={`${prefix}-description-help`} />
-        <p id={`${prefix}-description-help`} className="text-sm text-text-muted">{state.fieldErrors?.description ?? "ไม่เกิน 1,000 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>
+        <textarea id={`${prefix}-description`} className={`${inputClassName} py-3`} name="description" rows={4} maxLength={MEAL_DESCRIPTION_RAW_MAX} value={description} onChange={(e) => setDescription(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.description)} aria-describedby={`${prefix}-description-help`} />
+        {state.fieldErrors?.description ? <p id={`${prefix}-description-help`} className="text-sm text-text-muted">{state.fieldErrors.description}</p> : <CharacterCount id={`${prefix}-description-help`} value={description} max={MEAL_DESCRIPTION_MAX} />}</div>
       </div>
     </fieldset>
     <div ref={feedback} tabIndex={-1}>
       {recovering ? (
         <Alert data-navigation-guard="unknown-outcome" variant="warning">
           <p className="font-semibold">ยังยืนยันผลการบันทึกไม่ได้</p>
-          <p className="mt-1">การตรวจสอบจะส่งข้อมูลเดิมอีกครั้งและป้องกันการบันทึกซ้ำ</p>
+          <p className="mt-1">กด “ตรวจสอบผลการบันทึก” ก่อนทำรายการอื่น</p>
         </Alert>
       ) : state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}
     </div>

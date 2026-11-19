@@ -74,7 +74,7 @@ describe("Patient service request presentation", () => {
     expect(markup).toContain("เหตุผลที่ไม่อนุมัติ");
     expect(markup).toContain("ช่วงนี้ไม่มี อสม. ว่าง");
     expect(markup).toContain("รอโรงพยาบาลยืนยัน");
-    expect(markup).toContain("การส่งคำขอยังไม่ใช่การลงทะเบียนในโปรแกรม");
+    expect(markup).not.toContain("การส่งคำขอยังไม่ใช่การลงทะเบียนในโปรแกรม");
     // ADR-0029: all three native services are offered; the one with an open request is marked and disabled.
     expect(markup).toContain('name="serviceCode"');
     expect(markup).toContain('<option disabled="" value="SCREENING">คัดกรอง (มีคำขอที่รอดำเนินการอยู่แล้ว)</option>');

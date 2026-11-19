@@ -5,6 +5,9 @@ export const MEAL_CATEGORY_LABELS: Record<MealCategory, string> = {
 };
 export const MEAL_PAGE_SIZE = 50;
 export const MEAL_FORM_MAX_BYTES = 16 * 1024;
+/** Raw form field cap; the trimmed description is limited to `MEAL_DESCRIPTION_MAX`. */
+export const MEAL_DESCRIPTION_RAW_MAX = 2000;
+export const MEAL_DESCRIPTION_MAX = 1000;
 export const MEAL_CURSOR_MAX_LENGTH = 2048;
 export const MEAL_CURSOR_MAX_BYTES = 1024;
 export type PersonalMealDto = {

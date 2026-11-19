@@ -13,8 +13,6 @@ import { SavedRecordActions, SavedRecordCard } from "../personal/saved-record-ca
 import {
   FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS,
   FAMILY_APPOINTMENT_LATEST_READ_CONTRACT,
-  FAMILY_APPOINTMENT_READ_CONTRACT,
-  FAMILY_APPOINTMENT_READ_CONTRACT_V2,
   FAMILY_APPOINTMENT_WINDOW_MS,
   familyAppointmentContractIncludesDetail,
   familyAppointmentContractIncludesServiceSource,
@@ -44,7 +42,7 @@ function Feedback({ state }: { state: FamilyMutationActionState }): React.JSX.El
 function ProposeForm({ relationships, hospitals }: { relationships: readonly FamilyRelationshipManagementItem[]; hospitals: NonNullable<AppointmentGrantManagement["patient"]>["hospitals"] }): React.JSX.Element {
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(proposeAppointmentGrantAction, initialFamilyMutationActionState);
   const active = relationships.filter((row) => row.status === "ACTIVE");
-  if (!active.length || !hospitals.length) return <p className="mt-3 text-sm text-text-muted">ต้องมีผู้ดูแลที่เชื่อมไว้และโรงพยาบาลที่ดูแลผู้ป่วยรายนี้ จึงจะเสนอสิทธิ์ดูนัดหมายได้</p>;
+  if (!active.length || !hospitals.length) return <p className="mt-3 text-sm text-text-muted">ต้องมีผู้ดูแลที่เชื่อมแล้วก่อน จึงจะแชร์นัดหมายได้</p>;
   return <form action={action} className="mt-4 space-y-4">
     <div className="space-y-2"><label htmlFor="appointment-caregiver" className="block text-sm font-semibold">ผู้ดูแลที่คุณอนุญาต</label>
       <Select id="appointment-caregiver" name="caregiverRelationshipId" required disabled={pending} defaultValue="">
@@ -62,89 +60,62 @@ function ProposeForm({ relationships, hospitals }: { relationships: readonly Fam
   </form>;
 }
 
-/** What an ACTIVE older-version grant still hides compared with the latest version, in plain Thai. */
-const OLDER_CONTRACT_SCOPE_NOTES: Partial<Record<FamilyAppointmentReadContract, string>> = {
-  [FAMILY_APPOINTMENT_READ_CONTRACT]: "สิทธิ์แบบเดิม: ผู้ดูแลเห็นเฉพาะนัดที่จะถึง ไม่เห็นรายละเอียดสถานที่ ผู้รับผิดชอบ ประวัตินัด หรือบริการและที่มาของนัด จนกว่าจะยอมรับสิทธิ์แบบใหม่",
-  [FAMILY_APPOINTMENT_READ_CONTRACT_V2]: "สิทธิ์แบบเดิม: ผู้ดูแลไม่เห็นว่านัดเป็นบริการใด และไม่เห็นว่าเป็นนัดที่โรงพยาบาลนัดหรือที่ผู้ป่วยขอรับบริการ จนกว่าจะยอมรับสิทธิ์แบบใหม่",
-};
-
 const FAMILY_APPOINTMENT_WINDOW_DAYS = FAMILY_APPOINTMENT_WINDOW_MS / (24 * 60 * 60 * 1000);
 
-function appointmentGrantScopeLabel(status: AppointmentGrantManagementItem["status"]): string {
-  if (status === "PENDING") return "ขอบเขตที่เสนอให้แชร์";
-  if (status === "ACTIVE") return "ขอบเขตที่ได้รับสิทธิ์";
-  return "ขอบเขตของสิทธิ์ที่ยกเลิกแล้ว";
-}
-
-function appointmentGrantScopeSummary(contractVersion: FamilyAppointmentReadContract): string {
+/** The appointment fields a grant shows, as a plain list; version names never reach the UI (COPY-DISTILL R2). */
+function appointmentGrantVisibleFields(contractVersion: FamilyAppointmentReadContract): string {
   if (!familyAppointmentContractIncludesDetail(contractVersion)) {
-    return `ดูเฉพาะนัดหมายที่จะถึงใน ${FAMILY_APPOINTMENT_WINDOW_DAYS} วัน โดยเห็นชื่อหน่วยบริการ ประเภทนัด วันและเวลา ระยะเวลา รูปแบบสถานที่ และสถานะ (อ่านอย่างเดียว)`;
+    return `นัดที่จะถึงใน ${FAMILY_APPOINTMENT_WINDOW_DAYS} วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา ระยะเวลา รูปแบบสถานที่ และสถานะ`;
   }
-
-  const serviceAndSource = familyAppointmentContractIncludesServiceSource(contractVersion)
-    ? "รวมบริการและที่มาของนัด"
-    : "ไม่รวมบริการและที่มาของนัด";
-  return `ดูนัดหมายย้อนหลังและล่วงหน้าอย่างละ ${FAMILY_APPOINTMENT_WINDOW_DAYS} วัน พร้อมรายละเอียดสถานที่ ผู้รับผิดชอบ และ อสม. ตอนสร้างนัด โดย${serviceAndSource} (อ่านอย่างเดียว)`;
+  const serviceAndSource = familyAppointmentContractIncludesServiceSource(contractVersion) ? " บริการ และที่มาของนัด" : "";
+  return `นัดย้อนหลังและล่วงหน้าอย่างละ ${FAMILY_APPOINTMENT_WINDOW_DAYS} วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา สถานที่ ผู้รับผิดชอบ${serviceAndSource}`;
 }
+
+/** What sharing the latest grant adds over an ACTIVE older grant; undefined when nothing is added. */
+function appointmentGrantUpgradeFields(contractVersion: FamilyAppointmentReadContract): string | undefined {
+  if (contractVersion === FAMILY_APPOINTMENT_LATEST_READ_CONTRACT) return undefined;
+  if (!familyAppointmentContractIncludesDetail(contractVersion)) return "สถานที่ ผู้รับผิดชอบ ประวัตินัด บริการ";
+  return familyAppointmentContractIncludesServiceSource(contractVersion) ? undefined : "บริการและที่มาของนัด";
+}
+
+const APPOINTMENT_SHARING_STATUS = {
+  PENDING: { label: "รอผู้ดูแลยอมรับ", variant: "warning" },
+  ACTIVE: { label: "แชร์นัดหมาย: เปิดอยู่", variant: "success" },
+  REVOKED: { label: "แชร์นัดหมาย: ปิด", variant: "neutral" },
+} as const;
 
 function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementItem; perspective: "patient" | "caregiver" }): React.JSX.Element {
   const [state, action, pending, unknownOutcome] = useMutationActionState(perspective === "patient" ? revokeAppointmentGrantAction : acceptAppointmentGrantAction, initialFamilyMutationActionState);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const careEnded = grant.careEnded === true && grant.status !== "REVOKED";
-  const olderScopeNote = grant.status === "ACTIVE" && grant.contractVersion !== FAMILY_APPOINTMENT_LATEST_READ_CONTRACT ? OLDER_CONTRACT_SCOPE_NOTES[grant.contractVersion] : undefined;
-  const statusLabel = grant.status === "PENDING" ? "รอผู้ดูแลยอมรับ" : grant.status === "ACTIVE" ? "ยอมรับสิทธิ์แล้ว" : "ยกเลิกสิทธิ์แล้ว";
-  const statusVariant = grant.status === "PENDING" ? "warning" : grant.status === "ACTIVE" ? "success" : "neutral";
-  const isLatestContract = grant.contractVersion === FAMILY_APPOINTMENT_LATEST_READ_CONTRACT;
+  const upgradeFields = grant.status === "ACTIVE" ? appointmentGrantUpgradeFields(grant.contractVersion) : undefined;
+  const status = APPOINTMENT_SHARING_STATUS[grant.status];
   const canRevoke = perspective === "patient" && grant.status !== "REVOKED" && state.status !== "SUCCESS";
   const canAccept = perspective === "caregiver" && grant.status === "PENDING" && state.status !== "SUCCESS";
-  const canUpgrade = perspective === "patient" && grant.scope !== undefined && olderScopeNote !== undefined;
+  const canUpgrade = perspective === "patient" && grant.scope !== undefined && upgradeFields !== undefined;
   const canOpenAppointments = perspective === "caregiver" && grant.status === "ACTIVE";
   const hasActions = canRevoke || canAccept || canUpgrade || canOpenAppointments;
   const participantName = formatFamilyParticipantName(grant.participant, perspective === "patient" ? "ไม่ระบุชื่อผู้ดูแล" : "ไม่ระบุชื่อผู้ป่วย");
   return <li className="min-w-0">
     <SavedRecordCard>
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <h4 className="break-words font-semibold text-text">{participantName}</h4>
+        <div className="min-w-0">
+          <h4 className="break-words font-semibold text-text">{participantName}</h4>
+          <p className="mt-0.5 break-words text-sm text-text-muted">{grant.hospitalName}</p>
+        </div>
         <div className="flex flex-wrap gap-2">
-          <StatusBadge variant={statusVariant}>{statusLabel}</StatusBadge>
+          <StatusBadge variant={status.variant}>{status.label}</StatusBadge>
           {careEnded ? <StatusBadge variant="neutral">สิ้นสุดการดูแลแล้ว</StatusBadge> : null}
-          <StatusBadge variant={isLatestContract ? "info" : "neutral"}>
-            {isLatestContract ? "ขอบเขตสัญญาปัจจุบัน" : "สิทธิ์ตามสัญญาเดิม"}
-          </StatusBadge>
         </div>
       </div>
-      <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
-        <div className="min-w-0">
-          <dt className="text-sm font-semibold text-text-muted">หน่วยบริการ</dt>
-          <dd className="mt-1 break-words text-text">{grant.hospitalName}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-sm font-semibold text-text-muted">{appointmentGrantScopeLabel(grant.status)}</dt>
-          <dd className="mt-1 break-words text-text">{appointmentGrantScopeSummary(grant.contractVersion)}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-sm font-semibold text-text-muted">เสนอเมื่อ</dt>
-          <dd className="mt-1 text-text"><time dateTime={grant.proposedAt.toISOString()}>{formatFamilyManagementDate(grant.proposedAt)}</time></dd>
-        </div>
-        {grant.acceptedAt ? <div className="min-w-0">
-          <dt className="text-sm font-semibold text-text-muted">ยอมรับเมื่อ</dt>
-          <dd className="mt-1 text-text"><time dateTime={grant.acceptedAt.toISOString()}>{formatFamilyManagementDate(grant.acceptedAt)}</time></dd>
-        </div> : null}
-        {grant.revokedAt ? <div className="min-w-0">
-          <dt className="text-sm font-semibold text-text-muted">ยกเลิกเมื่อ</dt>
-          <dd className="mt-1 text-text"><time dateTime={grant.revokedAt.toISOString()}>{formatFamilyManagementDate(grant.revokedAt)}</time></dd>
-        </div> : null}
-      </dl>
-      {careEnded ? <p className="type-readable mt-3 text-sm leading-7 text-text-muted">โรงพยาบาลสิ้นสุดการดูแลแล้ว ผู้ดูแลจึงไม่เห็นนัดหมายของโรงพยาบาลนี้</p> : null}
-      {olderScopeNote ? <p className="type-readable mt-3 text-sm leading-7 text-text-muted">{olderScopeNote}</p> : null}
       {perspective === "caregiver" && grant.status === "PENDING" ? <div className="mt-4 border-t border-border pt-4">
         <h5 className="font-semibold text-text">ขอบเขตที่ต้องยอมรับ</h5>
         <p className="type-readable mt-2 text-sm leading-7 text-text-muted">{FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS[grant.contractVersion]}</p>
       </div> : <details className="mt-3 border-t border-border pt-3">
         <summary className="min-h-11 cursor-pointer py-2 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">
-          ดูรายละเอียดขอบเขตตามสัญญา
+          {perspective === "patient" ? "ผู้ดูแลจะเห็นอะไรบ้าง" : "คุณเห็นอะไรบ้าง"}
         </summary>
-        <p className="type-readable mt-2 text-sm leading-7 text-text-muted">{FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS[grant.contractVersion]}</p>
+        <p className="type-readable mt-2 text-sm leading-7 text-text-muted">{appointmentGrantVisibleFields(grant.contractVersion)}</p>
       </details>}
       {hasActions ? <SavedRecordActions>
         {canRevoke ? <ConfirmableActionForm
@@ -153,7 +124,7 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
           recovery={<UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />}
           confirmation={{
             title: `${grant.status === "PENDING" ? "ยกเลิกข้อเสนอ" : "ยกเลิกสิทธิ์ดูนัดหมาย"}ของ ${participantName} หรือไม่`,
-            description: `${careEnded ? "การดูแลของหน่วยบริการนี้สิ้นสุดแล้ว " : ""}${grant.status === "PENDING" ? `ผู้ดูแล ${participantName} จะยอมรับข้อเสนอนี้ไม่ได้อีก หากต้องการแชร์นัดหมายภายหลัง ต้องเสนอสิทธิ์ใหม่และให้ผู้ดูแลยอมรับ` : `ผู้ดูแล ${participantName} จะเข้าถึงนัดหมายของ ${grant.hospitalName} ผ่านสิทธิ์นี้ไม่ได้อีก หากต้องการแชร์ภายหลัง ต้องเสนอสิทธิ์ใหม่และให้ผู้ดูแลยอมรับ`}`,
+            description: grant.status === "PENDING" ? `${participantName} จะยอมรับข้อเสนอนี้ไม่ได้อีก` : `${participantName} จะไม่เห็นนัดหมายของ ${grant.hospitalName} อีก`,
             confirmLabel: grant.status === "PENDING" ? "ยกเลิกข้อเสนอ" : "ยกเลิกสิทธิ์ดูนัดหมาย",
             confirmVariant: "destructive",
           }}
@@ -173,8 +144,8 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
             {pending ? "กำลังบันทึก..." : "ยอมรับสิทธิ์ดูนัดหมาย"}
           </Button>
         </form> : null}
-        {canUpgrade && grant.scope ? <UpgradeGrant grant={grant} scope={grant.scope} /> : null}
-        {canOpenAppointments ? <Link prefetch={false} className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong px-4 text-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={personalAppointmentHubHref({ subject: grant.grantId, tab: "upcoming" })}>ดูนัดหมายที่ได้รับสิทธิ์</Link> : null}
+        {canUpgrade && grant.scope && upgradeFields ? <UpgradeGrant grant={grant} scope={grant.scope} fields={upgradeFields} /> : null}
+        {canOpenAppointments ? <Link prefetch={false} className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong px-4 text-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={personalAppointmentHubHref({ subject: grant.grantId, tab: "upcoming" })}>ดูนัดหมาย</Link> : null}
       </SavedRecordActions> : null}
       <Feedback state={state} />
     </SavedRecordCard>
@@ -182,14 +153,14 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
 }
 
 /** AF-5/SR-C1: proposes the latest contract for the same scope; the older grant keeps working until the caregiver accepts. */
-function UpgradeGrant({ grant, scope }: { grant: AppointmentGrantManagementItem; scope: NonNullable<AppointmentGrantManagementItem["scope"]> }): React.JSX.Element {
+function UpgradeGrant({ grant, scope, fields }: { grant: AppointmentGrantManagementItem; scope: NonNullable<AppointmentGrantManagementItem["scope"]>; fields: string }): React.JSX.Element {
   const [state, action, pending, unknownOutcome] = useMutationActionState(proposeAppointmentGrantAction, initialFamilyMutationActionState);
   return <form action={action}>
     <input type="hidden" name="caregiverRelationshipId" value={scope.caregiverRelationshipId} />
     <input type="hidden" name="patientHospitalRelationshipId" value={scope.patientHospitalRelationshipId} />
     <Button type="submit" size="compact" variant="secondary" disabled={pending || unknownOutcome || state.status === "SUCCESS"} loading={pending}
-      aria-label={`เสนอสิทธิ์ดูนัดหมายแบบใหม่: ${formatFamilyParticipantName(grant.participant, "ไม่ระบุชื่อ")} ${grant.hospitalName}`}>
-      {pending ? "กำลังเสนอ..." : "เสนอสิทธิ์แบบใหม่ (รายละเอียดมากขึ้น)"}
+      aria-label={`แชร์รายละเอียดนัดเพิ่ม: ${formatFamilyParticipantName(grant.participant, "ไม่ระบุชื่อ")} ${grant.hospitalName}`}>
+      {pending ? "กำลังเสนอ..." : `แชร์รายละเอียดนัดเพิ่ม (${fields})`}
     </Button>
     <Feedback state={state} />
     <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
@@ -252,7 +223,7 @@ function ResourceGrantRow({ grant, perspective }: { grant: ResourceGrantManageme
         <p className="type-readable mt-2 text-sm leading-7 text-text-muted">{CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS[grant.resource]}</p>
       </div> : <details className="mt-3 border-t border-border pt-3">
         <summary className="min-h-11 cursor-pointer py-2 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">
-          ดูรายละเอียดขอบเขตตามสิทธิ์
+          {perspective === "patient" ? "ผู้ดูแลจะเห็นอะไรบ้าง" : "คุณเห็นอะไรบ้าง"}
         </summary>
         <p className="type-readable mt-2 text-sm leading-7 text-text-muted">{CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS[grant.resource]}</p>
       </details>}
@@ -264,8 +235,8 @@ function ResourceGrantRow({ grant, perspective }: { grant: ResourceGrantManageme
           confirmation={{
             title: `${grant.status === "PENDING" ? "ยกเลิกข้อเสนอ" : "ยกเลิกสิทธิ์"} ${resourceLabel} ให้ ${name} หรือไม่`,
             description: grant.status === "PENDING"
-              ? `ผู้ดูแล ${name} จะยอมรับข้อเสนอนี้ไม่ได้อีก หากต้องการแชร์ ${resourceLabel} ภายหลัง ต้องเสนอสิทธิ์ใหม่และให้ผู้ดูแลยอมรับ`
-              : `ผู้ดูแล ${name} จะเข้าถึง ${resourceLabel} ผ่านสิทธิ์นี้ไม่ได้อีก หากต้องการแชร์ภายหลัง ต้องเสนอสิทธิ์ใหม่และให้ผู้ดูแลยอมรับ`,
+              ? `${name} จะยอมรับข้อเสนอนี้ไม่ได้อีก`
+              : `${name} จะไม่เห็น${resourceLabel}อีก`,
             confirmLabel: grant.status === "PENDING" ? "ยกเลิกข้อเสนอ" : "ยกเลิกสิทธิ์",
             confirmVariant: "destructive",
           }}
@@ -294,14 +265,13 @@ function ResourceGrantRow({ grant, perspective }: { grant: ResourceGrantManageme
 function ResourceSharing({ resources, relationships }: { resources: ResourceGrantManagement; relationships: readonly FamilyRelationshipManagementItem[] }): React.JSX.Element {
   return <section className="mt-8" aria-labelledby="resource-sharing-heading">
     <h2 id="resource-sharing-heading" className="text-xl font-semibold text-text">แชร์ข้อมูลสุขภาพอื่นให้ผู้ดูแล</h2>
-    <p className="type-readable mt-2 text-sm leading-7 text-text-muted">แต่ละรายการแชร์แยกกัน ผู้ดูแลต้องยอมรับก่อนจึงจะเห็น และคุณยกเลิกได้ทีละรายการ</p>
     {resources.patient ? <Panel className="mt-4">
       <h3 className="text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="patient-resource-grants-heading" tabIndex={-1}>ข้อมูลที่คุณแชร์</h3>
       <ProposeResourceForm relationships={relationships} resources={resources.availableResources} />
       {resources.patient.length ? <ul className="mt-6 space-y-3">{resources.patient.map((grant) => <ResourceGrantRow key={grant.grantId} grant={grant} perspective="patient" />)}</ul> : <p className="mt-4 text-sm text-text-muted">ยังไม่ได้แชร์ข้อมูลอื่น</p>}
     </Panel> : null}
-    <Panel className="mt-4"><h3 className="text-lg font-semibold text-text">ข้อมูลที่แชร์ถึงบัญชีของคุณ</h3>
-      {resources.caregiver.length ? <ul className="mt-4 space-y-3">{resources.caregiver.map((grant) => <ResourceGrantRow key={grant.grantId} grant={grant} perspective="caregiver" />)}</ul> : <p className="mt-4 text-sm text-text-muted">ยังไม่มีข้อมูลที่แชร์ถึงบัญชีนี้</p>}
+    <Panel className="mt-4"><h3 className="text-lg font-semibold text-text">ข้อมูลที่แชร์ถึงคุณ</h3>
+      {resources.caregiver.length ? <ul className="mt-4 space-y-3">{resources.caregiver.map((grant) => <ResourceGrantRow key={grant.grantId} grant={grant} perspective="caregiver" />)}</ul> : <p className="mt-4 text-sm text-text-muted">ยังไม่มีข้อมูลที่แชร์ถึงคุณ</p>}
     </Panel>
   </section>;
 }
@@ -315,16 +285,15 @@ export function AppointmentSharingWorkspace({ management, relationships, resourc
 }): React.JSX.Element {
   return <section className="mt-8 max-w-4xl" aria-labelledby="appointment-sharing-heading">
     <h2 id="appointment-sharing-heading" className="text-xl font-semibold text-text">แชร์นัดหมายให้ผู้ดูแล</h2>
-    <p className="type-readable mt-2 text-sm leading-7 text-text-muted">แชร์เฉพาะข้อมูลนัดหมายแบบอ่านอย่างเดียวในหนึ่งหน่วยบริการ ไม่เปิดข้อมูลอื่นของผู้ป่วย ผู้ดูแลต้องยอมรับสิทธิ์นี้แยกต่างหากจากคำเชิญให้เป็นผู้ดูแล</p>
     {management.patient ? <Panel className="mt-4">
-      <h3 className="text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="patient-appointment-grants-heading" tabIndex={-1}>สิทธิ์ดูนัดหมายที่คุณเสนอ</h3>
+      <h3 className="text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="patient-appointment-grants-heading" tabIndex={-1}>ผู้ดูแลที่คุณแชร์นัดหมายให้</h3>
       <ProposeForm relationships={relationships} hospitals={management.patient.hospitals} />
       <Next name="hospitalsCursor" cursor={management.patient.nextHospitalsCursor} />
-      {management.patient.grants.length ? <ul className="mt-6 space-y-3">{management.patient.grants.map((grant) => <GrantRow key={grant.grantId} grant={grant} perspective="patient" />)}</ul> : <p className="mt-4 text-sm text-text-muted">ยังไม่มีข้อเสนอสิทธิ์ดูนัดหมาย</p>}
+      {management.patient.grants.length ? <ul className="mt-6 space-y-3">{management.patient.grants.map((grant) => <GrantRow key={grant.grantId} grant={grant} perspective="patient" />)}</ul> : <p className="mt-4 text-sm text-text-muted">ยังไม่ได้แชร์นัดหมายให้ผู้ดูแล</p>}
       <Next name="patientGrantsCursor" cursor={management.patient.nextCursor} />
     </Panel> : null}
-    <Panel className="mt-4"><h3 className="text-lg font-semibold text-text">สิทธิ์ดูนัดหมายถึงบัญชีของคุณ</h3>
-      {management.caregiver.grants.length ? <ul className="mt-4 space-y-3">{management.caregiver.grants.map((grant) => <GrantRow key={grant.grantId} grant={grant} perspective="caregiver" />)}</ul> : <p className="mt-4 text-sm text-text-muted">ยังไม่มีสิทธิ์ดูนัดหมายที่พร้อมใช้งาน</p>}
+    <Panel className="mt-4"><h3 className="text-lg font-semibold text-text">นัดหมายที่แชร์ถึงคุณ</h3>
+      {management.caregiver.grants.length ? <ul className="mt-4 space-y-3">{management.caregiver.grants.map((grant) => <GrantRow key={grant.grantId} grant={grant} perspective="caregiver" />)}</ul> : <p className="mt-4 text-sm text-text-muted">ยังไม่มีนัดหมายที่แชร์ถึงคุณ</p>}
       <Next name="caregiverGrantsCursor" cursor={management.caregiver.nextCursor} />
     </Panel>
     {resources ? <ResourceSharing resources={resources} relationships={relationships} /> : null}

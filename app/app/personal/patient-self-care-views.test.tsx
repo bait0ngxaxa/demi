@@ -462,7 +462,6 @@ describe("Patient Personal care read views", () => {
 
     for (const content of [
       "สิ้นสุดแล้ว",
-      "ไม่ใช่การประเมินผลสุขภาพ",
       "Routine",
       "Floating Chart",
       "Dream Card",

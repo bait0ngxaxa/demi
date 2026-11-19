@@ -117,7 +117,7 @@ const surfaces: Surface[] = [
   },
   ...[
     ["Medication text edit", "แก้ไขชื่อยาและข้อความประกอบ", "แก้ไขชื่อยาและข้อความประกอบ"],
-    ["Medication schedule edit", "แก้ไขเวลา", "แก้ไขเวลาที่ต้องการติดตามใน DEMI"],
+    ["Medication schedule edit", "แก้ไขเวลา", "แก้ไขเวลาที่ต้องการแจ้งเตือน"],
     ["Medication stop tracking", "หยุดติดตามรายการนี้ใน DEMI", "หยุดติดตามรายการนี้ใน DEMI"],
   ].map(([name, trigger, title]) => ({
     name,

@@ -10,7 +10,7 @@ describe("PatientHealthSummary", () => {
     const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/u)?.[0];
     expect(header).toContain("bg-header-surface");
     expect(header).toContain("ข้อมูลสุขภาพ");
-    expect(header).toContain("สรุปข้อมูลสุขภาพของคุณจากโรงพยาบาลที่เลือก");
+    expect(header).not.toContain("สรุปข้อมูลสุขภาพของคุณจากโรงพยาบาลที่เลือก");
     expect(header).toContain("โรงพยาบาลเดมิ");
     expect(html).not.toContain('aria-labelledby="health-heading"');
   });

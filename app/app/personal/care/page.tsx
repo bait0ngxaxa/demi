@@ -29,7 +29,6 @@ export default async function PatientSelfCarePage(): Promise<React.JSX.Element> 
     <div className="max-w-5xl">
       <PageHeader
         breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "ติดตาม" }]}
-        description="ดูความคืบหน้าของบริการและบันทึกรายการที่คุณทำเองได้"
         title="ติดตาม"
       />
       <PatientServiceProgress services={services} />
@@ -37,7 +36,7 @@ export default async function PatientSelfCarePage(): Promise<React.JSX.Element> 
         <h2 className="text-xl font-semibold text-text" id="care-history-heading">ประวัติการดูแล</h2>
         <PatientSelfRelationshipNavigation
           area="care"
-          emptyMessage="เมื่อมีข้อมูลการดูแลจากโรงพยาบาล รายการประวัติจะปรากฏที่นี่"
+          emptyMessage="ยังไม่มีประวัติการดูแล"
           relationships={relationships}
         />
       </section>

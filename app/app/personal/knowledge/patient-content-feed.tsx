@@ -34,7 +34,7 @@ export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
   const feedBase = kind === "NEWS" ? "/app/personal/news" : knowledgeBase;
   const emptyCopy = {
     EMPTY_A: `ยังไม่มีโรงพยาบาลที่พร้อมแสดง${title}`,
-    EMPTY_B: `ยังไม่มี${title}จากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ`,
+    EMPTY_B: `ยังไม่มี${title}จากโรงพยาบาลของคุณ`,
     EMPTY_C: `ยังไม่มี${title}ในหมวดหมู่นี้`,
   };
   const breadcrumbs = <nav aria-label="ลำดับหน้า">
@@ -55,7 +55,7 @@ export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
 
   return <div className="min-w-0 max-w-4xl space-y-8">
     {breadcrumbs}
-    <PageHeader title={title} description={kind === "NEWS" ? "ประกาศจากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ" : "เนื้อหาให้ความรู้จากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ"} />
+    <PageHeader title={title} description={kind === "NEWS" ? "ประกาศจากโรงพยาบาล" : "เนื้อหาให้ความรู้จากโรงพยาบาล"} />
     {kind === "NEWS" ? <PatientContentLink href={buildFeedHref(knowledgeBase, context.hospitalRelationshipId)} className={patientContentControlClass}>ไปที่สื่อความรู้</PatientContentLink> : (
       <nav aria-label="เลือกหมวดหมู่สื่อความรู้" className="flex flex-wrap gap-2">
         <PatientContentLink href={buildFeedHref(knowledgeBase, context.hospitalRelationshipId)} current={page.category === null} className={patientContentControlClass}>{page.category === null ? "ทุกหมวดหมู่ (เลือกอยู่)" : "ทุกหมวดหมู่"}</PatientContentLink>

@@ -191,7 +191,7 @@ export function PersonalWeightGoalWorkspace({
   }
 
   const reviewReload = lockedForReview ? <Alert variant="warning">
-    <p>โหลดข้อมูลล่าสุดเพื่อทบทวนเป้าหมายปัจจุบันก่อนดำเนินการต่อ</p>
+    <p>โหลดข้อมูลล่าสุดก่อนทำรายการต่อ</p>
     <Button className="mt-3" size="compact" variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button>
   </Alert> : null;
 
@@ -200,7 +200,7 @@ export function PersonalWeightGoalWorkspace({
     {!editorOpen && feedback.message ? <div><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
 
     {requiresCurrentGoalReview ? <div className="space-y-3">
-      <p className="text-text-muted">โหลดข้อมูลล่าสุดเพื่อทบทวนเป้าหมายปัจจุบันก่อนเริ่มคำขอใหม่</p>
+      <p className="text-text-muted">โหลดข้อมูลล่าสุดก่อนทำรายการต่อ</p>
       <Button variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button>
     </div> : goal ? <SavedRecordCard as="section" aria-labelledby={goalHeadingId}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -213,7 +213,6 @@ export function PersonalWeightGoalWorkspace({
         <Button ref={removeOpener} variant="ghost" disabled={saving || pending} onClick={() => { setFeedback({ status: "IDLE" }); setConfirmingRemove(true); }}>ลบเป้าหมาย</Button>
       </SavedRecordActions>
       {editing ? <ModalDialog
-        description="แก้ไขเป้าหมายส่วนตัวที่คุณตั้งไว้ วันที่เป้าหมายเดิมจะคงอยู่จนกว่าคุณจะเลือกเปลี่ยน"
         dismissible={goalDialogDismissible}
         onRequestClose={closeEdit}
         returnFocusTarget={() => goalReturnFocus(editOpener.current)}
@@ -241,8 +240,7 @@ export function PersonalWeightGoalWorkspace({
       </ModalDialog> : null}
     </SavedRecordCard> : creating ? <Panel>
       <div className="space-y-4">
-        <div className="space-y-1"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">ตั้งเป้าหมายน้ำหนัก</h3>
-          <p className="text-sm text-text-muted">เป้าหมายจะถูกบันทึกเมื่อคุณกดปุ่มบันทึกเท่านั้น</p></div>
+        <h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">ตั้งเป้าหมายน้ำหนัก</h3>
         <PersonalWeightGoalEditor key={nonce} nonce={nonce} coordination={coordination} />
         <Button type="button" variant="ghost" disabled={saving || pending || feedback.status === "UNCONFIRMED"} onClick={() => { setCreating(false); setFeedback({ status: "IDLE" }); }}>ยกเลิก</Button>
       </div>

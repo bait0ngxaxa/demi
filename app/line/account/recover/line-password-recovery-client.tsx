@@ -187,7 +187,7 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
   if (status === "LINE_UNAVAILABLE") {
     return <RecoveryShell>
       <h1 className="text-2xl font-semibold text-text">เปิดลิงก์ใน LINE</h1>
-      <p className="mt-3 text-sm leading-6 text-text-muted">ลิงก์นี้ต้องยืนยันด้วยบัญชี LINE ที่ผูกกับ DEMI กรุณาเปิดจาก LINE ที่ได้รับข้อความ</p>
+      <p className="mt-3 text-sm leading-6 text-text-muted">กรุณาเปิดลิงก์นี้จาก LINE ที่ได้รับข้อความ</p>
       {liffId && locator ? <a className="mt-4 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={
         "token" in locator
           ? `https://liff.line.me/${liffId}/recover#${encodeURIComponent(locator.token)}`
@@ -232,7 +232,6 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
   }
   return <RecoveryShell>
     <h1 className="text-2xl font-semibold text-text">ตั้งรหัสผ่านใหม่</h1>
-    <p className="mt-3 text-sm leading-6 text-text-muted">ระบบยืนยันบัญชี LINE ที่ผูกกับบัญชี DEMI แล้ว กรุณาตั้งรหัสผ่านใหม่ของคุณ</p>
     <form action={complete} className="mt-5 space-y-4" aria-busy={busy}>
       <label className="grid gap-1 text-sm font-medium text-text" htmlFor="line-recovery-new-password">
         รหัสผ่านใหม่

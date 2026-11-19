@@ -95,8 +95,8 @@ describe("Personal Weight Goal UI", () => {
     expect(html).toContain('name="targetWeightKg" value=""');
     expect(html).toContain('name="targetDate" value=""');
     expect(html).toContain("ตรวจสอบผลการบันทึก");
-    expect(html).toContain("วิธีตรวจสอบผล");
-    expect(html).toContain("การตรวจสอบจะส่งข้อมูลเดิมอีกครั้ง");
+    expect(html).toContain("ยังยืนยันผลการบันทึกเป้าหมายไม่ได้");
+    expect(html).not.toContain("ป้องกันการบันทึกซ้ำ");
     expect(html).toMatch(/<button(?=[^>]*type="submit")(?!(?:[^>]*\sdisabled=""))[^>]*>/u);
   });
 

@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -152,7 +151,6 @@ export function PatientSelfCareJourneyView({
           { href: "/app/personal/care", label: "ข้อมูลการดูแล" },
           { label: journey.relationship.hospitalName },
         ]}
-        description="แสดงรายการที่โรงพยาบาลนี้บันทึกไว้ในการดูแลคุณ"
         title="ข้อมูลการดูแล"
       />
 
@@ -269,7 +267,7 @@ export function PatientSelfCareJourneyView({
             แผนสุขภาพ
           </h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            แผนล่าสุดคือแผนที่ใช้อยู่ตอนนี้ แผนก่อนหน้าเก็บไว้ให้ดูย้อนหลัง ทุกฉบับดูได้อย่างเดียว
+            แผนล่าสุดคือแผนที่ใช้อยู่ตอนนี้
           </p>
           {journey.goalPlans.length > 0 ? (
             <HistoryList>
@@ -319,12 +317,6 @@ export function PatientSelfCareJourneyView({
           ) : null}
         </section>
 
-        <Alert variant="info">
-          <p className="font-semibold">แสดงข้อมูลตามที่บันทึกไว้</p>
-          <p className="mt-1">
-            ข้อมูลในหน้านี้ไม่มีการคำนวณหรือแปลผลทางคลินิก และแต่ละรายการยังคงอยู่ภายใต้โรงพยาบาลที่แสดงด้านบน
-          </p>
-        </Alert>
       </div>
     </div>
   );

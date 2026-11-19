@@ -104,7 +104,7 @@ describe("appointment and resource grant interactions", () => {
     expect(actions.revokeAppointment).not.toHaveBeenCalled();
     expect(container.querySelector("dialog[open]")?.textContent).toContain("สมชาย ใจดี");
     expect(container.querySelector("dialog[open]")?.textContent).toContain("หน่วยบริการทดสอบ");
-    expect(container.querySelector("dialog[open]")?.textContent).toContain("เสนอสิทธิ์ใหม่และให้ผู้ดูแลยอมรับ");
+    expect(container.querySelector("dialog[open]")?.textContent).toContain("จะไม่เห็นนัดหมายของ หน่วยบริการทดสอบ อีก");
     await act(async () => dialogButton("ยกเลิก").click());
     expect(actions.revokeAppointment).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(revoke);

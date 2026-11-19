@@ -15,7 +15,6 @@ import { SavedRecordEmpty } from "../saved-record-card";
 import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import {
   PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT,
-  PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE,
 } from "@/modules/patient-self-measurements/domain/patient-self-measurement";
 import type { OwnPatientSelfMeasurement } from "@/modules/patient-self-measurements/services/patient-self-measurement-service";
 import type { ClinicalMeasurementKind } from "@/shared/clinical/clinical-value-limits";
@@ -142,7 +141,7 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
         <div className="space-y-2">
           <label className="block text-sm font-medium" htmlFor={`${prefix}-time`}>วันและเวลาที่วัด</label>
           <Input defaultValue={defaultMeasuredAt} id={`${prefix}-time`} name="measuredAt" required type="datetime-local" />
-          <p className="text-sm text-text-muted">เวลาประเทศไทย ไม่เป็นเวลาในอนาคต</p>
+          <p className="text-sm text-text-muted">ไม่เกินเวลาปัจจุบัน</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           {NUMBER_FIELDS.map((field) => (
@@ -151,7 +150,7 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
               <Input id={`${prefix}-${field.name}`} inputMode="decimal" name={field.name} step={field.step} type="number" {...rangeErrors.inputProps(field.name, field.kind)} />
               {rangeErrors.renderError(field.name)}
               {field.name === "bloodSugar" ? (
-                <p className="text-sm text-text-muted">กรอกเฉพาะค่าที่แสดงเป็น mg/dL หากเครื่องแสดง mmol/L อย่ากรอกค่านั้นตรง ๆ; สอบถามเจ้าหน้าที่หากไม่แน่ใจ</p>
+                <p className="text-sm text-text-muted">กรอกค่าหน่วย mg/dL เท่านั้น ถ้าเครื่องแสดง mmol/L ให้สอบถามเจ้าหน้าที่</p>
               ) : null}
             </div>
           ))}
@@ -161,7 +160,7 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
           <textarea className={`${inputClassName} py-3`} id={`${prefix}-note`} maxLength={1000} name="note" rows={3} />
         </div>
       </fieldset>
-      <p className="text-sm text-text-muted">กรอกอย่างน้อยหนึ่งค่า ข้อมูลนี้ไม่แทนการวัดโดย อสม. หรือเจ้าหน้าที่</p>
+      <p className="text-sm text-text-muted">กรอกอย่างน้อยหนึ่งค่า</p>
       {currentError ? currentError.loginHref ? <PatientSelfSessionExpiredAlert href={currentError.loginHref} message={currentError.message} /> : <Alert role="alert" variant="danger">{currentError.message}</Alert> : null}
       {currentSuccess || nonceConsumed ? (
         <div role="status">
@@ -190,7 +189,7 @@ function DeleteForm({ measurementId }: { measurementId: string }): React.JSX.Ele
       action={action}
       confirmation={{
         title: "ลบรายการที่บันทึกเองนี้หรือไม่",
-        description: "ลบได้ภายใน 24 ชั่วโมงหลังบันทึก รายการที่ลบจะไม่แสดงต่อ อสม. และเจ้าหน้าที่",
+        description: "ลบได้ภายใน 24 ชั่วโมงหลังบันทึก",
         confirmLabel: "ลบรายการ",
       }}
       outcome={state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle"}
@@ -240,16 +239,12 @@ function CreateDisclosure({ initiallyOpen, nonce, defaultMeasuredAt }: {
         className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-panel px-5 py-3 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring sm:px-7 [&::-webkit-details-marker]:hidden"
         onClick={(event) => { if (critical.current) event.preventDefault(); }}
       >
-        <span className="space-y-0.5">
-          <span className="block font-semibold text-brand-strong" id="measurement-create-heading">บันทึกค่าใหม่</span>
-          <span className="block text-sm text-text-muted">เพิ่มค่าที่คุณวัดเองในรายการที่บันทึกไว้</span>
-        </span>
+        <span className="font-semibold text-brand-strong" id="measurement-create-heading">บันทึกค่าใหม่</span>
         <svg aria-hidden="true" className="size-5 shrink-0 text-brand-strong transition-transform group-open:rotate-180 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 20 20">
           <path d="m5 8 5 5 5-5" />
         </svg>
       </summary>
       <div className="space-y-4 border-t border-border px-5 pb-5 pt-5 sm:px-7 sm:pb-7">
-        <p className="text-sm text-text-muted">รายการจะแสดงในประวัติหลังบันทึกสำเร็จ</p>
         <CreateForm defaultMeasuredAt={defaultMeasuredAt} nonce={nonce} onAttentionChange={onAttentionChange} onSubmissionStart={onSubmissionStart} />
       </div>
     </details>
@@ -267,17 +262,14 @@ export function PatientSelfMeasurementWorkspace({ items, nonce, defaultMeasuredA
     <div className="min-w-0 max-w-3xl space-y-6">
       <PageHeader
         breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "ค่าที่วัดเอง" }]}
-        description="บันทึกน้ำหนัก น้ำตาลในเลือด และความดันที่คุณวัดเอง อสม. และเจ้าหน้าที่ที่ดูแลคุณเห็นรายการนี้พร้อมป้ายผู้ป่วยบันทึกเอง"
+        description="น้ำหนัก น้ำตาล และความดันที่วัดเอง"
         title="ค่าที่วัดเอง"
       />
       <CreateDisclosure defaultMeasuredAt={defaultMeasuredAt} initiallyOpen={items.length === 0} nonce={nonce} />
       <section aria-labelledby="measurement-history" className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold" id="measurement-history">รายการที่บันทึกไว้</h2>
-          <p className="mt-1 text-sm text-text-muted">แสดงสูงสุด {PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE} รายการต่อหน้า</p>
-        </div>
+        <h2 className="text-lg font-semibold" id="measurement-history">รายการที่บันทึกไว้</h2>
         {items.length === 0 ? (
-          <SavedRecordEmpty>ยังไม่มีรายการที่บันทึกเอง คุณสามารถเริ่มบันทึกค่าใหม่ได้จากส่วนด้านบน</SavedRecordEmpty>
+          <SavedRecordEmpty>ยังไม่มีรายการที่บันทึกเอง</SavedRecordEmpty>
         ) : (
           <ul aria-label="ประวัติค่าวัดที่บันทึกเอง" className="space-y-3">
             {items.map((item) => (

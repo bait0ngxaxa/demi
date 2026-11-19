@@ -60,7 +60,7 @@ describe("AF-5 family health summary view", () => {
       ...base, profile: { age: null, careTeams: [] }, nextAppointment: { appointment: null }, medications: { items: [] },
     }} />);
     expect(markup).toContain("ไม่มีนัดหมายที่จะถึงในช่วง 90 วันข้างหน้า");
-    expect(markup).toContain("ยังไม่มีรายการยาที่ผู้ป่วยบันทึกไว้เพื่อติดตามใน DEMI");
+    expect(markup).toContain("ยังไม่มีรายการยา");
     expect(markup).not.toContain("อายุ");
     expect(markup).not.toContain("แผนสุขภาพปัจจุบัน");
   });

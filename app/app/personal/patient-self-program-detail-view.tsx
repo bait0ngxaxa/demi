@@ -51,7 +51,6 @@ export function PatientSelfProgramDetailView({
           },
           { label: "รายละเอียดโปรแกรม" },
         ]}
-        description="ข้อมูลสถานะและประวัติที่บันทึกไว้ในโปรแกรมนี้"
         title="โปรแกรม"
       />
 
@@ -80,9 +79,6 @@ export function PatientSelfProgramDetailView({
                 </dd>
               </div>
             </dl>
-            <p className="mt-5 border-t border-border pt-4 text-sm leading-6 text-text-muted">
-              สถานะนี้แสดงขั้นตอนการดำเนินงานที่บันทึกไว้ ไม่ใช่การประเมินผลสุขภาพ
-            </p>
           </Panel>
         </section>
 
@@ -90,9 +86,6 @@ export function PatientSelfProgramDetailView({
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-program-rounds-heading">
             การรับบริการรายครั้ง
           </h2>
-          <p className="mt-2 text-sm leading-6 text-text-muted">
-            ดูรายการในแผนและประวัติแต่ละครั้ง บันทึกด้วยตนเองได้เฉพาะครั้งที่เปิดอยู่
-          </p>
           <p className="mt-3">
             <Link className={linkClassName} href={`${programHref}/rounds`}>
               ดูรายการและการรับบริการรายครั้ง

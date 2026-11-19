@@ -70,7 +70,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
     expect(JSON.parse(String(fetcher.mock.calls.find(([url]) => url === "/api/line/account/sign-out")?.[1]?.body))).toEqual(intent);
     expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
     expect(container.textContent).toContain("แอป DEMI ที่เคยเชื่อมต่อ");
-    expect(container.textContent).not.toContain("LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว");
+    expect(container.textContent).not.toContain("LINE ยืนยันการถอนสิทธิ์แล้ว");
     // The previous owner's Recovery is never offered on the way out.
     expect(container.textContent).not.toContain("ตรวจสอบเพื่อเชื่อมใหม่");
     expect(container.querySelector('a[href="/login?returnTo=%2Fline%2Faccount"]')?.textContent).toBe("ไปหน้าเข้าสู่ระบบ DEMI");
@@ -107,7 +107,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
     expect(container.textContent).toContain("ยังออกจากระบบ DEMI ไม่สำเร็จ");
     expect(container.querySelector('a[href^="https://attacker"]')).toBeNull();
     // No readable disconnection status: remote settlement stays unconfirmed.
-    expect(container.textContent).toContain("ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันกับ LINE ไม่ได้");
   });
 
   it("does not sign out a session that replaced the disconnecting one", async () => {
@@ -136,7 +136,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
     expect(calls("/api/line/account/sign-out")).toBe(1);
     expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
     // Remote settlement was never observed, so it stays unconfirmed.
-    expect(container.textContent).toContain("ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันกับ LINE ไม่ได้");
     expect(container.textContent).toContain("ออกจากระบบ DEMI แล้ว กำลังไปหน้าเข้าสู่ระบบ");
   });
 
@@ -178,7 +178,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
     await mount(); await openConfirmation();
     await act(async () => button("ยืนยันยกเลิก").click());
     await act(async () => button("ลองออกจากระบบอีกครั้ง").click());
-    expect(container.textContent).toContain("หลักฐานการยกเลิกครั้งนี้หมดอายุ");
+    expect(container.textContent).toContain("กรุณาออกจากระบบ DEMI เอง");
     expect(container.textContent).not.toContain("บัญชีที่เข้าสู่ระบบในเครื่องนี้เปลี่ยนไปแล้ว");
     expect(button("ออกจากระบบ DEMI")).toBeDefined();
     expect(calls("/api/line/account/unlink")).toBe(1); expect(calls("/api/line/account/intents")).toBe(1);

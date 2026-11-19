@@ -127,7 +127,7 @@ export function PatientSelfHospitalContext({
       </div>
       {relationship.careEndedAt ? (
         <p className="mt-3 text-sm leading-6 text-text-muted">
-          โรงพยาบาลนี้สิ้นสุดการดูแลแล้วเมื่อ {formatPatientDateOnly(relationship.careEndedAt)} ดูประวัติเดิมได้อย่างเดียว
+          โรงพยาบาลนี้สิ้นสุดการดูแลแล้วเมื่อ {formatPatientDateOnly(relationship.careEndedAt)}
         </p>
       ) : null}
     </Panel>

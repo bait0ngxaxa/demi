@@ -43,7 +43,7 @@ describe("Hospital OWNER LINE recovery readiness notice", () => {
   it("offers optional linking and the Platform ADMIN fallback to a sole OWNER", async () => {
     await renderNotice({ status: "UNLINKED", recoveryConfigured: true }, 1);
 
-    expect(container.textContent).toContain("การผูก LINE เป็นทางเลือก");
+    expect(container.textContent).toContain("(ไม่บังคับ)");
     expect(container.textContent).toContain("คุณเป็นแอดมินโรงพยาบาลที่ใช้งานได้เพียงคนเดียวใน 1 โรงพยาบาล");
     expect(container.textContent).toContain("ผู้ดูแลระบบ DEMI");
     expect(container.querySelector('a[href="/line/account"]')?.textContent).toContain("(ทางเลือก)");
@@ -54,24 +54,24 @@ describe("Hospital OWNER LINE recovery readiness notice", () => {
     const observedAt = "2026-10-26T04:00:00.000Z";
     await renderNotice({ status: "READY", recoveryConfigured: true, observedAt });
 
-    expect(container.textContent).toContain("พร้อมสำหรับการขอลิงก์กู้คืน");
+    expect(container.textContent).toContain("พร้อมรับลิงก์ตั้งรหัสผ่านใหม่ทาง LINE");
     expect(container.querySelector("time")?.getAttribute("dateTime")).toBe(observedAt);
   });
 
   it.each([
     [{ status: "UNCONFIRMED", recoveryConfigured: true, reason: "STALE_OBSERVATION", observedAt: "2026-10-24T00:00:00.000Z", reachability: "FRIEND" }, "เก่ากว่า 24 ชั่วโมง"],
-    [{ status: "UNCONFIRMED", recoveryConfigured: true, reason: "FRIENDSHIP_UNCONFIRMED", observedAt: "2026-10-26T04:00:00.000Z", reachability: "NOT_FRIEND" }, "ยังไม่ยืนยันว่าเป็นเพื่อน"],
+    [{ status: "UNCONFIRMED", recoveryConfigured: true, reason: "FRIENDSHIP_UNCONFIRMED", observedAt: "2026-10-26T04:00:00.000Z", reachability: "NOT_FRIEND" }, "ยังไม่ได้เพิ่ม DEMI เป็นเพื่อน"],
   ] as const)("does not describe an unconfirmed LINE status as ready", async (readiness, expectedCopy) => {
     await renderNotice(readiness);
 
     expect(container.textContent).toContain(expectedCopy);
-    expect(container.textContent).not.toContain("พร้อมสำหรับการขอลิงก์กู้คืน");
+    expect(container.textContent).not.toContain("พร้อมรับลิงก์ตั้งรหัสผ่านใหม่ทาง LINE");
   });
 
   it("explains configuration unavailability and preserves assisted recovery", async () => {
     await renderNotice({ status: "UNAVAILABLE", recoveryConfigured: false });
 
-    expect(container.textContent).toContain("ยังตั้งค่าช่องทางกู้คืนผ่าน LINE ไม่ครบ");
+    expect(container.textContent).toContain("ช่องทางกู้คืนผ่าน LINE ยังไม่พร้อมใช้งาน");
     expect(container.textContent).toContain("ผู้ดูแลระบบ DEMI");
   });
 

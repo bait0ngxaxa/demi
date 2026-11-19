@@ -52,7 +52,7 @@ function RequestedSharing({ sharing }: { sharing: CaregiverInvitationRequestedSh
       {sharing.relationshipLabel ? <p className="text-sm text-text">ผู้ป่วยระบุความสัมพันธ์กับคุณว่า: <span className="font-semibold">{sharing.relationshipLabel}</span></p> : null}
       {hasScopes ? (
         <Alert variant="info">
-          <p className="font-semibold">เมื่อตอบรับ คุณยอมรับสิทธิ์ต่อไปนี้พร้อมกัน</p>
+          <p className="font-semibold">เมื่อตอบรับ คุณจะได้รับสิทธิ์ดูข้อมูลต่อไปนี้</p>
           <ul className="mt-3 space-y-3">
             {sharing.appointmentHospitalCount > 0 ? (
               <li>
@@ -70,11 +70,7 @@ function RequestedSharing({ sharing }: { sharing: CaregiverInvitationRequestedSh
             ))}
           </ul>
         </Alert>
-      ) : (
-        <Alert variant="info">
-          <p>การยอมรับนี้ยังไม่ทำให้คุณมีสิทธิ์เข้าถึงข้อมูลสุขภาพใด ๆ นอกเหนือจากสิทธิ์ที่ระบบอนุญาตอย่างชัดเจน</p>
-        </Alert>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -181,7 +177,7 @@ function CaregiverAccountClaimForm({
         คำเชิญจาก {patientDisplayName} หมดอายุ {formatFamilyManagementDate(new Date(expiresAt))}
       </p>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        ชื่อและนามสกุลที่กรอกเป็นข้อมูลที่คุณแจ้งเอง ผู้ป่วยจะเห็นชื่อนี้ในรายการครอบครัว
+        ผู้ป่วยจะเห็นชื่อนี้ในรายการครอบครัว
       </p>
       <RequestedSharing sharing={requestedSharing} />
       <form className="mt-5 space-y-4" onSubmit={(event) => void submit(event)}>
@@ -373,7 +369,6 @@ export function FamilyInvitationPreview({ legal }: { legal: AccountCreationLegal
     <div className="max-w-3xl">
       <PageHeader
         breadcrumbs={[{ label: "ครอบครัวและผู้ดูแล", href: "/app/family" }, { label: "คำเชิญ" }]}
-        description="ตรวจสอบคำเชิญจากผู้ป่วยและตอบรับด้วยบัญชีของคุณ"
         title="คำเชิญผู้ดูแล"
       />
 
@@ -446,7 +441,7 @@ export function FamilyInvitationPreview({ legal }: { legal: AccountCreationLegal
             <div>
               <h2 className="text-xl font-semibold text-text">{preview.invitation.patientDisplayName}</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                คำเชิญให้เป็นผู้ดูแลของผู้ป่วยรายนี้
+                เชิญคุณเป็นผู้ดูแล
               </p>
             </div>
             <StatusBadge variant={caregiverInvitationStatusVariant(preview.invitation.invitationStatus)}>
@@ -457,7 +452,6 @@ export function FamilyInvitationPreview({ legal }: { legal: AccountCreationLegal
             คำเชิญหมดอายุ {formatFamilyManagementDate(preview.invitation.expiresAt)}
           </p>
           <RequestedSharing sharing={preview.invitation.requestedSharing} />
-          <p className="mt-2 text-xs text-text-muted">ข้อตกลงการตอบรับ: {preview.invitation.acceptanceContractVersion}</p>
 
           {acceptance.status === "SUCCESS" ? (
             <Alert className="mt-5" variant="success">{acceptance.message}</Alert>
@@ -469,7 +463,7 @@ export function FamilyInvitationPreview({ legal }: { legal: AccountCreationLegal
           {rejection.status === "ERROR" ? <Alert className="mt-5" variant="danger">{rejection.message}</Alert> : null}
           {canRetryAfterStatusCheck ? (
             <Alert className="mt-5" role="status" variant="info">
-              ตรวจสอบแล้วว่าคำเชิญยังรอตอบรับ หากยังต้องการ ให้เลือกตอบรับหรือปฏิเสธด้วยตนเอง
+              คำเชิญยังรอคุณตอบรับ
             </Alert>
           ) : null}
           <UnknownOutcomeAlert
@@ -514,7 +508,7 @@ export function FamilyInvitationPreview({ legal }: { legal: AccountCreationLegal
 
           {preview.invitation.invitationStatus !== "PENDING" ? (
             <p className="mt-5 text-sm leading-6 text-text-muted">
-              คำเชิญนี้เป็นสถานะสิ้นสุดแล้วและไม่สามารถตอบรับซ้ำได้
+              คำเชิญนี้ใช้ไม่ได้แล้ว
             </p>
           ) : null}
         </Panel>

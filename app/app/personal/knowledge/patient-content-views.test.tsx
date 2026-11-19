@@ -74,7 +74,7 @@ describe("Patient Content read presentation", () => {
   });
   it.each([
     ["EMPTY_A", "ยังไม่มีโรงพยาบาลที่พร้อมแสดงสื่อความรู้"],
-    ["EMPTY_B", "ยังไม่มีสื่อความรู้จากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ"],
+    ["EMPTY_B", "ยังไม่มีสื่อความรู้จากโรงพยาบาลของคุณ"],
     ["EMPTY_C", "ยังไม่มีสื่อความรู้ในหมวดหมู่นี้"],
   ] as const)("renders exact %s and no detail link", (emptyState, copy) => {
     const html = feed({ emptyState, items: [] }); expect(html).toContain(copy); expect(html).not.toContain(content.id);
@@ -82,7 +82,7 @@ describe("Patient Content read presentation", () => {
   });
   it("uses News copy separately from the knowledge feed", () => {
     const html = renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", hospitalRelationshipId: null, outcome: "READY", page: { category: "NEWS", items: [], nextCursor: null, emptyState: "EMPTY_B" } }} kind="NEWS" />);
-    expect(html).toContain("ประกาศจากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ");
+    expect(html).toContain("ประกาศจากโรงพยาบาล");
     expect(html).not.toContain("สื่อความรู้จากโรงพยาบาล");
   });
   it("keeps a visible NEWS item in the News feed with its existing detail destination", () => {
@@ -99,7 +99,7 @@ describe("Patient Content read presentation", () => {
     }} kind="NEWS" />);
 
     expect(html).toContain("ข่าวสาร");
-    expect(html).toContain("ประกาศจากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ");
+    expect(html).toContain("ประกาศจากโรงพยาบาล");
     expect(html).toContain(`href="/app/personal/knowledge/${content.id}"`);
     expect(html).toContain("category=NEWS&amp;cursor=news-cursor");
     expect(html).not.toContain("เลือกหมวดหมู่สื่อความรู้");
@@ -136,7 +136,7 @@ describe("Patient Content read presentation", () => {
     expect(html).toContain("&lt;script&gt;bad&lt;/script&gt;\n**plain Markdown**"); expect(html).not.toContain("<script>"); expect(html).not.toContain("<strong>plain");
     expect(html).toContain(content.sourceText); expect(html).not.toContain('href="https://');
     expect(html).toContain("whitespace-pre-wrap"); expect(html).toContain("overflow-wrap:anywhere");
-    expect(html).toContain("สื่อความรู้จากโรงพยาบาล"); expect(html).toContain("โรงพยาบาลผู้เผยแพร่รับผิดชอบความถูกต้องของเนื้อหา");
+    expect(html).toContain("สื่อความรู้จากโรงพยาบาล"); expect(html).toContain("เนื้อหาจากโรงพยาบาลผู้เผยแพร่");
     expect(html).toContain('data-prefetch="false"');
     expect(html).toContain('href="/app/personal/knowledge"');
     expect(html).not.toMatch(/<form\b|<button\b/u);

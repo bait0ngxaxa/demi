@@ -46,10 +46,10 @@ describe("mobile LINE onboarding continuity interactions", () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/line/account/status");
     expect(check.disabled).toBe(true); expect(check.getAttribute("aria-busy")).toBe("true");
     expect(container.textContent).toContain("กำลังตรวจสอบสถานะ LINE และเมนู");
-    expect(container.textContent).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(container.textContent).not.toContain("พร้อมใช้งาน");
     expect(button("ยกเลิกการเชื่อมต่อ LINE").disabled).toBe(true);
     await act(async () => finish?.(Response.json({ ...linked, menuState: "APPLIED", reconciliation: "CHECKED" })));
-    expect(container.textContent).toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(container.textContent).toContain("พร้อมใช้งาน");
     expect(fetcher).toHaveBeenCalledOnce();
     await act(async () => button("กลับไปที่ LINE").click()); expect(h.closeWindow).toHaveBeenCalledOnce();
   });
@@ -57,8 +57,8 @@ describe("mobile LINE onboarding continuity interactions", () => {
   it("does not treat a busy lease with an older APPLIED summary as confirmed completion", async () => {
     fetcher.mockResolvedValue(Response.json({ ...linked, menuState: "APPLIED", reconciliation: "PENDING" }));
     await mount(); await act(async () => button("ตรวจสอบสถานะเมนูอีกครั้ง").click());
-    expect(container.textContent).toContain("ระบบยังตรวจสอบเมนูไม่เสร็จ");
-    expect(container.textContent).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(container.textContent).toContain("กำลังตั้งค่าเมนู");
+    expect(container.textContent).not.toContain("พร้อมใช้งาน");
     expect(button("ตรวจสอบสถานะเมนูอีกครั้ง").disabled).toBe(false);
     expect(fetcher).toHaveBeenCalledOnce();
   });
@@ -66,8 +66,8 @@ describe("mobile LINE onboarding continuity interactions", () => {
   it.each(["UNKNOWN", "MISMATCH", "UNAVAILABLE"])("keeps checked %s recoverable without automatic retries", async (menuState) => {
     fetcher.mockImplementation(async () => Response.json({ ...linked, menuState, reconciliation: "CHECKED" }));
     await mount(); await act(async () => button("ตรวจสอบสถานะเมนูอีกครั้ง").click());
-    expect(container.textContent).toContain("ตรวจสอบแล้ว ยังไม่ยืนยันความพร้อมใช้งาน LINE");
-    expect(container.textContent).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(container.textContent).toContain(menuState === "UNKNOWN" ? "กำลังตั้งค่าเมนู" : "เมนูยังไม่พร้อม");
+    expect(container.textContent).not.toContain("พร้อมใช้งาน");
     expect(container.querySelector('a[href="/app"]')).not.toBeNull();
     expect(fetcher).toHaveBeenCalledOnce();
   });
@@ -89,14 +89,14 @@ describe("mobile LINE onboarding continuity interactions", () => {
     expect(container.textContent).toContain("ตรวจสอบสถานะบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่");
     expect(container.textContent).toContain("150 วินาที");
     expect(button("ตรวจสอบสถานะเมนูอีกครั้ง").disabled).toBe(true);
-    expect(container.textContent).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(container.textContent).not.toContain("พร้อมใช้งาน");
     await act(async () => vi.advanceTimersByTimeAsync(149_000));
     expect(button("ตรวจสอบสถานะเมนูอีกครั้ง").disabled).toBe(true);
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     expect(button("ตรวจสอบสถานะเมนูอีกครั้ง").disabled).toBe(false);
     expect(fetcher).toHaveBeenCalledOnce();
     await act(async () => button("ตรวจสอบสถานะเมนูอีกครั้ง").click());
-    expect(container.textContent).toContain("พร้อมใช้งานผ่าน LINE แล้ว"); expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain("พร้อมใช้งาน"); expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it("aborts on unmount and ignores a late provider response", async () => {
@@ -119,7 +119,7 @@ describe("mobile LINE onboarding continuity interactions", () => {
     expect(signal?.aborted).toBe(true);
     expect(container.firstElementChild?.hasAttribute("hidden")).toBe(true);
     await act(async () => finish?.(Response.json({ ...linked, menuState: "APPLIED", reconciliation: "CHECKED" })));
-    expect(container.textContent).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(container.textContent).not.toContain("พร้อมใช้งาน");
   });
 
   it("bounds a stalled request, restores retry, and never polls", async () => {
@@ -178,7 +178,7 @@ describe("mobile LINE onboarding continuity interactions", () => {
     await act(async () => button("เชื่อมบัญชี LINE นี้").click());
     expect(container.textContent).toContain("ยืนยันการเชื่อมบัญชี");
     expect(document.activeElement?.id).toBe("link-confirm-title");
-    expect(container.textContent).toContain("การออกจากระบบจะยกเลิกการยืนยันครั้งนี้");
+    expect(container.textContent).not.toContain("การออกจากระบบจะยกเลิกการยืนยันครั้งนี้");
     expect(button("ยืนยันเชื่อมบัญชี").disabled).toBe(true);
     expect(container.querySelectorAll('input[name="currentPassword"]')).toHaveLength(1);
     expect([...container.querySelectorAll("button")].filter((item) => item.textContent === "เชื่อมบัญชี LINE นี้")).toHaveLength(0);

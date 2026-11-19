@@ -50,7 +50,6 @@ export function FamilyHealthSummaryView({ summary }: { summary: FamilyHealthSumm
       <RefreshDelegatedRead />
       <PageHeader
         breadcrumbs={[{ label: "ครอบครัวและผู้ดูแล", href: "/app/family" }, { label: "สรุปสุขภาพ" }]}
-        description="ข้อมูลที่ผู้ป่วยเลือกแชร์ให้คุณแบบอ่านอย่างเดียว"
         title={name}
       />
       <div className="mt-6 space-y-4">
@@ -67,7 +66,7 @@ export function FamilyHealthSummaryView({ summary }: { summary: FamilyHealthSumm
         </Panel>
 
         {nothingShared ? (
-          <Empty>ผู้ป่วยยังไม่ได้แชร์ข้อมูลสุขภาพกับคุณ หรือสิทธิ์ถูกยกเลิกแล้ว</Empty>
+          <Empty>ผู้ป่วยยังไม่ได้แชร์ข้อมูลสุขภาพกับคุณ</Empty>
         ) : null}
 
         {summary.nextAppointment ? (
@@ -144,7 +143,7 @@ export function FamilyHealthSummaryView({ summary }: { summary: FamilyHealthSumm
 
         {summary.medications ? (
           <Block title="รายการยาที่กำลังติดตาม">
-            {summary.medications.items.length === 0 ? <Empty>ยังไม่มีรายการยาที่ผู้ป่วยบันทึกไว้เพื่อติดตามใน DEMI</Empty> : (
+            {summary.medications.items.length === 0 ? <Empty>ยังไม่มีรายการยา</Empty> : (
               <ul aria-label="รายการยาที่กำลังติดตาม" className="divide-y divide-border">
                 {summary.medications.items.map((medication) => <MedicationSummaryItem
                   key={medication.medicationId}

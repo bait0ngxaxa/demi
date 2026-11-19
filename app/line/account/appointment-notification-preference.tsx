@@ -41,13 +41,7 @@ export function AppointmentNotificationPreference({
           สถานะ: {enabled ? "เปิด" : "ปิด"}
         </p>
       </div>
-      <p className="type-readable mt-4 text-sm text-muted">รับการแจ้งเตือนเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมาย</p>
-      <details className="type-readable mt-4 space-y-3 text-sm text-muted">
-        <summary className="min-h-12 cursor-pointer py-3 text-brand">รายละเอียดการแจ้งเตือน</summary>
-        <p>ใช้แจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมายของคุณ หรือของผู้ป่วยที่คุณดูแลหรือได้รับสิทธิ์ดูนัด ข้อความระบุเฉพาะประเภทนัด ไม่มีข้อมูลระบุตัวผู้ป่วยหรือรายละเอียดสุขภาพ</p>
-        <p>การเปิดใช้เป็นการอนุญาตให้ระบบพยายามส่งข้อความ ไม่รับประกันว่าข้อความจะถึงหรือแสดงบนอุปกรณ์ คุณปิดได้ทุกเมื่อ</p>
-        <p>การเชื่อมบัญชี LINE หรือการเป็นเพื่อนกับ DEMI ไม่ได้เปิดการแจ้งเตือนให้อัตโนมัติ ระบบตรวจสอบบัญชีและสถานะเพื่อนอีกครั้งก่อนพยายามส่ง</p>
-      </details>
+      <p className="type-readable mt-4 text-sm text-muted">แจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมาย ข้อความไม่มีรายละเอียดสุขภาพ</p>
       {!canEnable && !enabled ? (
         <p className="mt-4 rounded-control bg-surface-muted px-4 py-3 text-sm text-ink">
           เชื่อมบัญชี LINE ก่อน จึงจะเปิดการแจ้งเตือนได้

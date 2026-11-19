@@ -15,6 +15,6 @@ export function PatientContentDetail({ content }: { content: HospitalContentPati
       <h2 className="text-lg font-semibold text-text">แหล่งที่มา / เอกสารอ้างอิง</h2>
       <p className="mt-3 max-w-prose whitespace-pre-wrap text-sm leading-7 text-text-muted">{content.sourceText}</p>
     </section> : null}
-    <p className="border-t border-border pt-6 text-sm leading-7 text-text-muted">โรงพยาบาลผู้เผยแพร่รับผิดชอบความถูกต้องของเนื้อหา</p>
+    <p className="border-t border-border pt-6 text-sm leading-7 text-text-muted">เนื้อหาจากโรงพยาบาลผู้เผยแพร่</p>
   </article>;
 }

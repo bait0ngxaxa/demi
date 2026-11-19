@@ -288,8 +288,8 @@ describe("personal medication focused dialogs", () => {
     await click(button("หยุดติดตามรายการนี้ใน DEMI"));
 
     const stopDialog = dialog();
-    expect(stopDialog?.textContent).toContain("สิ้นสุดการติดตามใน DEMI เท่านั้น ไม่เปลี่ยนการใช้ยาของคุณ");
-    expect(stopDialog?.textContent).toContain("รายการจะอยู่ในประวัติและแก้ไขต่อไม่ได้");
+    expect(stopDialog?.textContent).toContain("หยุดติดตามใน DEMI เท่านั้น ไม่เปลี่ยนการใช้ยา");
+    expect(stopDialog?.textContent).not.toContain("รายการจะอยู่ในประวัติ");
     expect(stopDialog?.textContent).toContain("ยาความดัน");
     expect(stopDialog?.textContent).not.toMatch(/หยุดยา|หยุดรับประทาน/u);
     expect(document.activeElement).toBe(button("ยกเลิก", stopDialog ?? container));
