@@ -239,7 +239,11 @@ describe("pending actions against authoritative PostgreSQL tables", () => {
       await tx.hospital.update({ where: { id: suspended.id }, data: { status: "SUSPENDED" } });
       // A stale session context still cannot count through a revoked membership or suspended Hospital.
       expect(await countWorkAppointmentRequestsByHospital(before, [kept.id, revoked.id, suspended.id], { database: tx, now: () => now }))
-        .toEqual([{ hospitalId: kept.id, count: 1 }, { hospitalId: revoked.id, count: 0 }, { hospitalId: suspended.id, count: 0 }]);
+        .toEqual([
+          { hospitalId: kept.id, count: 1, rescheduleCount: 1, cancellationCount: 0 },
+          { hospitalId: revoked.id, count: 0, rescheduleCount: 0, cancellationCount: 0 },
+          { hospitalId: suspended.id, count: 0, rescheduleCount: 0, cancellationCount: 0 },
+        ]);
       const indicators = await calculatePendingActions(staff.id, tx, now);
       expect(indicators[1]?.count).toBe(1);
       expect(indicators[1]?.href).toContain(kept.id);
