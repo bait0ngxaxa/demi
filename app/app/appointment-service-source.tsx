@@ -4,6 +4,11 @@ import type { AppointmentSource } from "@/modules/appointments/domain/appointmen
 import { PATIENT_SERVICE_LABELS } from "@/modules/patient-service-requests/domain/patient-service-definitions";
 import type { PatientServiceCode } from "@prisma/client";
 
+/** The appointment type and, when present, the requested service, as one plain line. */
+export function appointmentServiceText(type: AppointmentTypeValue, serviceCode: PatientServiceCode | null): string {
+  return `${APPOINTMENT_TYPE_LABELS[type]}${serviceCode ? ` · ${PATIENT_SERVICE_LABELS[serviceCode]}` : ""}`;
+}
+
 export function AppointmentServiceSource({ type, serviceCode, source }: {
   type: AppointmentTypeValue;
   serviceCode: PatientServiceCode | null;
@@ -11,7 +16,7 @@ export function AppointmentServiceSource({ type, serviceCode, source }: {
 }): React.JSX.Element {
   return (
     <span className="inline-flex max-w-full flex-wrap items-center gap-2 align-middle">
-      <span className="min-w-0 break-words">{APPOINTMENT_TYPE_LABELS[type]}{serviceCode ? ` · ${PATIENT_SERVICE_LABELS[serviceCode]}` : ""}</span>
+      <span className="min-w-0 break-words">{appointmentServiceText(type, serviceCode)}</span>
       <StatusBadge variant="neutral">{source === "PATIENT_REQUEST" ? "ขอรับบริการ" : "โรงพยาบาลนัด"}</StatusBadge>
     </span>
   );

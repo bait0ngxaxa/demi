@@ -76,8 +76,10 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
       source: AppointmentInteractionSource.OSM_PROXY,
       status: AppointmentCancellationRequestStatus.PENDING,
       submittedAt: recordedAt,
+      sourceAppointmentUpdatedAt: recordedAt,
       submittedByUserId: "internal-user-id",
     }],
+    rescheduleRequests: [],
     note: "internal note",
     createdByUserId: "internal-creator-id",
     ...overrides,
@@ -1031,5 +1033,32 @@ it.each([null, "request"])("SR-C patient projections add only service/source (%s
   database.patientAppointment.findMany = vi.fn().mockResolvedValue([appointmentRecord({ serviceCode: "EMPOWERMENT", sourceServiceRequestId })]);
   const history = await getOwnPatientAppointmentHistory(actor(), relationshipId, { database });
   expect(history.appointments[0]).toMatchObject({ serviceCode: "EMPOWERMENT", source: sourceServiceRequestId ? "PATIENT_REQUEST" : "HOSPITAL" });
-  expect(Object.keys(history.appointments[0] ?? {}).sort()).toEqual(["appointmentId", "type", "scheduledAt", "durationMinutes", "locationType", "locationDetail", "status", "updatedAt", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "assignedOsmDisplayName", "appointer", "acknowledgement", "cancellationRequests", "serviceCode", "source"].sort());
+  expect(Object.keys(history.appointments[0] ?? {}).sort()).toEqual(["appointmentId", "type", "scheduledAt", "durationMinutes", "locationType", "locationDetail", "status", "updatedAt", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "assignedOsmDisplayName", "appointer", "acknowledgement", "cancellationRequests", "pendingReschedule", "serviceCode", "source"].sort());
+});
+
+describe("PATIENT-APPT-DISTILL pending reschedule projection", () => {
+  it("reads a pending reschedule as one bounded PENDING row inside the appointment select", () => {
+    expect(patientSelfCareQueryInternals.appointmentPatientSelect(relationshipId).rescheduleRequests).toEqual({
+      where: { status: AppointmentCancellationRequestStatus.PENDING },
+      take: 1,
+      select: { id: true },
+    });
+  });
+
+  it.each([
+    [[], false],
+    [[{ id: "pending-reschedule" }], true],
+  ])("projects pendingReschedule from the selected rows (%j)", async (rescheduleRequests, expected) => {
+    const database = createDatabase();
+    database.patientAppointment.findMany = vi.fn().mockResolvedValue([appointmentRecord({ rescheduleRequests })]);
+    const history = await getOwnPatientAppointmentHistory(actor(), relationshipId, { database });
+    expect(history.appointments[0]?.pendingReschedule).toBe(expected);
+    expect(history.appointments[0]?.cancellationRequests[0]).toEqual({
+      source: AppointmentInteractionSource.OSM_PROXY,
+      status: AppointmentCancellationRequestStatus.PENDING,
+      submittedAt: recordedAt,
+      sourceAppointmentUpdatedAt: recordedAt,
+    });
+    expect(JSON.stringify(history)).not.toContain("pending-reschedule");
+  });
 });

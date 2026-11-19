@@ -1,30 +1,54 @@
-import { AppointmentServiceSource } from "../../../../appointment-service-source";
-import { APPOINTMENT_LOCATION_LABELS, APPOINTMENT_STATUS_LABELS, APPOINTMENT_TYPE_LABELS, appointmentResponsiblePresentation } from "@/modules/appointments/domain/appointment-definitions";
+import { AppointmentServiceSource, appointmentServiceText } from "../../../../appointment-service-source";
+import { APPOINTMENT_LOCATION_LABELS, APPOINTMENT_TYPE_LABELS, appointmentResponsiblePresentation } from "@/modules/appointments/domain/appointment-definitions";
 import type { DelegatedAppointment, DelegatedAppointmentDetail } from "@/modules/family/services/delegated-appointment-query-service";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { AppointmentContactPhoneEntries } from "../../../../appointment-contact-phones";
 
-export function AppointmentFields({ appointment }: { appointment: DelegatedAppointment | DelegatedAppointmentDetail }): React.JSX.Element {
+import { AppointmentListRow, AppointmentSummary, type AppointmentSummaryValues } from "../../../../appointment-summary";
+
+/*
+ * PATIENT-APPT-DISTILL: the caregiver reads the same summary as the Patient, filled only from the
+ * consent-gated projection. A field the contract version does not project is absent here and is
+ * simply not rendered: v1 has no extension (no location detail, responsible person or parent
+ * Hospital) and only v3 carries service/source. The OSM at creation is never shown to a caregiver.
+ */
+
+function serviceText(appointment: DelegatedAppointment): string {
+  return appointment.source === undefined
+    ? APPOINTMENT_TYPE_LABELS[appointment.type]
+    : appointmentServiceText(appointment.type, appointment.serviceCode ?? null);
+}
+
+export function familyAppointmentSummaryValues(appointment: DelegatedAppointment | DelegatedAppointmentDetail): AppointmentSummaryValues {
   const extension = appointment.extension;
-  // AF-5 v2 adds the parent Hospital, location detail, the appointer and the OSM at creation; v1 shows none of them.
-  // SR-C1: service and source are projected only under v3, so v1/v2 keep the plain type label.
-  const responsible = extension ? appointmentResponsiblePresentation(extension.responsibleDisplayName, extension.responsibleProfession) : null;
-  const fields: [string, React.ReactNode][] = [
-    ["หน่วยบริการ", extension?.parentHospitalName ? `${appointment.hospitalName} · ${extension.parentHospitalName}` : appointment.hospitalName],
-    ["ประเภทนัด", appointment.source === undefined ? APPOINTMENT_TYPE_LABELS[appointment.type]
-      : <AppointmentServiceSource key="type" type={appointment.type} serviceCode={appointment.serviceCode ?? null} source={appointment.source} />],
-    ["วันและเวลา", new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(appointment.scheduledAt)],
-    ["ระยะเวลา", appointment.durationMinutes === null ? "ยังไม่ระบุ" : `${appointment.durationMinutes} นาที`],
-    ["รูปแบบสถานที่", appointment.locationType === null ? "ยังไม่ระบุ" : APPOINTMENT_LOCATION_LABELS[appointment.locationType]],
-    ...(extension ? [
-      ["รายละเอียดสถานที่", extension.locationDetail ?? "ยังไม่ระบุ"],
-      [responsible?.heading ?? "ผู้รับผิดชอบนัด", responsible?.displayName ?? "ยังไม่ระบุ"],
-      ["อสม. ที่ดูแลขณะสร้างนัด", extension.osmAtCreationDisplayName ?? "ไม่มีข้อมูล"],
-    ] satisfies [string, React.ReactNode][] : []),
-  ];
-  return <dl className="grid gap-4 sm:grid-cols-2">
-    {fields.map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-sm text-text-muted">{label}</dt><dd className="mt-1 break-words font-semibold text-text">{value}</dd></div>)}
-    <div><dt className="text-sm text-text-muted">สถานะนัด</dt><dd className="mt-1"><StatusBadge variant={appointment.status === "CANCELLED" ? "neutral" : "info"}>{APPOINTMENT_STATUS_LABELS[appointment.status]}</StatusBadge></dd></div>
-    {"contactPhones" in appointment ? <AppointmentContactPhoneEntries contactPhones={appointment.contactPhones} showPatientPhone={false} /> : null}
-  </dl>;
+  return {
+    scheduledAt: appointment.scheduledAt,
+    service: appointment.source === undefined
+      ? APPOINTMENT_TYPE_LABELS[appointment.type]
+      : <AppointmentServiceSource serviceCode={appointment.serviceCode ?? null} source={appointment.source} type={appointment.type} />,
+    locationLabel: appointment.locationType === null ? null : APPOINTMENT_LOCATION_LABELS[appointment.locationType],
+    locationDetail: extension?.locationDetail ?? null,
+    hospitalName: appointment.hospitalName,
+    parentHospitalName: extension?.parentHospitalName ?? null,
+    durationMinutes: appointment.durationMinutes,
+    responsible: extension?.responsibleDisplayName
+      ? appointmentResponsiblePresentation(extension.responsibleDisplayName, extension.responsibleProfession)
+      : null,
+    contactPhones: "contactPhones" in appointment ? appointment.contactPhones : null,
+  };
+}
+
+export function FamilyAppointmentSummary({ appointment }: { appointment: DelegatedAppointment | DelegatedAppointmentDetail }): React.JSX.Element {
+  return <AppointmentSummary values={familyAppointmentSummaryValues(appointment)} />;
+}
+
+/** A caregiver row: no state chip, since a caregiver cannot act on the appointment. */
+export function FamilyAppointmentRow({ appointment, href }: { appointment: DelegatedAppointment; href: string }): React.JSX.Element {
+  return (
+    <AppointmentListRow
+      href={href}
+      place={appointment.locationType === null ? null : APPOINTMENT_LOCATION_LABELS[appointment.locationType]}
+      scheduledAt={appointment.scheduledAt}
+      service={serviceText(appointment)}
+      status={appointment.status}
+    />
+  );
 }

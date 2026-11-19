@@ -294,23 +294,25 @@ describe("ผู้นัดหมาย and the assignee (ADR-0027, AP-5)", () 
     container.remove();
   });
 
-  it("shows the patient the appointer by name and role, as their projection already names staff", () => {
+  it("shows the patient the responsible person on the detail only and never the appointer (PATIENT-APPT-DISTILL)", () => {
     const appointment = {
       appointmentId: "appointment", serviceCode: null, source: "HOSPITAL" as const, type: "FOLLOW_UP" as const, scheduledAt: at,
       durationMinutes: 30, locationType: "CLINIC" as const, locationDetail: null, status: "SCHEDULED" as const, updatedAt: at,
       responsibleDisplayName: "ประสาน ข", responsibleProfession: "COORDINATOR" as const, osmAtCreationDisplayName: null,
       assignedOsmDisplayName: null, appointer: { displayName: "อสม. จ", role: "OSM" as const }, acknowledgement: null, cancellationRequests: [],
+      pendingReschedule: false,
     };
     const row = renderToStaticMarkup(<PatientSelfAppointmentRow appointment={appointment} href="/app/personal/appointments/x" />);
-    expect(row).toContain("ผู้นัดหมาย: อสม. จ · อสม.");
-    expect(row).toContain("เจ้าหน้าที่ผู้ดูแล: ประสาน ข");
+    for (const absent of ["ผู้นัดหมาย", "อสม. จ", "ประสาน ข"]) expect(row).not.toContain(absent);
     const detail = renderToStaticMarkup(<PatientSelfAppointmentDetailContent detail={{
       ...appointment,
       relationship: { relationshipId: "relationship", hospitalName: "โรงพยาบาล", hospitalCode: "H", hospitalNumber: null, hospitalStatus: "ACTIVE", careEndedAt: null },
       parentHospitalName: null,
       contactPhones: { assignedOsmPhone: null, hospitalPhone: null, patientPhone: null },
-    }} interactions={null} />);
-    expect(detail).toContain("ผู้นัดหมาย");
-    expect(detail).toContain("อสม. จ · อสม.");
+    }} />);
+    expect(detail).toContain("เจ้าหน้าที่ผู้ดูแล");
+    expect(detail).toContain("ประสาน ข");
+    expect(detail).not.toContain("ผู้นัดหมาย");
+    expect(detail).not.toContain("อสม. จ");
   });
 });

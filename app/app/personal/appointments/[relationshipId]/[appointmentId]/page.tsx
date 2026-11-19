@@ -1,6 +1,5 @@
 import { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { RescheduleRequestSection } from "../../../../patients/[relationshipId]/appointments/reschedule-request-section";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { randomUUID } from "node:crypto";
@@ -31,14 +30,10 @@ export default async function PatientSelfAppointmentDetailPage({
 
   return (
     <PatientSelfAppointmentDetailView
-      rescheduleRequests={<RescheduleRequestSection
-        history={rescheduleHistory}
-        relationshipId={relationshipId}
-        appointmentId={appointmentId}
-        appointmentSummary={`${detail.relationship.hospitalName} · ${new Intl.DateTimeFormat("th-TH", { dateStyle: "full", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(detail.scheduledAt)}`}
-      />}
       cancellationRequestNonce={randomUUID()}
       detail={detail}
+      rescheduleHistory={rescheduleHistory}
+      rescheduleNonce={randomUUID()}
     />
   );
 }

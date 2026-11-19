@@ -21,16 +21,19 @@ function PhoneValue({ phone, missing }: { phone: string | null; missing: string 
 export function AppointmentContactPhoneEntries({
   contactPhones,
   showPatientPhone,
+  omitMissing = false,
 }: {
   contactPhones: AppointmentContactPhones;
   showPatientPhone: boolean;
+  /** PATIENT-APPT-DISTILL: Patient and family summaries list only the phones that exist. */
+  omitMissing?: boolean;
 }): React.JSX.Element {
   return (
     <>
-      <div className="min-w-0">
+      {omitMissing && !contactPhones.hospitalPhone ? null : <div className="min-w-0">
         <dt className="text-sm text-text-muted">เบอร์ติดต่อโรงพยาบาล</dt>
         <PhoneValue missing="โรงพยาบาลยังไม่ได้ระบุเบอร์ติดต่อ" phone={contactPhones.hospitalPhone} />
-      </div>
+      </div>}
       {contactPhones.assignedOsmPhone ? <div className="min-w-0">
         <dt className="text-sm text-text-muted">เบอร์ติดต่อ อสม. ที่ดูแลปัจจุบัน</dt>
         <PhoneValue missing="ยังไม่มีเบอร์ติดต่อ อสม." phone={contactPhones.assignedOsmPhone} />

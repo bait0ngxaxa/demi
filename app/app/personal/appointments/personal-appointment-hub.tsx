@@ -3,11 +3,6 @@ import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
-import { Panel } from "@/components/ui/panel";
-import {
-  APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE,
-  APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE,
-} from "@/modules/appointments/domain/appointment-interaction-definitions";
 import { formatFamilyParticipantName } from "@/modules/family/presentation/caregiver-relationship-presentation";
 import type { PatientSelfAppointmentHubTab } from "@/modules/patient-self/services/patient-self-care-query-service";
 import type {
@@ -16,7 +11,7 @@ import type {
 } from "@/modules/patient-self/transport/patient-self-care-page-context";
 
 import { familyAppointmentContractIncludesDetail } from "@/modules/family/domain/appointment-grant-contract";
-import { AppointmentFields } from "../../family/grants/[grantId]/appointments/appointment-fields";
+import { FamilyAppointmentRow } from "../../family/grants/[grantId]/appointments/appointment-fields";
 import { familyHealthSummaryHref } from "../../family/members/family-health-summary-href";
 import { RefreshDelegatedRead } from "../../family/grants/[grantId]/appointments/refresh-delegated-read";
 import { ORDINARY_PATIENT_APPOINTMENT_LINKS, PatientSelfAppointmentRow } from "../patient-self-appointment-content";
@@ -129,10 +124,6 @@ function SelfAppointments({
           </ul>
         </nav>
       ) : null}
-      <div className="space-y-2 text-sm leading-6 text-text-muted">
-        <p>{APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE}</p>
-        <p>{APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE}</p>
-      </div>
       {self.appointments.length > 0 ? (
         <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
           {self.appointments.map((appointment) => (
@@ -186,9 +177,9 @@ function FamilyAppointments({
   subject: Extract<PersonalAppointmentHubSubject, { kind: "FAMILY" }>;
 }): React.JSX.Element {
   const intro = (
-    <div className="space-y-2">
-      <p className="text-sm leading-6 text-text-muted">
-        นัดหมายของ {subjectLabel(subject)} ที่ {subject.hospitalName} แบบอ่านอย่างเดียว ตามสิทธิ์ที่ผู้ป่วยแชร์
+    <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
+      <p className="break-words font-semibold text-text">
+        นัดหมายของ {subjectLabel(subject)} · {subject.hospitalName}
       </p>
       <Link
         className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
@@ -204,7 +195,7 @@ function FamilyAppointments({
     return (
       <div className="space-y-4">
         {intro}
-        <Alert variant="info">ภายใต้ความยินยอมปัจจุบัน ผู้ป่วยแชร์เฉพาะนัดหมายที่จะถึงในช่วง 90 วันข้างหน้า จึงไม่มีประวัติการนัดหมายให้ดู</Alert>
+        <Alert variant="info">ผู้ป่วยแชร์เฉพาะนัดที่จะถึงใน 90 วัน</Alert>
       </div>
     );
   }
@@ -222,20 +213,13 @@ function FamilyAppointments({
     <div className="space-y-4">
       {intro}
       {context.family.appointments.length > 0 ? (
-        <ul className="space-y-4">
+        <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
           {context.family.appointments.map((appointment) => (
-            <li key={appointment.appointmentId}>
-              <Panel>
-                <AppointmentFields appointment={appointment} />
-                <Link
-                  className="mt-4 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-                  href={`/app/family/grants/${encodeURIComponent(subject.grantId)}/appointments/${encodeURIComponent(appointment.appointmentId)}`}
-                  prefetch={false}
-                >
-                  ดูรายละเอียดนัดหมาย
-                </Link>
-              </Panel>
-            </li>
+            <FamilyAppointmentRow
+              appointment={appointment}
+              href={`/app/family/grants/${encodeURIComponent(subject.grantId)}/appointments/${encodeURIComponent(appointment.appointmentId)}`}
+              key={appointment.appointmentId}
+            />
           ))}
         </ul>
       ) : (

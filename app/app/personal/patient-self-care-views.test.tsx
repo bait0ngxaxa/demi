@@ -33,6 +33,10 @@ import { PatientSelfRelationshipNavigation } from "./patient-self-relationship-n
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
+vi.mock("@/modules/appointments/transport/reschedule-request-actions", () => ({
+  submitRescheduleRequestAction: vi.fn(),
+  rejectRescheduleRequestAction: vi.fn(),
+}));
 
 const ownRelationship = {
   relationshipId: "11111111-1111-4111-8111-111111111111",
@@ -181,9 +185,12 @@ const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
       source: AppointmentInteractionSource.OSM_PROXY,
       status: AppointmentCancellationRequestStatus.REJECTED,
       submittedAt: recordedAt,
+      sourceAppointmentUpdatedAt: recordedAt,
     },
   ],
+  pendingReschedule: false,
 };
+const rescheduleHistory = { requests: [], canRequest: true, canReview: false, updatedAt: recordedAt, scheduled: true };
 
 describe("Patient Personal care read views", () => {
   it("keeps each Hospital relationship as a separate navigation choice", () => {
@@ -513,18 +520,28 @@ describe("Patient Personal care read views", () => {
       <PatientSelfAppointmentDetailView
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
         detail={{ ...appointment, parentHospitalName: null, contactPhones, relationship: { ...ownRelationship, hospitalStatus: HospitalStatus.ACTIVE } }}
+        rescheduleHistory={rescheduleHistory}
+        rescheduleNonce="88888888-8888-4888-8888-888888888888"
       />,
     );
 
-    for (const content of ["อาคารผู้ป่วยนอก", "30 นาที", "โรงพยาบาล ก"]) {
-      expect(historyMarkup).toContain(content);
+    for (const content of ["อาคารผู้ป่วยนอก", "ใช้เวลาประมาณ 30 นาที", "โรงพยาบาล ก", "แพทย์ผู้ดูแล"]) {
       expect(detailMarkup).toContain(content);
     }
+    // PATIENT-APPT-DISTILL: a list row is when, what · where and status; details live on the detail page.
+    for (const detailOnly of ["อาคารผู้ป่วยนอก", "30 นาที", "แพทย์ผู้ดูแล", "ผู้นัดหมาย", "OSM", "เปิดรายละเอียดนัดหมาย"]) {
+      expect(historyMarkup).not.toContain(detailOnly);
+    }
+    expect(historyMarkup).toContain("ให้ความรู้ · ที่คลินิก/โรงพยาบาล");
+    expect(historyMarkup).toContain("รอคุณรับทราบ");
+    expect(detailMarkup).toContain("สิ่งที่ทำได้");
     expect(detailMarkup).toContain("รับทราบนัดหมาย");
-    expect(detailMarkup).toContain("แพทย์ผู้ดูแล");
+    expect(detailMarkup).toContain("ขอเลื่อนนัด");
     expect(detailMarkup).toContain("ขอยกเลิกนัด");
-    expect(detailMarkup).toContain("ส่งคำขอพร้อมวันเวลาที่สะดวก 1–3 ตัวเลือกและเหตุผล");
-    expect(detailMarkup).toContain("ไม่ใช่การยืนยันว่าจะมาตามนัด");
+    for (const policy of ["ส่งคำขอพร้อมวันเวลาที่สะดวก 1–3 ตัวเลือกและเหตุผล", "ไม่ใช่การยืนยันว่าจะมาตามนัด", "การส่งคำขอไม่ได้ยกเลิกนัดทันที", "แสดงรายการในหน้านี้ตามวันนัด"]) {
+      expect(detailMarkup).not.toContain(policy);
+      expect(historyMarkup).not.toContain(policy);
+    }
     expect(detailMarkup).not.toMatch(/<button[^>]*>ยืนยันว่าจะมา/);
     for (const withheld of ["ผู้สร้างนัด", "internal note", "responsibleUserId", "createdByUserId", "เบอร์โทร"]) {
       expect(historyMarkup).not.toContain(withheld);
@@ -532,18 +549,18 @@ describe("Patient Personal care read views", () => {
     }
     expect(historyMarkup).toContain('href="/app/personal/appointments/11111111-1111-4111-8111-111111111111/66666666-6666-4666-8666-666666666666"');
     expect(historyMarkup).toContain('href="/app/personal/appointments/11111111-1111-4111-8111-111111111111?page=2"');
-    expect(detailMarkup).toContain("กลับไปนัดหมายของโรงพยาบาลนี้");
-    expect(detailMarkup).toContain("กลับพื้นที่ส่วนตัว");
-    expect(historyMarkup).toContain("ยังไม่มีการรับทราบสำหรับกำหนดการนี้");
+    expect(detailMarkup).not.toContain("กลับไปนัดหมายของโรงพยาบาลนี้");
+    expect(detailMarkup).not.toContain("กลับพื้นที่ส่วนตัว");
+    expect(detailMarkup).toContain('href="/app/personal/appointments"');
   });
 
   it.each([AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW])("keeps %s factual and separate from Program/Follow-up evidence", (status) => {
-    const markup = renderToStaticMarkup(<PatientSelfAppointmentDetailView cancellationRequestNonce="nonce" detail={{ ...appointment, parentHospitalName: null, contactPhones, relationship: anotherRelationship, status }} />);
+    const markup = renderToStaticMarkup(<PatientSelfAppointmentDetailView cancellationRequestNonce="nonce" detail={{ ...appointment, parentHospitalName: null, contactPhones, relationship: anotherRelationship, status }} rescheduleHistory={{ ...rescheduleHistory, scheduled: false }} rescheduleNonce="nonce-2" />);
     expect(markup).not.toContain("<button");
-    expect(markup).toContain("เป็นประวัติผลนัด ไม่เปิดรับการรับทราบหรือคำขอยกเลิกใหม่");
-    if (status === AppointmentStatus.COMPLETED) expect(markup).toContain("สถานะเสร็จสิ้นไม่ได้ยืนยันว่ามีบันทึกการติดตามผลหรือจบโปรแกรมแล้ว");
-    expect(markup).toContain("เป็นข้อมูลเมื่อสร้างนัด ไม่ยืนยันผู้รับผิดชอบปัจจุบันหรือการตอบรับงาน");
-    expect(markup).toContain(`href="/app/personal/appointments/${anotherRelationship.relationshipId}"`);
+    expect(markup).not.toContain("สิ่งที่ทำได้");
+    for (const policy of ["เป็นประวัติผลนัด", "สถานะเสร็จสิ้นไม่ได้ยืนยัน", "เป็นข้อมูลเมื่อสร้างนัด", "OSM"]) {
+      expect(markup).not.toContain(policy);
+    }
     expect(markup).toContain(anotherRelationship.hospitalName);
     expect(markup).not.toContain(ownRelationship.hospitalName);
     expect(markup).not.toMatch(/href="\/app\/patients|ส่ง LINE แล้ว/);
@@ -559,6 +576,8 @@ describe("Patient Personal care read views", () => {
     const detailMarkup = renderToStaticMarkup(
       <PatientSelfAppointmentDetailView
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
+        rescheduleHistory={rescheduleHistory}
+        rescheduleNonce="88888888-8888-4888-8888-888888888888"
         detail={{
           contactPhones,
           parentHospitalName: null,
@@ -580,10 +599,12 @@ describe("Patient Personal care read views", () => {
     }
   });
 
-  it("renders an unassigned responsible person as not specified", () => {
+  it("omits an unassigned responsible person instead of a placeholder", () => {
     const detailMarkup = renderToStaticMarkup(
       <PatientSelfAppointmentDetailView
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
+        rescheduleHistory={rescheduleHistory}
+        rescheduleNonce="88888888-8888-4888-8888-888888888888"
         detail={{
           contactPhones,
           parentHospitalName: null,
@@ -595,8 +616,8 @@ describe("Patient Personal care read views", () => {
       />,
     );
 
-    expect(detailMarkup).toContain("ผู้รับผิดชอบ");
-    expect(detailMarkup).toContain("ยังไม่ระบุ");
+    expect(detailMarkup).not.toContain("ผู้รับผิดชอบ");
+    expect(detailMarkup).not.toContain("ไม่ระบุ");
     expect(detailMarkup).not.toContain("แพทย์ผู้ดูแล");
     expect(detailMarkup).not.toContain("พยาบาลผู้ดูแล");
   });
