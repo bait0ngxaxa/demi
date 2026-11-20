@@ -14,6 +14,7 @@ import {
   HospitalBulkRegistrationRejectedError,
   HospitalRetirementIneligibleError,
   previewHospitalBulkRegistration,
+  renameHospital,
   retireHospitals,
 } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
@@ -945,6 +946,26 @@ describe("O1-E: denials", () => {
     await expect(transferHospitalServiceArea(admin, { areaId: area.id, toParentHospitalId: parent.id, confirm: true, reason: "ย้ายเครือข่าย" }))
       .rejects.toBeInstanceOf(DuplicateNetworkChildNameError);
     expect(await db.hospitalServiceArea.findUniqueOrThrow({ where: { id: area.id }, select: { endedAt: true } })).toEqual({ endedAt: null });
+  });
+
+  it("applies the same network name rule to the platform ADMIN rename, not to a Hospital outside any network", async () => {
+    const { parent, parentOwner } = await setup();
+    await createChildFacility(parentOwner, childInput(parent.id, { name: "รพ.สต.ชื่อเดิม" }));
+    const sibling = await createChildFacility(parentOwner, childInput(parent.id, { name: "รพ.สต.อีกแห่ง" }));
+    const rename = async (hospitalId: string, name: string) => {
+      const { updatedAt } = await db.hospital.findUniqueOrThrow({ where: { id: hospitalId }, select: { updatedAt: true } });
+      return renameHospital(admin, { hospitalId, expectedUpdatedAt: updatedAt.toISOString(), name });
+    };
+
+    // Registered-for (pending) and attached Children both count; normalized equal is refused and nothing changes.
+    await expect(rename(sibling.child.id, "รพ.สต. ชื่อเดิม")).rejects.toBeInstanceOf(DuplicateNetworkChildNameError);
+    expect(await db.hospital.findUniqueOrThrow({ where: { id: sibling.child.id }, select: { name: true } })).toEqual({ name: "รพ.สต.อีกแห่ง" });
+    expect(await db.auditEvent.count({ where: { resourceId: sibling.child.id, action: "hospital.renamed" } })).toBe(0);
+    await expect(rename(sibling.child.id, "รพ.สต.ชื่อใหม่")).resolves.toMatchObject({ name: "รพ.สต.ชื่อใหม่" });
+
+    // A Hospital in no network keeps today's behaviour.
+    const standalone = await hospital(HospitalStatus.ACTIVE, null);
+    await expect(rename(standalone.id, "รพ.สต.ชื่อเดิม")).resolves.toMatchObject({ name: "รพ.สต.ชื่อเดิม" });
   });
 
   it("frees a Child name once that Child was cancelled (retired)", async () => {
