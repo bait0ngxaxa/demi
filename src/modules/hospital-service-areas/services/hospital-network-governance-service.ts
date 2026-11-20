@@ -18,6 +18,7 @@ import {
   areaSelect, facilitySelect, hasUnsupportedShape, operation, page,
   type HospitalServiceAreaDependencies, type HospitalServiceAreaProjection, type ServiceAreaPage,
 } from "./hospital-service-area-service";
+import { assertUniqueNetworkChildName } from "./network-child-names";
 
 export type HospitalNetworkRoleProjection = {
   hospitalId: string;
@@ -138,7 +139,8 @@ export async function listHospitalServiceAreasForAdmin(
   });
 }
 
-export type HospitalNetworkFacilitySummary = { id: string; hospitalCode: string; name: string; status: HospitalStatus };
+/** `hospitalCode` stays internal (ordering, audit); screens show the name, disambiguated with `createdAt` when needed. */
+export type HospitalNetworkFacilitySummary = { id: string; hospitalCode: string; name: string; status: HospitalStatus; createdAt: Date };
 export type HospitalNetworkAdminView = {
   role: HospitalServiceAreaFacilityKind | null;
   /** Active associations where this Hospital is the Parent. */
@@ -147,7 +149,7 @@ export type HospitalNetworkAdminView = {
   parentArea: { areaId: string; createdAt: Date; parent: HospitalNetworkFacilitySummary } | null;
 };
 
-const summarySelect = { id: true, hospitalCode: true, name: true, status: true } satisfies Prisma.HospitalSelect;
+const summarySelect = { id: true, hospitalCode: true, name: true, status: true, createdAt: true } satisfies Prisma.HospitalSelect;
 
 /** Network placement of one Hospital for the governance screen. Identity data only; never Patient data. */
 export async function getHospitalNetworkForAdmin(
@@ -254,10 +256,9 @@ async function countNetworkStructure(tx: Prisma.TransactionClient): Promise<Hosp
   return row;
 }
 
-function hospitalNameOrCodeWhere(value: string | undefined): Prisma.HospitalWhereInput {
-  return value
-    ? { OR: [{ name: { contains: value, mode: "insensitive" } }, { hospitalCode: { contains: value, mode: "insensitive" } }] }
-    : {};
+/** Hospital codes are internal: directory and transfer searches match names only. */
+function hospitalNameWhere(value: string | undefined): Prisma.HospitalWhereInput {
+  return value ? { name: { contains: value, mode: "insensitive" } } : {};
 }
 
 /** One counted page of the governance directory with its network role and active Parent. Identity data only. */
@@ -271,7 +272,7 @@ export async function listHospitalNetworkDirectoryForAdmin(
   return operation(dependencies.database ?? getPrisma(), async (tx) => {
     await authorizeAdmin(tx, actor, HOSPITAL_GOVERNANCE_CAPABILITIES.networkAreaGovern);
     const where: Prisma.HospitalWhereInput = {
-      AND: [directoryFilterWhere(filter), filter === "network" ? placementWhere(placement) : {}, hospitalNameOrCodeWhere(value)],
+      AND: [directoryFilterWhere(filter), filter === "network" ? placementWhere(placement) : {}, hospitalNameWhere(value)],
     };
     const networkCounts = filter === "network" ? await countNetworkStructure(tx) : null;
     const total = await tx.hospital.count({ where });
@@ -342,7 +343,7 @@ export async function searchHospitalTransferTargetsForAdmin(
       where: {
         AND: [
           { id: { not: parentArea.parentHospitalId }, status: HospitalStatus.ACTIVE, serviceAreaEligibility: { is: { kind: "PARENT" } } },
-          hospitalNameOrCodeWhere(value),
+          hospitalNameWhere(value),
         ],
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],
@@ -388,6 +389,7 @@ export async function transferHospitalServiceArea(
       throw new ValidationError("Target Parent or Child facility is ineligible, inactive or lacks a network role");
     }
     if (await hasUnsupportedShape(tx, toParentHospitalId, child.id)) throw new ValidationError("Unsupported service area hierarchy");
+    await assertUniqueNetworkChildName(tx, { parentHospitalId: toParentHospitalId, name: child.name, exceptHospitalId: child.id });
     const now = await databaseNow(tx);
     const ended = await endActiveArea(tx, areaId, actor.userId, reason, now);
     const created = await tx.hospitalServiceArea.create({

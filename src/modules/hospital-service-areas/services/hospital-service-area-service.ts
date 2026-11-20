@@ -10,6 +10,7 @@ import { hasServiceAreaEligibility, isEligibleServiceAreaPair, type ServiceAreaF
 import { assertHospitalServiceAreaPolicy, HOSPITAL_SERVICE_AREA_CAPABILITIES, type HospitalServiceAreaCapability } from "../policies/hospital-service-area-policy";
 import { serviceAreaAttachSchema, serviceAreaCandidatePageSchema, serviceAreaEndSchema, serviceAreaPageSchema } from "../schemas/hospital-service-area-schemas";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
+import { assertUniqueNetworkChildName } from "./network-child-names";
 
 export const facilitySelect = {
   id: true, hospitalCode: true, name: true, status: true,
@@ -21,7 +22,7 @@ export const areaSelect = {
 } satisfies Prisma.HospitalServiceAreaSelect;
 
 export type HospitalServiceAreaProjection = Prisma.HospitalServiceAreaGetPayload<{ select: typeof areaSelect }>;
-export type ServiceAreaCandidate = { id: string; hospitalCode: string; name: string };
+export type ServiceAreaCandidate = { id: string; name: string; createdAt: Date };
 export type ServiceAreaPage<T> = { items: T[]; nextAfterId: string | null };
 export type HospitalServiceAreaDependencies = { database?: PrismaClient };
 
@@ -118,14 +119,12 @@ export async function listEligibleServiceAreaCandidates(
         serviceAreaEligibility: { is: { kind: "CHILD" } },
         serviceAreaAssignments: { none: { endedAt: null } },
         managedServiceAreas: { none: { endedAt: null } },
-        ...(query ? { OR: [
-          { name: { contains: query, mode: "insensitive" } },
-          { hospitalCode: { contains: query, mode: "insensitive" } },
-        ] } : {}),
+        // Hospital codes are internal: the search matches names only.
+        ...(query ? { name: { contains: query, mode: "insensitive" } } : {}),
         ...(afterId ? { id: { gt: afterId } } : {}),
       },
       orderBy: { id: "asc" }, take: limit + 1,
-      select: { id: true, hospitalCode: true, name: true },
+      select: { id: true, name: true, createdAt: true },
     });
     return page(rows, limit);
   });
@@ -145,6 +144,7 @@ export async function attachHospitalServiceArea(
     const active = await tx.hospitalServiceArea.findFirst({ where: { childHospitalId, endedAt: null }, select: { parentHospitalId: true } });
     if (active) throw new ConflictError(active.parentHospitalId === parentHospitalId ? "Child facility is already attached" : "Child facility already has an active assignment");
     if (await hasUnsupportedShape(tx, parentHospitalId, childHospitalId)) throw new ValidationError("Unsupported service area hierarchy");
+    await assertUniqueNetworkChildName(tx, { parentHospitalId, name: child.name, exceptHospitalId: child.id });
     const area = await tx.hospitalServiceArea.create({ data: { parentHospitalId, childHospitalId, createdByUserId: actor.userId }, select: areaSelect });
     await recordAuditEvent({ actorUserId: actor.userId, action: "hospital_service_area.attached", resourceType: "HospitalServiceArea", resourceId: area.id,
       metadata: { parentHospitalId, childHospitalId, fromStatus: null, toStatus: "ACTIVE" },

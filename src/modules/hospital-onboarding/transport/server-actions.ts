@@ -279,7 +279,7 @@ export async function searchOnboardingHospitalsAction(value: string): Promise<Se
       return { status: "ERROR", message: "ค้นหาบ่อยเกินไป กรุณารอสักครู่แล้วลองอีกครั้ง" };
     }
     if (error instanceof ApplicationError && error.code === "VALIDATION") {
-      return { status: "ERROR", message: "กรุณาพิมพ์ชื่อหรือรหัสโรงพยาบาลอย่างน้อย 2 ตัวอักษร (ไม่เกิน 100 ตัวอักษร)" };
+      return { status: "ERROR", message: "กรุณาพิมพ์ชื่อโรงพยาบาลอย่างน้อย 2 ตัวอักษร (ไม่เกิน 100 ตัวอักษร)" };
     }
     return { status: "ERROR", message: "ไม่สามารถค้นหาโรงพยาบาลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };
   }

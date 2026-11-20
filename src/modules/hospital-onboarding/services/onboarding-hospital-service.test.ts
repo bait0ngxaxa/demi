@@ -21,24 +21,22 @@ describe("public onboarding Hospital projection", () => {
       serviceAreaAssignments: { none: {} },
     });
     const findMany = vi.fn().mockResolvedValue([
-      { id: "hospital-parent-id", hospitalCode: "PARENT-001", name: "โรงพยาบาลแม่ข่าย", serviceAreaEligibility: { kind: "PARENT" } },
+      { id: "hospital-parent-id", hospitalCode: "PARENT-001", name: "โรงพยาบาลแม่ข่าย", createdAt: NOW, serviceAreaEligibility: { kind: "PARENT" } },
     ]);
     const database = { hospital: { findMany } } as unknown as OnboardingHospitalDatabase;
     const rateLimiter = { consume: vi.fn().mockResolvedValue(true) };
 
     await expect(searchOnboardingHospitals("  แม่ข่าย ", { ipAddress: "203.0.113.7" }, { database, rateLimiter, now: () => NOW }))
       .resolves.toEqual([
-        { id: "hospital-parent-id", hospitalCode: "PARENT-001", name: "โรงพยาบาลแม่ข่าย", networkRole: "PARENT" },
+        { id: "hospital-parent-id", hospitalCode: "PARENT-001", name: "โรงพยาบาลแม่ข่าย", createdAt: NOW, networkRole: "PARENT" },
       ]);
     expect(rateLimiter.consume).toHaveBeenCalledWith("HOSPITAL_SEARCH", "203.0.113.7", NOW);
     expect(findMany).toHaveBeenCalledWith({
       where: {
         AND: [
           publicOnboardableHospitalWhere,
-          { OR: [
-            { name: { contains: "แม่ข่าย", mode: "insensitive" } },
-            { hospitalCode: { contains: "แม่ข่าย", mode: "insensitive" } },
-          ] },
+          // Name only: Hospital codes are internal and never searchable.
+          { name: { contains: "แม่ข่าย", mode: "insensitive" } },
         ],
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],
@@ -47,6 +45,7 @@ describe("public onboarding Hospital projection", () => {
         id: true,
         hospitalCode: true,
         name: true,
+        createdAt: true,
         serviceAreaEligibility: { select: { kind: true } },
       },
     });

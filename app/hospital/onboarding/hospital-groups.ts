@@ -2,6 +2,7 @@ export type OnboardingHospitalOption = {
   id: string;
   hospitalCode: string;
   name: string;
+  createdAt: Date;
   /** ADMIN-set network role (ADR-0015); a grouping label only. */
   networkRole: "PARENT" | "CHILD" | null;
 };

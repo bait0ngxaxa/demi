@@ -2044,7 +2044,7 @@ export async function searchMediatedPasswordResetTargets(
   }
 }
 
-export type MediatedPasswordResetHospitalOption = { id: string; hospitalCode: string; name: string };
+export type MediatedPasswordResetHospitalOption = { id: string; name: string; createdAt: Date };
 
 const mediatedPasswordResetHospitalSearchSchema = z.object({
   value: z.string().trim().min(1).max(HOSPITAL_SEARCH_MAX_LENGTH),
@@ -2067,13 +2067,11 @@ export async function searchMediatedPasswordResetHospitals(
     return await database.$transaction(async (transaction) => {
       await assertPlatformAdminInDatabase(transaction, actor.userId);
       return transaction.hospital.findMany({
-        where: {
-          status: HospitalStatus.ACTIVE,
-          OR: [{ name: { contains: value, mode: "insensitive" } }, { hospitalCode: { contains: value, mode: "insensitive" } }],
-        },
+        // Hospital codes are internal: the search matches names only.
+        where: { status: HospitalStatus.ACTIVE, name: { contains: value, mode: "insensitive" } },
         orderBy: [{ name: "asc" }, { id: "asc" }],
         take: HOSPITAL_SEARCH_RESULT_LIMIT,
-        select: { id: true, hospitalCode: true, name: true },
+        select: { id: true, name: true, createdAt: true },
       });
     });
   } catch (error: unknown) {

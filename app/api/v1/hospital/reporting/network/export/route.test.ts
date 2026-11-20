@@ -52,13 +52,13 @@ describe("ADR-0025 network report export endpoint", () => {
     expect(response.headers.get("X-Report-Generated-At")).toBe(generatedAt.toISOString());
   });
 
-  it("returns a private XLSX named by the Parent code and passes the parsed selection", async () => {
+  it("returns a private XLSX named by date only (no Hospital code) and passes the parsed selection", async () => {
     const response = await GET(new Request(`${endpoint}?parentHospitalId=${parentHospitalId}&scope=ALL&cohort=INCLUDE_ENDED`));
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     expect(response.headers.get("Cache-Control")).toContain("no-store");
-    expect(response.headers.get("Content-Disposition")).toBe('attachment; filename="demi-network-report-P_001________-2026-11-01.xlsx"');
+    expect(response.headers.get("Content-Disposition")).toBe('attachment; filename="demi-network-report-2026-11-01.xlsx"');
     expect(mockedExport).toHaveBeenCalledWith(actor, { parentHospitalId, hospitalIds: "ALL", cohort: "INCLUDE_ENDED" });
   });
 

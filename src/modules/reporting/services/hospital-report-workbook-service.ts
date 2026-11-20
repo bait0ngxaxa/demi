@@ -12,6 +12,8 @@ import { join } from "node:path";
 
 import ExcelJS from "exceljs";
 
+import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
+
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { summarizeFollowupAchievements } from "@/modules/followups/domain/followup-achievement";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
@@ -836,12 +838,26 @@ function serviceUnitColumn(sheet: ExcelJS.Worksheet): number {
   return roundReportStartColumn(sheet) + ROUND_REPORT_HEADERS.length;
 }
 
-function serviceUnitLabel(hospital: NetworkReportingHospital): string {
-  return assertCellText(`${hospital.name} (${hospital.hospitalCode})`);
+/** Names only: a same-named Child gets its Parent, a same-named Parent its registration date. */
+function serviceUnitLabels(dataset: NetworkReportingDataset): ReadonlyMap<string, string> {
+  return hospitalDisplayNames(dataset.hospitals.map(({ hospital }) => ({
+    id: hospital.id,
+    name: hospital.name,
+    parentName: hospital.kind === "CHILD" ? dataset.parent.name : null,
+    registeredAt: hospital.createdAt,
+  })));
+}
+
+function serviceUnitLabel(hospital: NetworkReportingHospital, labels: ReadonlyMap<string, string>): string {
+  return assertCellText(labels.get(hospital.id) ?? hospital.name);
 }
 
 /** Every row of a Program, continuation rows included, names its Hospital so the sheet filters correctly. */
-function writeServiceUnitColumn(sheet: ExcelJS.Worksheet, sections: readonly NetworkReportingSection[]): void {
+function writeServiceUnitColumn(
+  sheet: ExcelJS.Worksheet,
+  sections: readonly NetworkReportingSection[],
+  labels: ReadonlyMap<string, string>,
+): void {
   const column = serviceUnitColumn(sheet);
   const header = sheet.getCell(ROUND_REPORT_HEADER_ROW, column);
   header.value = SERVICE_UNIT_HEADER;
@@ -850,7 +866,7 @@ function writeServiceUnitColumn(sheet: ExcelJS.Worksheet, sections: readonly Net
   const followupsPerRow = sheet.name === DASHBOARD_SHEET_NAME ? DASHBOARD_FOLLOWUPS_PER_ROW : SERVICE_FOLLOWUPS_PER_ROW;
   let rowNumber = DATA_START_ROW;
   for (const section of sections) {
-    const label = serviceUnitLabel(section.hospital);
+    const label = serviceUnitLabel(section.hospital, labels);
     for (const program of section.programs) {
       for (let continuation = 0; continuation < rowsPerProgram(program, followupsPerRow); continuation += 1) {
         const cell = sheet.getRow(rowNumber).getCell(column);
@@ -864,7 +880,6 @@ function writeServiceUnitColumn(sheet: ExcelJS.Worksheet, sections: readonly Net
 
 const NETWORK_SUMMARY_HEADERS = [
   SERVICE_UNIT_HEADER,
-  "รหัส",
   "ประเภท",
   "จำนวนเคส",
   "Program ทั้งหมด",
@@ -884,19 +899,23 @@ function summaryRowValues(counts: HospitalReportingSummary): number[] {
 }
 
 /** One row per Hospital plus a total; counts only, no Patient data. */
-function writeNetworkSummarySheet(workbook: ExcelJS.Workbook, dataset: NetworkReportingDataset): void {
+function writeNetworkSummarySheet(
+  workbook: ExcelJS.Workbook,
+  dataset: NetworkReportingDataset,
+  labels: ReadonlyMap<string, string>,
+): void {
   const sheet = workbook.addWorksheet(NETWORK_SUMMARY_SHEET_NAME);
-  sheet.columns = NETWORK_SUMMARY_HEADERS.map((_, index) => ({ width: index === 0 ? 44 : index === 7 ? 30 : 16 }));
+  const lastColumn = NETWORK_SUMMARY_HEADERS.length - 1;
+  sheet.columns = NETWORK_SUMMARY_HEADERS.map((_, index) => ({ width: index === 0 ? 44 : index === lastColumn ? 30 : 16 }));
   sheet.addRow([...NETWORK_SUMMARY_HEADERS]).font = { bold: true };
   for (const section of dataset.hospitals) {
     sheet.addRow([
-      assertCellText(section.hospital.name),
-      section.hospital.hospitalCode,
+      serviceUnitLabel(section.hospital, labels),
       section.hospital.kind === "PARENT" ? "แม่ข่าย" : "ลูกข่าย",
       ...summaryRowValues(section.counts),
     ]);
   }
-  sheet.addRow(["รวม", "", "", ...summaryRowValues(dataset.counts)]).font = { bold: true };
+  sheet.addRow(["รวม", "", ...summaryRowValues(dataset.counts)]).font = { bold: true };
 }
 
 /**
@@ -918,9 +937,10 @@ export async function generateNetworkReportWorkbook(
     },
     `โรงพยาบาล: ${assertCellText(dataset.parent.name)} และเครือข่าย (${dataset.hospitals.length.toLocaleString("th-TH")} แห่ง)`,
   );
-  writeServiceUnitColumn(template.dashboardSheet, dataset.hospitals);
-  writeServiceUnitColumn(template.serviceSheet, dataset.hospitals);
-  writeNetworkSummarySheet(template.workbook, dataset);
+  const labels = serviceUnitLabels(dataset);
+  writeServiceUnitColumn(template.dashboardSheet, dataset.hospitals, labels);
+  writeServiceUnitColumn(template.serviceSheet, dataset.hospitals, labels);
+  writeNetworkSummarySheet(template.workbook, dataset, labels);
   writeExplanationSheet(template);
 
   return Buffer.from(await template.workbook.xlsx.writeBuffer());

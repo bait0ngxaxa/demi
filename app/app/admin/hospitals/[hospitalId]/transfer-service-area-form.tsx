@@ -7,6 +7,7 @@ import { useServerSearch } from "@/components/search/use-server-search";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input, inputClassName } from "@/components/ui/input";
+import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
 import type { HospitalNetworkFacilitySummary } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { HOSPITAL_SEARCH_MAX_LENGTH, HOSPITAL_SEARCH_RESULT_LIMIT } from "@/shared/search/hospital-search";
 import {
@@ -17,7 +18,7 @@ import {
 const SEARCH_ERROR = "ไม่สามารถค้นหาแม่ข่ายได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง";
 
 /**
- * Transfer a Child to another Parent. The candidates are searched on the server (at most 10 by name or code), so the
+ * Transfer a Child to another Parent. The candidates are searched on the server (at most 10 by name), so the
  * page never ships the whole Parent registry; the transfer itself re-checks the target's eligibility.
  */
 export function TransferServiceAreaForm({
@@ -37,6 +38,9 @@ export function TransferServiceAreaForm({
   });
   const { shown, answered } = search;
   const results = shown?.items ?? [];
+  // Parents are top-level, so same-named results are told apart by registration date.
+  const names = hospitalDisplayNames(results.map(({ id, name, createdAt }) => ({ id, name, registeredAt: createdAt })));
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
 
   return (
     <NetworkMutationForm
@@ -45,7 +49,7 @@ export function TransferServiceAreaForm({
       confirmation={{
         title: "โอนลูกข่ายไปแม่ข่ายใหม่หรือไม่",
         description: selected
-          ? `ลูกข่ายจะย้ายไปอยู่กับ ${selected.name} แม่ข่ายเดิมจะหมดสิทธิ์ดูผู้ป่วยและรายงานของลูกข่ายนี้ทันที และแม่ข่ายใหม่จะเริ่มมีสิทธิ์ ประวัติเดิมยังคงอยู่`
+          ? `ลูกข่ายจะย้ายไปอยู่กับ ${selectedLabel ?? selected.name} แม่ข่ายเดิมจะหมดสิทธิ์ดูผู้ป่วยและรายงานของลูกข่ายนี้ทันที และแม่ข่ายใหม่จะเริ่มมีสิทธิ์ ประวัติเดิมยังคงอยู่`
           : "แม่ข่ายเดิมจะหมดสิทธิ์ดูผู้ป่วยและรายงานของลูกข่ายนี้ทันที และแม่ข่ายใหม่จะเริ่มมีสิทธิ์ ประวัติเดิมยังคงอยู่",
         confirmLabel: "โอนย้าย",
       }}
@@ -54,7 +58,7 @@ export function TransferServiceAreaForm({
       submitLabel="โอนย้าย"
     >
       <label className="block text-sm font-semibold text-text">
-        ค้นหาแม่ข่ายปลายทาง (ชื่อหรือรหัส)
+        ค้นหาแม่ข่ายปลายทาง (ชื่อ)
         <Input
           className="mt-2"
           // Its own form, so Enter searches instead of submitting the transfer.
@@ -67,7 +71,7 @@ export function TransferServiceAreaForm({
       </label>
       <p aria-live="polite" className="mt-2 text-sm" role="status">
         {selected ? (
-          <>แม่ข่ายปลายทาง: <span className="font-semibold">{selected.name} ({selected.hospitalCode})</span></>
+          <>แม่ข่ายปลายทาง: <span className="font-semibold">{selectedLabel ?? selected.name}</span></>
         ) : (
           <span className="text-text-muted">ยังไม่ได้เลือกแม่ข่ายปลายทาง</span>
         )}
@@ -101,19 +105,19 @@ export function TransferServiceAreaForm({
                       className="size-4 accent-brand-strong"
                       form={searchFormId}
                       name="transfer-target"
-                      onChange={() => setSelected(target)}
+                      onChange={() => { setSelected(target); setSelectedLabel(names.get(target.id) ?? target.name); }}
                       type="radio"
                       value={target.id}
                     />
                     <span className="min-w-0 flex-1 break-words font-semibold text-text">
-                      {target.name} <span className="font-normal text-text-muted">({target.hospitalCode})</span>
+                      {names.get(target.id) ?? target.name}
                     </span>
                   </label>
                 </li>
               ))}
             </ul>
             {results.length >= HOSPITAL_SEARCH_RESULT_LIMIT ? (
-              <p className="mt-2 text-xs leading-5 text-text-muted">แสดง 10 แห่งแรกที่ตรงกัน พิมพ์ชื่อหรือรหัสให้ละเอียดขึ้นเพื่อหาแห่งอื่น</p>
+              <p className="mt-2 text-xs leading-5 text-text-muted">แสดง 10 แห่งแรกที่ตรงกัน พิมพ์ชื่อให้ละเอียดขึ้นเพื่อหาแห่งอื่น</p>
             ) : null}
           </>
         )}

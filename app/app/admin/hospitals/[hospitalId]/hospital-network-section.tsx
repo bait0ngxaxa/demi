@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { HospitalGovernanceProjection } from "@/modules/hospital-governance/services/hospital-governance-service";
 import type { HospitalNetworkAdminView } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
+import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
 import {
   adminEndServiceAreaAction,
   renameHospitalAction,
@@ -39,6 +40,8 @@ export function HospitalNetworkSection({
   network: HospitalNetworkAdminView;
 }): React.JSX.Element {
   const hasActiveAreas = network.children.length > 0 || network.parentArea !== null;
+  // Children share this Parent, so same-named ones are told apart by registration date.
+  const childNames = hospitalDisplayNames(network.children.map(({ child }) => ({ id: child.id, name: child.name, registeredAt: child.createdAt })));
 
   return (
     <section aria-labelledby="hospital-network-heading" className="space-y-6">
@@ -102,7 +105,7 @@ export function HospitalNetworkSection({
                       className="min-w-0 break-words font-medium text-brand-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
                       href={`/app/admin/hospitals/${child.id}`}
                     >
-                      {child.name} <span className="text-sm font-normal text-text-muted">({child.hospitalCode})</span>
+                      {childNames.get(child.id) ?? child.name}
                     </Link>
                     <StatusBadge variant={hospitalStatusVariant(child.status)}>{hospitalStatusLabel(child.status)}</StatusBadge>
                   </div>

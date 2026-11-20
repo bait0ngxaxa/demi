@@ -56,6 +56,7 @@ import {
 } from "@/modules/hospital-onboarding/services/parent-owner-invitation-context";
 import { activatePendingChildOwner, assertChildOwnerInvitationContext } from "./child-owner-invitation-context";
 import { authorize, operation } from "./hospital-service-area-service";
+import { assertUniqueNetworkChildName, DuplicateNetworkChildNameError } from "./network-child-names";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type ChildFacilityDependencies = {
@@ -278,6 +279,7 @@ export async function createChildFacility(
       const replayed = await findReplayedChild(tx, data, actor.userId);
       if (replayed) return { result: replayed, takeoverTask: null };
 
+      await assertUniqueNetworkChildName(tx, { parentHospitalId: data.parentHospitalId, name: data.name });
       const hospitalCode = await generateUniqueHospitalCode(tx);
       const child = await tx.hospital.create({
         data: {
@@ -327,7 +329,7 @@ export async function createChildFacility(
     return outcome.result;
   } catch (error: unknown) {
     // A concurrent submit of the same nonce may have won: answer with its Child when it matches.
-    if (error instanceof ConflictError) {
+    if (error instanceof ConflictError && !(error instanceof DuplicateNetworkChildNameError)) {
       const replayed = await findReplayedChild(database, data, actor.userId).catch((replayError: unknown) => {
         if (replayError instanceof ConflictError) throw replayError;
         throw toInfrastructureError("hospital-service-areas.createChildFacility", replayError, "Child facility registration could not be completed");
@@ -579,6 +581,7 @@ export async function renameChildFacility(
     const area = await findManagedChild(tx, data.parentHospitalId, data.childHospitalId);
     if (area.child.updatedAt.getTime() !== expectedUpdatedAt.getTime()) throw new ConflictError("The facility changed before this operation");
     if (area.child.name === data.name) throw new ValidationError("The facility already has this name");
+    await assertUniqueNetworkChildName(tx, { parentHospitalId: data.parentHospitalId, name: data.name, exceptHospitalId: area.child.id });
     const updated = await tx.hospital.updateMany({
       where: { id: area.child.id, updatedAt: area.child.updatedAt },
       data: { name: data.name },
@@ -798,7 +801,7 @@ export type ManagedChildOwnerInvitation = HospitalOwnerInvitationView;
 export type ManagedChildFacility = {
   areaId: string;
   attachedAt: Date;
-  child: ChildFacility & { status: HospitalStatus; updatedAt: Date };
+  child: ChildFacility & { status: HospitalStatus; createdAt: Date; updatedAt: Date };
   registeredByThisParent: boolean;
   /** รอเปิดใช้งาน / ใช้งานอยู่ / ไม่มีผู้ดูแล (O1-D). */
   state: "PENDING_ACTIVATION" | "ACTIVE" | "NO_OWNER" | "INACTIVE";
@@ -827,7 +830,7 @@ export async function listManagedChildFacilities(
         createdAt: true,
         child: {
           select: {
-            id: true, hospitalCode: true, name: true, status: true, updatedAt: true, registeredForParentHospitalId: true,
+            id: true, hospitalCode: true, name: true, status: true, createdAt: true, updatedAt: true, registeredForParentHospitalId: true,
             memberships: {
               where: { membershipType: MembershipType.OWNER, OR: [{ status: { in: [MembershipStatus.ACTIVE, ...OPEN_INVITATION_STATUSES] } }, { invitationDeclinedAt: { not: null } }] },
               orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -869,7 +872,7 @@ export async function listManagedChildFacilities(
       return {
         areaId: id,
         attachedAt: createdAt,
-        child: { id: child.id, hospitalCode: child.hospitalCode, name: child.name, status: child.status, updatedAt: child.updatedAt },
+        child: { id: child.id, hospitalCode: child.hospitalCode, name: child.name, status: child.status, createdAt: child.createdAt, updatedAt: child.updatedAt },
         registeredByThisParent: child.registeredForParentHospitalId === parentHospitalId,
         state,
         invitation: open ? {

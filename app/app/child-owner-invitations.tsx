@@ -17,14 +17,14 @@ function invitationCopy(invitation: HospitalOwnerInvitationForActor): {
   if (invitation.kind === "PARENT") {
     // ADR-0024: platform ADMIN invites the first or replacement OWNER of a Parent Hospital.
     return {
-      source: `จาก ผู้ดูแลระบบ DEMI · รหัสโรงพยาบาล ${invitation.hospital.hospitalCode}`,
+      source: "จาก ผู้ดูแลระบบ DEMI",
       scope: "เมื่อตอบรับ คุณจะเป็นแอดมินโรงพยาบาลนี้ และจัดการเจ้าหน้าที่ อสม. และเครือข่ายลูกข่ายของโรงพยาบาลได้",
       acceptDescription: "บัญชีของคุณจะได้รับสิทธิ์แอดมินโรงพยาบาลนี้ทันที",
       declineDescription: "ผู้ดูแลระบบ DEMI จะเห็นว่าคุณปฏิเสธ และต้องเชิญใหม่หากเปลี่ยนใจ",
     };
   }
   return {
-    source: `จาก ${invitation.parent.name} (แม่ข่าย) · รหัสหน่วยบริการ ${invitation.hospital.hospitalCode}`,
+    source: `จาก ${invitation.parent.name} (แม่ข่าย)`,
     scope: "เมื่อตอบรับ คุณจะเป็นแอดมินโรงพยาบาลลูกข่ายนี้ และจัดการเจ้าหน้าที่กับ อสม. ของหน่วยบริการได้ในเครือข่ายของแม่ข่าย",
     acceptDescription: "บัญชีของคุณจะได้รับสิทธิ์แอดมินโรงพยาบาลลูกข่ายนี้ทันที",
     declineDescription: "แม่ข่ายจะเห็นว่าคุณปฏิเสธ และต้องเชิญใหม่หากเปลี่ยนใจ",

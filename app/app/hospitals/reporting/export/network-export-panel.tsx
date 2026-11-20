@@ -10,6 +10,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { HospitalReportCohort } from "@/modules/reporting/schemas/hospital-report-schemas";
 import type { NetworkReportExportPreview } from "@/modules/reporting/services/hospital-report-query-service";
+import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
 
 import { downloadReportFile } from "../report-download";
 
@@ -59,10 +60,13 @@ export function NetworkExportPanel({
   const overLimit = totals.programs > preview.maxPrograms;
   const nothingSelected = totals.hospitals === 0;
 
+  // A same-named Child gets its Parent, a same-named Parent its registration date; codes are never shown.
+  const names = useMemo(() => hospitalDisplayNames(preview.hospitals.map(({ id, name, kind, createdAt }) => ({
+    id, name, parentName: kind === "CHILD" ? preview.parent.name : null, registeredAt: createdAt,
+  }))), [preview.hospitals, preview.parent.name]);
   const query = search.trim().toLocaleLowerCase("th");
   const visible = useMemo(
-    () => preview.hospitals.filter(({ name, hospitalCode }) =>
-      query === "" || name.toLocaleLowerCase("th").includes(query) || hospitalCode.toLocaleLowerCase("th").includes(query)),
+    () => preview.hospitals.filter(({ name }) => query === "" || name.toLocaleLowerCase("th").includes(query)),
     [preview.hospitals, query],
   );
 
@@ -137,7 +141,7 @@ export function NetworkExportPanel({
         <div className="min-w-0 space-y-3">
           <div className="min-w-0">
             <label className="type-label mb-2 block text-text" htmlFor={`${ids}-search`}>ค้นหาหน่วยบริการ</label>
-            <Input id={`${ids}-search`} onChange={(event) => setSearch(event.target.value)} placeholder="ชื่อหรือรหัสหน่วยบริการ" type="search" value={search} />
+            <Input id={`${ids}-search`} onChange={(event) => setSearch(event.target.value)} placeholder="ชื่อหน่วยบริการ" type="search" value={search} />
           </div>
           <div className="flex flex-wrap gap-2">
             <Button disabled={visible.length === 0} onClick={() => setVisible(true)} size="compact" type="button" variant="secondary">
@@ -162,11 +166,11 @@ export function NetworkExportPanel({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span className="min-w-0 break-words font-semibold text-text">{hospital.name}</span>
+                        <span className="min-w-0 break-words font-semibold text-text">{names.get(hospital.id) ?? hospital.name}</span>
                         <StatusBadge variant={hospital.kind === "PARENT" ? "info" : "neutral"}>{hospital.kind === "PARENT" ? "แม่ข่าย" : "ลูกข่าย"}</StatusBadge>
                       </span>
                       <span className="mt-1 block text-sm tabular-nums text-text-muted">
-                        รหัส {hospital.hospitalCode} · {numberFormat(hospital.relationships)} เคส · {numberFormat(hospital.programs)} โปรแกรม
+                        {numberFormat(hospital.relationships)} เคส · {numberFormat(hospital.programs)} โปรแกรม
                       </span>
                     </span>
                   </label>

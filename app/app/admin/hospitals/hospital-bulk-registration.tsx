@@ -33,10 +33,9 @@ function SimilarMatches({ row }: { row: HospitalBulkRegistrationPreviewRowState 
   return (
     <ul className="mt-1 space-y-0.5 text-xs leading-5 text-text-muted">
       {row.similarTo.map((match, index) => (
-        <li key={`${match.source}-${match.hospitalCode ?? "auto"}-${index}`}>
+        <li key={`${match.source}-${index}`}>
           {match.source === "EXISTING" ? "มีในระบบ: " : "ซ้ำกับแถวอื่นในไฟล์: "}
           {match.name}
-          {match.hospitalCode ? ` (${match.hospitalCode})` : ""}
         </li>
       ))}
     </ul>
@@ -44,7 +43,7 @@ function SimilarMatches({ row }: { row: HospitalBulkRegistrationPreviewRowState 
 }
 
 /**
- * O1-A: ADMIN imports Parent Hospitals from a UTF-8 CSV with one `name` column (codes are generated). Preview first; apply creates every row
+ * O1-A: ADMIN imports Parent Hospitals from a UTF-8 CSV with one `name` column. Preview first; apply creates every row
  * as a pending Parent in one transaction or none. The server re-parses and re-evaluates the file at apply.
  */
 export function HospitalBulkRegistration({ submissionNonce }: { submissionNonce: string }): React.JSX.Element {
@@ -74,7 +73,7 @@ export function HospitalBulkRegistration({ submissionNonce }: { submissionNonce:
     <Panel aria-labelledby="bulk-hospital-heading">
       <h2 className="text-xl font-semibold tracking-[-0.02em]" id="bulk-hospital-heading">นำเข้าโรงพยาบาลแม่ข่ายจากไฟล์</h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        ทุกรายการจะเป็นแม่ข่ายในสถานะรอขึ้นทะเบียน ระบบสร้างรหัสโรงพยาบาลให้เอง นำเข้าได้ครั้งละไม่เกิน 200 รายการ รพ.สต. และหน่วยบริการลูกข่ายให้แม่ข่ายสร้างเอง
+        ทุกรายการจะเป็นแม่ข่ายในสถานะรอขึ้นทะเบียน นำเข้าได้ครั้งละไม่เกิน 200 รายการ รพ.สต. และหน่วยบริการลูกข่ายให้แม่ข่ายสร้างเอง
       </p>
       <div className="mt-4 rounded-control border border-border bg-surface-muted/50 p-4 text-sm leading-6 text-text">
         <p className="font-semibold">วิธีเตรียมไฟล์</p>
