@@ -12,7 +12,7 @@ This removes local desktop contention from routine CI verification; it does not 
 | --- | --- | --- | --- |
 | `quality` | Code Quality | `npm run prisma:generate`; `npm run lint`; `npm run typecheck`; `npm run prisma:migrations:check -- origin/main` | 20 minutes |
 | `unit` | Unit Tests | `npm run prisma:generate`; `npm run test` | 20 minutes |
-| `integration` | Full PostgreSQL integration | `npm run test:db:up`; `npm run test:integration`; always `npm run test:db:down` | 60 minutes |
+| `integration` | Full PostgreSQL integration | `npm run test:db:up`; `npm run test:integration`; on test failure `npm run test:db:logs`; always `npm run test:db:down` | 60 minutes |
 | `build` | Production Build | `npm run prisma:generate`; `npm run build` | 20 minutes |
 
 Every job has its own checkout, Node setup and install. Prisma generation precedes consumers of generated types/enums/client; it does not migrate or require a running database. Only integration starts PostgreSQL and generates its client through the established test command. Quality checkout fetches all refs so the filesystem/Git-only migration checker can compare with `origin/main`; the explicit argument avoids assuming a local `main` branch exists on a detached PR checkout. No database is needed for that check.
@@ -76,6 +76,7 @@ The historical integration and full CI baselines above apply only to their recor
 | Identity check fails | Stop and recreate only the disposable environment using the existing lifecycle commands; never disable validation. |
 | Prisma migration fails | Original migration error and disposable identity; distinguish schema/migration errors from network/resource failures. Do not edit applied migrations or use production credentials. |
 | Vitest timeout / worker termination | Preserve the original failure, exact test and reported duration. Compare initial/final CPU, memory and disk snapshots and command/run timing. Snapshots cannot prove or exclude a transient pressure spike. Reproduce the exact case through `npm run test:integration:focused -- tests/integration/<file>.integration.test.ts` in a separately verified disposable environment; distinguish environmental pressure from a deterministic defect and state uncertainty. |
+| Integration test stalls (timeout far above its normal duration) | Read the **PostgreSQL server log on failure** step, printed before cleanup by `npm run test:db:logs`. The disposable server logs lock waits over 1s (`still waiting for … Process holding the lock: <pid>`) and statements over 2s. A lock wait names the blocker; slow statements without waits point to the query; neither points to the Node/Prisma side. Locally run `npm run test:db:logs` before `npm run test:db:down`. |
 | Cleanup fails | Inspect its separate failed step alongside the original failure. The VM is disposable; investigate Docker availability without concealing test failure. |
 
 Do not increase timeouts, add retries, skip cases, reduce fixtures, split/parallelize tests or alter business logic to force green CI. If resources prove insufficient, record measured bottlenecks and propose a larger or self-hosted runner as a separate decision.

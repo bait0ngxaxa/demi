@@ -17,6 +17,7 @@ const supportedActions = new Set([
   "db:down",
   "db:reset",
   "db:status",
+  "db:logs",
   "migrate",
   "migrate:populated",
   "migrate:line-populated",
@@ -820,6 +821,9 @@ if (action === "db:up") {
   databaseUp(runtime, environment);
 } else if (action === "db:status") {
   runCompose(runtime, environment, ["ps", "--all"]);
+} else if (action === "db:logs") {
+  // Read-only: the disposable PostgreSQL server log (lock waits and slow statements, see compose.integration.yaml).
+  runCompose(runtime, environment, ["logs", "--no-color", "--timestamps", "postgres"]);
 } else if (action === "verify") {
   try {
     databaseDown(runtime, environment);
