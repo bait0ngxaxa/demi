@@ -1058,6 +1058,64 @@ export async function getProgramRoundsOverview(
   }
 }
 
+export type RoundOneScreeningGap = {
+  patientProgramId: string;
+  /** Round-1 screening steps with no linked screening yet, in step order. */
+  missing: readonly ("PAM" | "PROMS")[];
+};
+
+/**
+ * OSM-SCREENING-IN-ROUND1 (owner, 2026-11-20): a screening counts for a Program only when it is linked to it.
+ * The ACTIVE Program whose round 1 is not completed and still lacks a screening for `instrument` (either one
+ * when null), or null. Uses the same facts as the round view; no new rule. Requires Program read.
+ */
+export async function getRoundOneScreeningGap(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  instrument: "PAM" | "PROMS" | null,
+  dependencies: PatientProgramRoundQueryDependencies = {},
+): Promise<RoundOneScreeningGap | null> {
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolvePatientProgramAccessContext(
+      actor,
+      relationshipId,
+      PATIENT_PROGRAM_READ_CAPABILITY,
+      database,
+    );
+    const relationship = access.patient.patientHospitalRelationshipId;
+    const active = await database.patientProgram.findFirst({
+      where: { patientHospitalRelationshipId: relationship, status: PatientProgramStatus.ACTIVE },
+      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+      select: { id: true },
+    });
+
+    if (!active) {
+      return null;
+    }
+
+    const record = await loadProgramRoundRecord(database, active.id, relationship);
+    const options = roundReadOptionsFor(access.actor);
+    const roundOne = buildProgramRoundsOverview(record, options).rounds.find(({ roundNumber }) => roundNumber === 1);
+
+    if (!roundOne || roundOne.state === "COMPLETED") {
+      return null;
+    }
+
+    const { screenings } = buildProgramRoundFacts(record, options);
+    const missing = (["PAM", "PROMS"] as const).filter((step) => screenings[step] === null);
+    const relevant = instrument === null ? missing : missing.filter((step) => step === instrument);
+
+    return relevant.length > 0 ? { patientProgramId: active.id, missing: relevant } : null;
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw toInfrastructureError("patient-program-rounds.getRoundOneScreeningGap", error, "Program round 1 could not be loaded");
+  }
+}
+
 export async function getProgramRoundDetail(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,

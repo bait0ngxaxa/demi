@@ -45,6 +45,8 @@
 | จัดการบัญชี | URI ไป LIFF | `https://liff.line.me/{configured LIFF ID}` | ใช้ flow จัดการบัญชีเดิม |
 | สลับพื้นที่ | native `richmenuswitch` | alias ของ role อื่นที่ eligible ในชุดเมนูเดียวกัน | ไม่เปลี่ยน role, membership หรือ authorization |
 
+> ปรับภายหลัง 2026-11-20 (OSM-SCREENING-IN-ROUND1): ปุ่ม “คัดกรองผู้ป่วย” ถูกถอดออก `?task=screening` redirect ไป `/app/services` และปุ่ม “บันทึกติดตาม” ชื่อ “จัดบริการ”
+
 โหมด `screening` และ `followup` เป็นค่า query ที่จำกัดไว้เพียงสองค่า ใช้เปลี่ยนข้อความและปลายทางหลังเลือกแถวเท่านั้น ไม่รับ patient/resource ID จาก Rich Menu และไม่ส่งโหมดไปแทน policy หากมี Hospital scope ที่สร้างผู้ป่วยไม่ได้ หน้าเดิมแสดงข้อความว่าไม่มีขอบเขตที่ใช้งานได้; หลาย scope ใช้ selector เดิมและตรวจ scope ปัจจุบันก่อนเลือก
 
 ### HOSPITAL และเมนูสถานะบัญชี

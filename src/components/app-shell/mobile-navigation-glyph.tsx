@@ -33,12 +33,6 @@ const iconPaths: Record<MobileNavigationIcon, React.ReactNode> = {
       <path d="M3.5 20v-1.3a5.5 5.5 0 0 1 11 0V20zM16 5.2a3.2 3.2 0 0 1 0 6.2M17 14a4.7 4.7 0 0 1 3.5 4.5V20h-4" />
     </>
   ),
-  screening: (
-    <>
-      <path d="M8 4.5h8a2 2 0 0 1 2 2v13h-12v-13a2 2 0 0 1 2-2ZM9 4.5v-1h6v1" />
-      <path d="m8.5 13 2.2 2.2 4.8-5" />
-    </>
-  ),
   followup: (
     <>
       <path d="M20 11.5a7.8 7.8 0 0 1-8 7.5 8.6 8.6 0 0 1-3.4-.7L4 20l1.3-3.8A7.1 7.1 0 0 1 4 12c0-4.2 3.6-7.5 8-7.5s8 3.2 8 7Z" />
@@ -187,10 +181,6 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   const [rawPathname = "", query = ""] = href.split("?");
   const pathname = rawPathname.replace(/\/+$/, "");
 
-  if (pathname === "/app/patients/assigned") {
-    const task = new URLSearchParams(query).get("task");
-    if (task === "screening") return "screening";
-  }
   if (pathname === "/app/services") return "care";
   if (pathname === "/app" || pathname === "/app/personal") return "home";
   if (pathname.startsWith("/app/appointments")) return "appointments";

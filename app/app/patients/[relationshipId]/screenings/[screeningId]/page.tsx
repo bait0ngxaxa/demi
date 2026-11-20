@@ -8,11 +8,6 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
-import {
-  decideOsmAssignedPatientReadPolicy,
-  PATIENT_READ_CAPABILITY,
-} from "@/modules/patient-directory/policies/patient-directory-policy";
 import {
   getInstrumentQuestionSet,
   getQuestionSet,
@@ -203,12 +198,10 @@ function InstrumentResult({ outcome }: { outcome: ScreeningOutcome }): React.JSX
 
 function ScreeningDetailView({
   activeProgram,
-  canContinueAssignedScreening,
   canManageProgram,
   detail,
 }: {
   activeProgram: PatientProgramProjection | null;
-  canContinueAssignedScreening: boolean;
   canManageProgram: boolean;
   detail: ScreeningDetail;
 }): React.JSX.Element {
@@ -224,6 +217,10 @@ function ScreeningDetailView({
       ? `${programHref ?? `/app/patients/${encodeURIComponent(relationshipId)}`}/goals/new${screeningQuery}`
       : programHref ?? `/app/patients/${encodeURIComponent(relationshipId)}`
     : `/app/patients/${encodeURIComponent(relationshipId)}/goals/new${screeningQuery}`;
+  // OSM-SCREENING-IN-ROUND1: a round-1 screening returns to its round. The page already required Program read.
+  const roundOneHref = detail.patientProgramId
+    ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(detail.patientProgramId)}/rounds/1`
+    : null;
   const legacy = detail.outcome.kind === "LEGACY" ? detail.outcome : null;
   const legacyResponses = detail.responses.kind === "LEGACY" ? detail.responses : null;
   return (
@@ -354,12 +351,12 @@ function ScreeningDetailView({
           >
             กลับไปประวัติการประเมิน
           </Link>
-          {canContinueAssignedScreening ? (
+          {roundOneHref ? (
             <Link
               className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={LINE_WEB_NAVIGATION_PATHS.START_OSM_SCREENING}
+              href={roundOneHref}
             >
-              เลือกผู้ป่วยรายถัดไปเพื่อคัดกรอง
+              กลับไปครั้งที่ 1
             </Link>
           ) : null}
         </div>
@@ -397,9 +394,6 @@ export default async function ScreeningDetailPage({
   return (
     <ScreeningDetailView
       activeProgram={programContext.active}
-      canContinueAssignedScreening={
-        decideOsmAssignedPatientReadPolicy({ actor, capability: PATIENT_READ_CAPABILITY }).allowed
-      }
       canManageProgram={programContext.canManage}
       detail={detail}
     />

@@ -19,6 +19,8 @@ import {
 import { submitScreeningAction } from "@/modules/screening/transport/server-actions";
 import type { ScreeningPatientSummary } from "@/modules/screening/services/screening-access-service";
 
+import { RoundOneScreeningAlert } from "./round-one-screening-alert";
+
 type ScreeningFormProps = {
   relationshipId: string;
   patient: Pick<ScreeningPatientSummary, "displayName" | "hospitalNumber"> & { hospital: Pick<ScreeningPatientSummary["hospital"], "name"> };
@@ -30,6 +32,8 @@ type ScreeningFormProps = {
   patientMode?: boolean;
   embedded?: boolean;
   nextHref?: string;
+  /** Without a programId: the same page linked to the ACTIVE Program whose round 1 still lacks this screening. */
+  roundOneHref?: string | null;
 };
 
 /** R2-B: the booklet shows five faces from worst (1) to best (5). */
@@ -151,6 +155,7 @@ export function ScreeningForm({
   patientMode = false,
   embedded = false,
   nextHref,
+  roundOneHref = null,
 }: ScreeningFormProps): React.JSX.Element {
   const router = useRouter();
   const scaleDescriptionId = useId();
@@ -197,7 +202,7 @@ export function ScreeningForm({
         <input name="instrument" type="hidden" value={questionSet.instrument} />
         {programId ? <input name="patientProgramId" type="hidden" value={programId} /> : null}
 
-        {programId ? null : (
+        {programId ? null : roundOneHref ? <RoundOneScreeningAlert href={roundOneHref} /> : (
           <Alert variant="warning">
             บันทึกนอกโปรแกรม จะไม่อยู่ในรายงานโปรแกรม
           </Alert>

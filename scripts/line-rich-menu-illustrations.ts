@@ -12,7 +12,6 @@ export type LineRichMenuIllustration =
   | "patient-medication-review"
   | "patient-care-guidance"
   | "patient-workspace"
-  | "osm-screening"
   | "osm-home-visit"
   | "osm-community-workspace"
   | "osm-workflow-coordination"
@@ -45,7 +44,7 @@ const atlasFiles: Record<AtlasKey, string> = {
 
 const illustrationSources: Record<LineRichMenuIllustration, IllustrationSource> = {
   "patient-appointment-consultation": { kind: "atlas", atlas: "community-and-appointments", quadrant: 0 },
-  "osm-screening": { kind: "atlas", atlas: "community-and-appointments", quadrant: 1 },
+  // Quadrant 1 (screening) is unused since OSM-SCREENING-IN-ROUND1 removed the OSM screening action.
   "osm-home-visit": { kind: "atlas", atlas: "community-and-appointments", quadrant: 2 },
   "hospital-operations": { kind: "atlas", atlas: "community-and-appointments", quadrant: 3 },
   "patient-appointment-history": { kind: "atlas", atlas: "patient-care", quadrant: 0 },
@@ -68,7 +67,6 @@ const illustrationTones: Record<LineRichMenuIllustration, LineRichMenuIllustrati
   "patient-medication-review": "patient",
   "patient-care-guidance": "patient",
   "patient-workspace": "patient",
-  "osm-screening": "osm",
   "osm-home-visit": "osm",
   "osm-community-workspace": "osm",
   "osm-workflow-coordination": "osm",
@@ -120,8 +118,6 @@ export function getLineRichMenuActionVisual(
       return actionVisual("patient-care-guidance");
     case "OPEN_OSM_ASSIGNED_PATIENTS":
       return actionVisual("osm-community-workspace");
-    case "START_OSM_SCREENING":
-      return actionVisual("osm-screening");
     case "START_OSM_FOLLOWUP":
       return actionVisual("osm-home-visit");
     case "OPEN_PATIENT_WORKSPACE":

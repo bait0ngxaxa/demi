@@ -37,7 +37,7 @@ const result = {
 };
 const invalidTaskModes: Array<{ name: string; task: string | string[] }> = [
   { name: "unknown", task: "unknown" },
-  { name: "duplicate", task: ["screening", "followup"] },
+  { name: "non-first", task: ["unknown", "screening"] },
 ];
 
 describe("assigned Patient directory page", () => {
@@ -65,18 +65,15 @@ describe("assigned Patient directory page", () => {
     expect(page.props).toMatchObject({ lookupType: "HOSPITAL_NUMBER", value: "HN-001", result });
   });
 
-  it("accepts only the bounded screening task mode", async () => {
-    const page = await AssignedPatientDirectoryPage({
-      searchParams: Promise.resolve({ task: "screening" }),
-    });
-
-    expect(page.props.taskMode).toBe("screening");
-    expect(mockedFindAssignedPatientDirectory).toHaveBeenCalledWith(expect.anything(), {
-      lookupType: "NAME",
-      value: "",
-      page: "1",
-      classification: "ALL",
-    });
+  it.each([
+    [{ task: "screening" }, "/app/services"],
+    [{ task: "screening", hospitalId: "44444444-4444-4444-8444-444444444444" }, "/app/services?hospitalId=44444444-4444-4444-8444-444444444444"],
+    [{ task: ["screening", "followup"], hospitalId: ["44444444-4444-4444-8444-444444444444", "x"] }, "/app/services?hospitalId=44444444-4444-4444-8444-444444444444"],
+  ])("redirects the former รอคัดกรอง picker %j to จัดบริการ, where round 1 records screening", async (searchParams, location) => {
+    await expect(AssignedPatientDirectoryPage({ searchParams: Promise.resolve(searchParams) }))
+      .rejects.toThrow(`REDIRECT:${location}`);
+    expect(mockedGetProtectedApplicationActor).not.toHaveBeenCalled();
+    expect(mockedFindAssignedPatientDirectory).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -95,7 +92,7 @@ describe("assigned Patient directory page", () => {
   it("forwards the Hospital locator to the service, which validates and only narrows it", async () => {
     const hospitalId = "44444444-4444-4444-8444-444444444444";
     await AssignedPatientDirectoryPage({
-      searchParams: Promise.resolve({ task: "screening", hospitalId: [hospitalId, "99999999-9999-4999-8999-999999999999"] }),
+      searchParams: Promise.resolve({ hospitalId: [hospitalId, "99999999-9999-4999-8999-999999999999"] }),
     });
 
     expect(mockedFindAssignedPatientDirectory).toHaveBeenCalledWith(expect.anything(), {
@@ -114,17 +111,6 @@ describe("assigned Patient directory page", () => {
       searchParams: Promise.resolve({ task }),
     })).rejects.toThrow("REDIRECT:/login?returnTo=%2Fapp%2Fpatients%2Fassigned");
     expect(mockedRedirect).toHaveBeenCalledWith("/login?returnTo=%2Fapp%2Fpatients%2Fassigned");
-  });
-
-  it("returns an unauthenticated task launch to the same fixed task mode after login", async () => {
-    mockedGetProtectedApplicationActor.mockRejectedValue(new UnauthenticatedError());
-
-    await expect(AssignedPatientDirectoryPage({
-      searchParams: Promise.resolve({ task: "screening" }),
-    })).rejects.toThrow("REDIRECT:/login?returnTo=%2Fapp%2Fpatients%2Fassigned%3Ftask%3Dscreening");
-    expect(mockedRedirect).toHaveBeenCalledWith(
-      "/login?returnTo=%2Fapp%2Fpatients%2Fassigned%3Ftask%3Dscreening",
-    );
   });
 
   it("redirects a non-OSM actor without rendering a roster", async () => {

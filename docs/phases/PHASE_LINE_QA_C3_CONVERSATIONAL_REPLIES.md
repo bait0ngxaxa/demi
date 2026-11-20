@@ -35,6 +35,8 @@ Recorded in [WB_ALIGNMENT_DECISIONS.md](../requirements/WB_ALIGNMENT_DECISIONS.m
    | HOSPITAL | “งานโรงพยาบาล” `OPEN_WORK_WORKSPACE` |
    | none (unbound, multiple bindings, inactive user, no eligible role) | the existing INELIGIBLE copy “ยังไม่สามารถตรวจสอบนัดหมายผ่าน LINE ได้ กรุณาเปิด “จัดการบัญชี DEMI” จากเมนู” + one button “จัดการบัญชี DEMI” `MANAGE_ACCOUNT` (Account LIFF) |
 
+   ปรับภายหลัง 2026-11-20 (OSM-SCREENING-IN-ROUND1): quick reply ของ OSM เป็น “ผู้ป่วยที่ดูแล” และ “จัดบริการ” (`START_OSM_FOLLOWUP`) เท่านั้น
+
    Multi-role accounts get the union in canonical order PATIENT, OSM, HOSPITAL (at most 9 items; LINE allows 13).
 5. **Throttle.** HELP for unmatched text: one reply per LINE user per 10 minutes, measured from the last reply (not fixed windows). Explicit HELP keywords and NEXT_APPOINTMENT are never throttled. NEXT_APPOINTMENT by keyword has the same eligibility as the postback.
 6. **Receipts.** Keyword next-appointment is stored with the existing `PATIENT_NEXT_APPOINTMENT` event type (same intent as the postback); every HELP (keyword or unmatched) uses the new `HELP` value. Owner choice in this phase.

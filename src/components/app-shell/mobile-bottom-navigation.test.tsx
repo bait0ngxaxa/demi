@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const routerState = vi.hoisted(() => ({
-  currentHref: "/app/patients/assigned?task=screening",
+  currentHref: "/app/patients/assigned",
   pendingAction: false,
   unknownOutcome: false,
   history: [] as string[],
@@ -74,6 +74,7 @@ const navigation: readonly ApplicationNavigationGroup[] = [
     items: [
       { href: "/app/patients/assigned", label: "ผู้ป่วยที่ดูแล", match: "exact" },
       { href: "/app/patients/provision", label: "เพิ่มผู้ป่วย", match: "prefix" },
+      { href: "/app/services", label: "จัดบริการ", match: "exact" },
     ],
   },
   {
@@ -179,7 +180,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount(initialHref = "/app/patients/assigned?task=screening"): void {
+function mount(initialHref = "/app/patients/assigned"): void {
   routerState.currentHref = initialHref;
   routerState.history = [initialHref];
   routerState.historyIndex = 0;
@@ -245,12 +246,12 @@ describe("unified mobile bottom navigation", () => {
 
   it("asks before navigating from More when a pending action is active", () => {
     routerState.pendingAction = true;
-    mount("/app/patients/assigned?task=screening");
+    mount("/app/patients/assigned");
 
     act(() => moreLink().click());
 
     expect(container.querySelector("dialog")?.textContent).toContain("มีรายการกำลังดำเนินการอยู่");
-    expect(routerState.currentHref).toBe("/app/patients/assigned?task=screening");
+    expect(routerState.currentHref).toBe("/app/patients/assigned");
     expect(moreLink().getAttribute("aria-current")).toBeNull();
     act(() => dialogButton("อยู่หน้านี้").click());
     expect(container.querySelector("dialog")).toBeNull();
@@ -258,7 +259,7 @@ describe("unified mobile bottom navigation", () => {
 
   it("allows the More link after the user confirms leaving a pending action", () => {
     routerState.pendingAction = true;
-    mount("/app/patients/assigned?task=screening");
+    mount("/app/patients/assigned");
 
     act(() => moreLink().click());
     act(() => dialogButton("เปลี่ยนหน้า").click());
@@ -267,19 +268,20 @@ describe("unified mobile bottom navigation", () => {
     expect(moreLink().getAttribute("aria-current")).toBe("page");
   });
 
-  it("keeps task tabs active as query navigation changes", () => {
-    mount();
+  it("moves the active tab between ผู้ป่วยที่ดูแล, จัดบริการ and a screening page", () => {
+    mount("/app/patients/assigned");
 
-    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
-    // CT-3: the former follow-up task tab is gone (its URL redirects to /app/services).
-    expect(container.querySelector('[aria-label="ติดตามผู้ป่วย"]')).toBeNull();
-    const assigned = container.querySelector<HTMLAnchorElement>('[aria-label="ผู้ป่วยที่ดูแล"]');
-    act(() => assigned?.click());
     expect(container.querySelector('[aria-label="ผู้ป่วยที่ดูแล"]')?.getAttribute("aria-current")).toBe("page");
-    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')?.getAttribute("aria-current")).toBeNull();
+    // CT-3 / OSM-SCREENING-IN-ROUND1: no follow-up or screening task tab (their URLs redirect to /app/services).
+    expect(container.querySelector('[aria-label="ติดตามผู้ป่วย"]')).toBeNull();
+    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')).toBeNull();
+    const service = container.querySelector<HTMLAnchorElement>('[aria-label="จัดบริการผู้ป่วย"]');
+    act(() => service?.click());
+    expect(container.querySelector('[aria-label="จัดบริการผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
+    expect(container.querySelector('[aria-label="ผู้ป่วยที่ดูแล"]')?.getAttribute("aria-current")).toBeNull();
 
-    navigate("/app/patients/assigned?task=screening");
-    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
+    navigate("/app/patients/55555555-5555-4555-8555-555555555555/screenings/new");
+    expect(container.querySelector('[aria-label="จัดบริการผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
   });
 
   it("asks before changing tabs when an unresolved outcome is active", () => {

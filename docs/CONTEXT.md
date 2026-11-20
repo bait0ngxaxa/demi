@@ -136,7 +136,7 @@ Starting HEAD **69f69e5** (E1). Repository artifacts and Thai runbooks only; no 
 
 - In follow-up task mode, a Patient with an ACTIVE Program now opens the Program follow-up round (same rule as the follow-up history CTA), so the round is recorded in the Program and BR-06 plan adjustment continues. Relationship follow-ups remain for Patients without an ACTIVE Program.
 - Screening and follow-up detail pages offer a fixed link back to the assigned task list for actors with a current OSM scope. Success destinations are unchanged.
-- No schema, flag, channel, Rich Menu or provider change. Open owner questions: Program round-1 screening from LINE, and OSM provisioning scope (handoff section 10).
+- No schema, flag, channel, Rich Menu or provider change. Open owner questions: Program round-1 screening from LINE (answered 2026-11-20, see OSM-SCREENING-IN-ROUND1 below), and OSM provisioning scope (handoff section 10).
 
 ## CURRENT-status addendum — Phase LINE-QA.B2.4 LINE configuration simplification (2026-10-19)
 
@@ -1229,3 +1229,13 @@ Product Owner (UI-01 rev. 2026-11-20) เปลี่ยนเมนูที่
 “ครั้งที่ N” ของการติดตามคือครั้งบริการของโปรแกรม (`toProgramRoundNumber`: ครั้งที่ 3 = การติดตามลำดับที่ 1) การติดตามที่ไม่ผูกโปรแกรมแสดงเป็น “ก่อนเริ่มโปรแกรม” ผู้ป่วยหลายโรงพยาบาลเลือกโรงพยาบาลที่ยังดูแลอยู่ด้วย `?relationshipId=` (ค่าที่ไม่ใช่ของตน สิ้นสุดแล้ว หรือไม่รู้จักกลับไปโรงพยาบาลแรก) หน้าอ่านเฉพาะ `tab` และ `relationshipId` และไม่ปฏิเสธ query อื่น เพราะ LIFF เติม `liff.*` บนทางเข้านี้ ทุกการอ่านตรวจ Patient SELF ของความสัมพันธ์นั้นฝั่ง server แผนสุขภาพต้นทางที่ไม่ใช่ของความสัมพันธ์เดียวกันจะไม่ถูกใช้คำนวณ
 
 หน้าคำขอรับบริการ (`/app/personal/services`, ADR-0029) ชื่อ “ขอรับบริการ” เป็นปุ่มบนหัวหน้า hub และรายการรองใน sidebar; หน้าความสัมพันธ์ `/app/personal/care/[relationshipId]` ชื่อ “ประวัติการรับบริการ” และยังเข้าถึงได้สำหรับความสัมพันธ์ที่สิ้นสุดแล้ว ป้าย LINE Rich Menu และ quick reply ของ `OPEN_PATIENT_CARE` เป็น “บริการ” (deploy ต้องรัน rich-menu reconcile เพื่อให้ LINE แสดงภาพใหม่) มุมมองผู้ดูแล (ครอบครัว) จะแยกแบบเดียวกันใน PR ถัดไป; ไม่มีการเปลี่ยนสิทธิ์ consent data model หรือหน้าจอเจ้าหน้าที่
+
+## OSM-SCREENING-IN-ROUND1 — คัดกรองเฉพาะในครั้งที่ 1 ผ่าน “จัดบริการ” (2026-11-20)
+
+Product Owner ตอบคำถามที่เปิดค้างไว้ (“Program round-1 screening from LINE”): แบบประเมิน PAM/PROMs ของโปรแกรมบันทึกจากครั้งที่ 1 เท่านั้น โดยเข้าทาง “จัดบริการ” (`/app/services`) เมนู “รอคัดกรอง” ของ อสม. ถูกถอดออก เพราะไม่ใช่คิว (แสดงผู้ป่วยที่ดูแลทุกคน) และแบบประเมินที่บันทึกจากเมนูนั้นไม่มี `programId` จึงเก็บเป็น `patientProgramId = null` ซึ่งครั้งที่ 1 ไม่นับ (`screeningFor` อ่านเฉพาะ `program.screeningAssessments`)
+
+- **Navigation:** ไม่มี “รอคัดกรอง” ใน sidebar และไม่มีแท็บ “คัดกรอง” บนมือถือ แท็บที่ 4 ของ อสม. เป็น “จัดบริการ” และหน้าแบบประเมินของผู้ป่วยไฮไลต์ “จัดบริการ” (ถ้าไม่มีแท็บนั้น ไฮไลต์ “ผู้ป่วย”) ทางลัดบน Work Home หายไปด้วยเพราะมาจาก projection เดียวกัน
+- **URL เดิม:** `/app/patients/assigned?task=screening` redirect ไป `/app/services` (คง `hospitalId`) แบบเดียวกับ `?task=followup` (CT-3) intent `START_OSM_SCREENING` ถูกลบ แต่ path เดิมเป็น `LEGACY_OSM_SCREENING_PATH` ใน login-return allowlist และ Workspace LIFF destinations เพื่อให้ Rich Menu/ข้อความที่ส่งไปแล้วยังเข้าสู่ระบบและไปถึง “จัดบริการ”
+- **LINE:** OSM Rich Menu และ quick reply เหลือ ผู้ป่วยที่ดูแล · จัดบริการ · งานทั้งหมด (ปุ่ม `START_OSM_FOLLOWUP` เปลี่ยนชื่อจาก “บันทึกติดตาม” เป็น “จัดบริการ” เพราะตั้งแต่ PATIENT-SERVICES-HUB คำว่า “ติดตาม” หมายถึง PatientFollowup) ภาพ OSM ทั้ง 4 แบบถูกสร้างใหม่ ภาพอื่นไม่เปลี่ยน **deploy ต้องรัน `npm run line:rich-menu:reconcile`**
+- **หน้าแบบประเมิน:** รายละเอียดแบบประเมินไม่มี “เลือกผู้ป่วยรายถัดไปเพื่อคัดกรอง” แล้ว แบบประเมินที่ผูกโปรแกรมมีปุ่ม “กลับไปครั้งที่ 1” หน้า `/screenings/new` ที่ไม่มี `programId` ขณะผู้ป่วยมีโปรแกรม ACTIVE ที่ครั้งที่ 1 ยังไม่เสร็จและยังไม่มีแบบประเมินนั้น แสดงคำเตือน “ผู้ป่วยอยู่ในครั้งที่ 1 ของโปรแกรม บันทึกจากครั้งที่ 1 เพื่อให้นับในโปรแกรม” พร้อมปุ่มหลักไปหน้าเดียวกันที่มี `programId` (`getRoundOneScreeningGap` ใช้ facts ชุดเดียวกับหน้ารายครั้ง ไม่มีกฎใหม่; ผู้ที่อ่านโปรแกรมไม่ได้จะไม่เห็นคำเตือน) แบบฟอร์มนอกโปรแกรมยังใช้ได้ด้านล่างสำหรับบันทึกประวัติ
+- ไม่เปลี่ยนแบบฟอร์ม การคิดคะแนน screening-service สิทธิ์ ประวัติแบบประเมิน `/app/services` หรือขั้นตอน PAM/PROMs ของครั้งที่ 1

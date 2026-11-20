@@ -28,24 +28,6 @@ function findTabById(
   return tabs.find((tab) => tab.id === id && tab.href !== null);
 }
 
-function resolveAssignedTaskTab(
-  search: string,
-  tabs: readonly MobileNavigationTab[],
-): string | null {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  const taskModes = params.getAll("task");
-
-  if (taskModes.length !== 1) {
-    return null;
-  }
-
-  if (taskModes[0] === "screening" && findTabById(tabs, "screening")) {
-    return "screening";
-  }
-
-  return null;
-}
-
 function isPatientDetailPath(pathname: string): boolean {
   const segments = pathname.split("/").filter(Boolean);
 
@@ -69,8 +51,9 @@ function resolvePatientDetailTab(
   if (segments.includes("appointments") && findTabById(tabs, "appointments")) {
     return "appointments";
   }
-  if (segments.includes("screenings") && findTabById(tabs, "screening")) {
-    return "screening";
+  // OSM-SCREENING-IN-ROUND1: screening is part of Program round 1, reached through จัดบริการ.
+  if (segments.includes("screenings") && findTabById(tabs, "service")) {
+    return "service";
   }
 
   return findTabById(tabs, "patients")?.id ?? null;
@@ -95,7 +78,6 @@ function resolveNavigationItemTab(
 
 export function resolveActiveMobileTabId(
   requestedPathname: string,
-  search: string,
   tabs: readonly MobileNavigationTab[],
 ): string | null {
   const pathname = normalizePathname(requestedPathname);
@@ -105,7 +87,7 @@ export function resolveActiveMobileTabId(
   }
 
   if (pathname === assignedPatientPath) {
-    return resolveAssignedTaskTab(search, tabs) ?? findTabById(tabs, "patients")?.id ?? null;
+    return findTabById(tabs, "patients")?.id ?? null;
   }
 
   const personalHome = tabs.find(

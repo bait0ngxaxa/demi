@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  LEGACY_OSM_SCREENING_PATH,
   LINE_QUICK_ACTION_RETURN_TO_HEADER,
-  LINE_WEB_NAVIGATION_PATHS,
 } from "@/modules/line/domain/line-navigation-intents";
 
 import {
@@ -65,11 +65,11 @@ describe("Supabase proxy cookie propagation", () => {
       request,
       [],
       {},
-      LINE_WEB_NAVIGATION_PATHS.START_OSM_SCREENING,
+      LEGACY_OSM_SCREENING_PATH,
     );
 
     expect(response.headers.get(`x-middleware-request-${LINE_QUICK_ACTION_RETURN_TO_HEADER}`)).toBe(
-      LINE_WEB_NAVIGATION_PATHS.START_OSM_SCREENING,
+      LEGACY_OSM_SCREENING_PATH,
     );
   });
 

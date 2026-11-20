@@ -27,8 +27,8 @@ const patientQuickActions = [
 ] as const;
 const osmQuickActions = [
   { type: "uri", intent: "OPEN_OSM_ASSIGNED_PATIENTS", label: "ผู้ป่วยที่ดูแล" },
-  { type: "uri", intent: "START_OSM_SCREENING", label: "คัดกรองผู้ป่วย" },
-  { type: "uri", intent: "START_OSM_FOLLOWUP", label: "บันทึกติดตาม" },
+  // OSM-SCREENING-IN-ROUND1: screening lives in Program round 1, inside จัดบริการ.
+  { type: "uri", intent: "START_OSM_FOLLOWUP", label: "จัดบริการ" },
   { type: "uri", intent: "OPEN_WORK_WORKSPACE", label: "งานทั้งหมด" },
 ] as const;
 
@@ -229,8 +229,8 @@ describe("DEMI shared Rich Menu catalog", () => {
     ["HOSPITAL_DIRECT", 1, 1],
     ["CHOOSER_PATIENT_OSM", 2, 1],
     ["CHOOSER_PATIENT_OSM_HOSPITAL", 3, 1],
-    ["OSM_DIRECT", 2, 2],
-    ["OSM_PATIENT_OSM", 3, 2],
+    ["OSM_DIRECT", 3, 1],
+    ["OSM_PATIENT_OSM", 2, 2],
     ["PATIENT_DIRECT", 3, 2],
     ["PATIENT_PATIENT_OSM", 4, 2],
     ["PATIENT_PATIENT_OSM_HOSPITAL", 4, 2],

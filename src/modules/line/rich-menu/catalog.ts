@@ -46,8 +46,8 @@ const patientQuickActions: readonly LineMenuAction[] = [
 
 const osmQuickActions: readonly LineMenuAction[] = [
   { type: "uri", intent: "OPEN_OSM_ASSIGNED_PATIENTS", label: "ผู้ป่วยที่ดูแล" },
-  { type: "uri", intent: "START_OSM_SCREENING", label: "คัดกรองผู้ป่วย" },
-  { type: "uri", intent: "START_OSM_FOLLOWUP", label: "บันทึกติดตาม" },
+  // OSM-SCREENING-IN-ROUND1 (2026-11-20): screening is recorded in Program round 1 inside จัดบริการ.
+  { type: "uri", intent: "START_OSM_FOLLOWUP", label: "จัดบริการ" },
   { type: "uri", intent: "OPEN_WORK_WORKSPACE", label: "งานทั้งหมด" },
 ];
 

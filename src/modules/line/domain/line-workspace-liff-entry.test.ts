@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LINE_WEB_NAVIGATION_PATHS } from "./line-navigation-intents";
+import { LEGACY_OSM_SCREENING_PATH, LINE_WEB_NAVIGATION_PATHS } from "./line-navigation-intents";
 import {
   classifyLineWorkspaceLiffEntry,
   hasLiffCredentialFragment,
@@ -16,7 +16,8 @@ describe("Workspace LIFF root entry classification", () => {
   });
 
   it("allows exactly the fixed operational destinations", () => {
-    expect(LINE_WORKSPACE_LIFF_DESTINATIONS).toEqual([...new Set(Object.values(LINE_WEB_NAVIGATION_PATHS))]);
+    // The former รอคัดกรอง entry stays followable from Rich Menus already on LINE (OSM-SCREENING-IN-ROUND1).
+    expect(LINE_WORKSPACE_LIFF_DESTINATIONS).toEqual([...new Set(Object.values(LINE_WEB_NAVIGATION_PATHS)), LEGACY_OSM_SCREENING_PATH]);
     expect(LINE_WORKSPACE_LIFF_DESTINATIONS).toContain("/app");
     expect(LINE_WORKSPACE_LIFF_DESTINATIONS).not.toContain("/line/account");
   });
@@ -25,7 +26,7 @@ describe("Workspace LIFF root entry classification", () => {
     expect(classifyLineWorkspaceLiffEntry({ "liff.state": path })).toEqual({ status: "LIFF", destination: path });
   });
 
-  it("accepts the screening task query carried inside liff.state", () => {
+  it("accepts the former screening task query carried inside liff.state", () => {
     expect(classifyLineWorkspaceLiffEntry({ "liff.state": "/app/patients/assigned?task=screening" }))
       .toEqual({ status: "LIFF", destination: "/app/patients/assigned?task=screening" });
     expect(classifyLineWorkspaceLiffEntry({ "liff.state": "app/personal" }))

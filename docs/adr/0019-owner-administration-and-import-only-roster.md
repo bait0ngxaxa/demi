@@ -19,6 +19,8 @@ Historical reportExportGranted data and audits are retained but never authorize 
 
 Every OSM Rich Menu has four primary actions: ผู้ป่วยที่ดูแล, คัดกรองผู้ป่วย, บันทึกติดตาม and งานทั้งหมด. Account management, aliases and native role switching are preserved. Generic HOSPITAL menus contain no OWNER-only action. No new LIFF application, live Provider mutation or deployment is needed.
 
+**Revised 2026-11-20 (OSM-SCREENING-IN-ROUND1, owner):** "คัดกรองผู้ป่วย" is removed and "บันทึกติดตาม" is renamed "จัดบริการ" (same `START_OSM_FOLLOWUP` intent, `/app/services`). Every OSM Rich Menu now has three primary actions: ผู้ป่วยที่ดูแล, จัดบริการ and งานทั้งหมด. PAM/PROMs screening is recorded from Program round 1; see `docs/CONTEXT.md`.
+
 See [capability classification](../requirements/OWNER_ADMINISTRATION_AND_CARE.md) and [verification evidence](../phases/OWNER_ADMINISTRATION_IMPLEMENTATION.md).
 
 ## Cross-reference — ADR-0020 self-registration (2026-10-22)

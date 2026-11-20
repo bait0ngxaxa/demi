@@ -28,37 +28,19 @@ type AssignedPatientDirectoryViewProps = {
   result: PatientAssignedDirectoryPage | null;
   errorMessage: string | null;
   classificationFilter: PatientDirectoryClassificationFilter;
-  taskMode: AssignedPatientTaskMode | null;
 };
 
-// CT-3: the former "followup" mode is the จัดบริการ workspace (/app/services).
-type AssignedPatientTaskMode = "screening";
-
-const taskPresentation: Record<AssignedPatientTaskMode, {
-  title: string;
-  description: string;
-  selectionAction: string;
-}> = {
-  screening: {
-    title: "คัดกรองผู้ป่วย",
-    description: "เลือกผู้ป่วยที่จะคัดกรอง",
-    selectionAction: "เริ่มคัดกรองผู้ป่วยรายนี้",
-  },
-};
+// CT-3 / OSM-SCREENING-IN-ROUND1: the former "followup" and "screening" modes are the จัดบริการ workspace
+// (/app/services); screening is recorded in Program round 1 there. This list only opens the Patient.
 
 function directoryUrl(input: {
   lookupType: PatientDirectoryLookupType;
   value: string;
   page: number;
   classification: PatientDirectoryClassificationFilter;
-  taskMode: AssignedPatientTaskMode | null;
   hospitalId: string | null;
 }): string {
   const params = new URLSearchParams({ lookupType: input.lookupType });
-
-  if (input.taskMode) {
-    params.set("task", input.taskMode);
-  }
 
   if (input.hospitalId) {
     params.set("hospitalId", input.hospitalId);
@@ -79,12 +61,8 @@ function directoryUrl(input: {
   return `/app/patients/assigned?${params.toString()}`;
 }
 
-function PatientRow({ item, taskMode }: {
-  item: PatientAssignedDirectoryItem;
-  taskMode: AssignedPatientTaskMode | null;
-}): React.JSX.Element {
-  const relationshipPath = `/app/patients/${encodeURIComponent(item.patientHospitalRelationshipId)}`;
-  const href = taskMode === "screening" ? `${relationshipPath}/screenings/new` : relationshipPath;
+function PatientRow({ item }: { item: PatientAssignedDirectoryItem }): React.JSX.Element {
+  const href = `/app/patients/${encodeURIComponent(item.patientHospitalRelationshipId)}`;
 
   return (
     <li>
@@ -109,7 +87,7 @@ function PatientRow({ item, taskMode }: {
               {getPatientClassificationLabel(item.classification)}
             </StatusBadge>
             <p className="mt-3 text-sm font-semibold text-brand-strong">
-              {taskMode ? taskPresentation[taskMode].selectionAction : "เปิดผู้ป่วยเพื่อดูแลต่อ"}
+              เปิดผู้ป่วยเพื่อดูแลต่อ
             </p>
           </div>
         </div>
@@ -118,10 +96,7 @@ function PatientRow({ item, taskMode }: {
   );
 }
 
-function Pagination({ result, taskMode }: {
-  result: PatientAssignedDirectoryPage;
-  taskMode: AssignedPatientTaskMode | null;
-}): React.JSX.Element | null {
+function Pagination({ result }: { result: PatientAssignedDirectoryPage }): React.JSX.Element | null {
   return (
     <PageNumberPagination
       label="หน้าผู้ป่วยที่รับผิดชอบ"
@@ -132,7 +107,6 @@ function Pagination({ result, taskMode }: {
         value: result.value,
         page,
         classification: result.classificationFilter,
-        taskMode,
         hospitalId: result.hospitalFilter?.hospitalId ?? null,
       }) })}
     />
@@ -145,7 +119,6 @@ export function AssignedPatientDirectoryView({
   result,
   errorMessage,
   classificationFilter,
-  taskMode,
 }: AssignedPatientDirectoryViewProps): React.JSX.Element {
   const lookupLabel = lookupType === "HOSPITAL_NUMBER" ? "HN" : "ชื่อผู้ป่วย";
   const maxLength =
@@ -155,7 +128,6 @@ export function AssignedPatientDirectoryView({
   const hasFilters = Boolean(result?.value) || (result?.classificationFilter ?? classificationFilter) !== "ALL";
   const hospitalFilter = result?.hospitalFilter ?? null;
   const clearSearchParams = new URLSearchParams();
-  if (taskMode) clearSearchParams.set("task", taskMode);
   if (hospitalFilter) clearSearchParams.set("hospitalId", hospitalFilter.hospitalId);
   const clearSearchHref = `/app/patients/assigned${clearSearchParams.size > 0 ? `?${clearSearchParams.toString()}` : ""}`;
 
@@ -164,10 +136,7 @@ export function AssignedPatientDirectoryView({
       <PageHeader
         actions={<StatusBadge variant="info">ผู้ป่วยที่คุณดูแล</StatusBadge>}
         breadcrumbs={[{ href: "/app", label: "พื้นที่ทำงาน" }, { label: "ผู้ป่วยที่รับผิดชอบ" }]}
-        description={taskMode
-          ? taskPresentation[taskMode].description
-          : undefined}
-        title={taskMode ? taskPresentation[taskMode].title : "ผู้ป่วยที่รับผิดชอบ"}
+        title="ผู้ป่วยที่รับผิดชอบ"
       />
 
       <div className="space-y-6 pt-8">
@@ -177,7 +146,6 @@ export function AssignedPatientDirectoryView({
             ชื่อพิมพ์บางส่วนได้ HN ต้องตรงทั้งหมด
           </p>
           <Form action="/app/patients/assigned" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem] @5xl/workspace:items-end">
-            {taskMode ? <input name="task" type="hidden" value={taskMode} /> : null}
             {hospitalFilter ? <input name="hospitalId" type="hidden" value={hospitalFilter.hospitalId} /> : null}
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
@@ -239,7 +207,6 @@ export function AssignedPatientDirectoryView({
                 value: result.value,
                 page: 1,
                 classification: result.classificationFilter,
-                taskMode,
                 hospitalId: null,
               })}
             >
@@ -253,7 +220,7 @@ export function AssignedPatientDirectoryView({
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]" id="assigned-patient-results-heading">
-                  {taskMode ? "เลือกผู้ป่วยที่รับผิดชอบ" : "รายชื่อผู้ป่วยที่รับผิดชอบ"}
+                  รายชื่อผู้ป่วยที่รับผิดชอบ
                 </h2>
               </div>
               <p className="text-sm text-text-muted">พบ {result.total} รายการผู้ป่วย{hasFilters ? "ตามการค้นหาและตัวกรอง" : "ที่รับผิดชอบ"}</p>
@@ -264,11 +231,11 @@ export function AssignedPatientDirectoryView({
                 <div className="overflow-hidden rounded-panel border border-border bg-surface">
                   <ul className="divide-y divide-border" aria-label="รายชื่อผู้ป่วยที่รับผิดชอบ">
                     {result.items.map((item) => (
-                      <PatientRow item={item} key={item.patientHospitalRelationshipId} taskMode={taskMode} />
+                      <PatientRow item={item} key={item.patientHospitalRelationshipId} />
                     ))}
                   </ul>
                 </div>
-                <Pagination result={result} taskMode={taskMode} />
+                <Pagination result={result} />
               </div>
             ) : (
               <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">

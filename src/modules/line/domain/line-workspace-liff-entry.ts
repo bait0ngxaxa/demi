@@ -1,5 +1,6 @@
 import {
   isLinePlatformParameterName,
+  LEGACY_OSM_SCREENING_PATH,
   LIFF_LOGIN_RETURN_PARAMETERS,
   LINE_WEB_NAVIGATION_PATHS,
   MAX_PLATFORM_PARAMETER_COUNT,
@@ -16,6 +17,8 @@ import {
  */
 export const LINE_WORKSPACE_LIFF_DESTINATIONS = [
   ...new Set<string>(Object.values(LINE_WEB_NAVIGATION_PATHS)),
+  // OSM-SCREENING-IN-ROUND1: Rich Menus already on LINE still open it; the assigned list redirects it to /app/services.
+  LEGACY_OSM_SCREENING_PATH,
 ] as readonly string[];
 
 export type LineWorkspaceLiffEntry =
