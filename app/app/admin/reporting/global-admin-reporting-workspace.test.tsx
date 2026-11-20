@@ -1,15 +1,16 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { HospitalStatus } from "@prisma/client";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildHospitalHierarchyDirectory,
   type HospitalNetworkRecord,
-  type HospitalHierarchyContext,
-  type HospitalHierarchyUnit,
 } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 import type { GlobalReportingDirectory } from "@/modules/reporting/projections/global-reporting-projection";
+
+const { searchParams } = vi.hoisted(() => ({ searchParams: { current: new URLSearchParams() } }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => searchParams.current }));
 
 import { GlobalAdminReportingWorkspace } from "./global-admin-reporting-workspace";
 
@@ -55,62 +56,71 @@ const directory: GlobalReportingDirectory = {
   },
 };
 
-function render(input: {
-  selectedHospital?: HospitalHierarchyUnit | null;
-  selectedHierarchy?: HospitalHierarchyContext | null;
-} = {}): string {
-  return renderToStaticMarkup(createElement(GlobalAdminReportingWorkspace, {
-    directory,
-    selectedHospital: input.selectedHospital ?? null,
-    hierarchy: input.selectedHierarchy ?? null,
-    page: null,
-    selectedHospitalId: input.selectedHospital?.id ?? null,
-    initialView: "overview",
-  }));
+function render(query = ""): string {
+  searchParams.current = new URLSearchParams(query);
+  return renderToStaticMarkup(createElement(GlobalAdminReportingWorkspace, { directory }));
 }
 
-describe("Global Admin reporting workspace", () => {
+describe("Global Admin reporting directory", () => {
+  beforeEach(() => {
+    searchParams.current = new URLSearchParams();
+  });
+
   it("shows database-backed organization counts and complete grouped Hospital choices", () => {
     const markup = render();
 
+    expect(markup).toContain("<h1");
+    expect(markup).toContain("รายงานระบบ");
+    expect(markup).not.toContain("รายงานของโรงพยาบาลที่เลือก");
+    expect(markup).not.toContain("รายงานสำหรับผู้ดูแลระบบ DEMI");
     expect(markup).toContain("จำนวนนี้นับโรงพยาบาลที่ลงทะเบียนในระบบตามเครือข่ายปัจจุบัน");
     expect(markup).toContain("โรงพยาบาลทั้งหมด");
     expect(markup).toContain("โรงพยาบาลแม่ข่าย");
     expect(markup).toContain("โรงพยาบาลลูกข่าย");
     expect(markup).toContain("ค้นหาชื่อโรงพยาบาล");
+    expect(markup).toContain('placeholder="พิมพ์ชื่อโรงพยาบาล"');
     expect(markup).not.toContain("DEMO-PARENT");
     expect(markup).not.toContain("DEMO-CHILD");
     expect(markup).not.toContain("DEMO-STANDALONE");
     expect(markup).toContain("สถานะโรงพยาบาล");
-    expect(markup).toContain("รายงานของโรงพยาบาลที่เลือก ไม่รวมแม่ข่ายหรือลูกข่าย");
     expect(markup).not.toContain("เปิดใช้เฉพาะ ADMIN");
     expect(markup).not.toContain("สภาพแวดล้อม demo");
-    expect(markup).toContain("โรงพยาบาลแม่ข่ายทดสอบ");
-    expect(markup).toContain("รพ.สต.ลูกข่ายทดสอบ");
-    expect(markup).toContain("โรงพยาบาลเดี่ยวทดสอบ");
-    expect(markup).toContain(`/app/admin/reporting?hospitalId=${parentId}`);
-    expect(markup).toContain(`/app/admin/reporting?hospitalId=${childId}`);
     expect(markup).toContain("พบ 3 แห่ง จากทั้งหมด 3 แห่ง");
     expect(markup).not.toContain("78 แห่ง");
     expect(markup).toContain("ไม่ใช่จำนวนผู้ป่วย");
   });
 
-  it("keeps pending Hospitals visible but presents no patient report as zero", () => {
-    const selectedHospital = records[1];
-    if (!selectedHospital) throw new Error("Expected a subordinate fixture");
-    const selectedHierarchy: HospitalHierarchyContext = {
-      hospital: selectedHospital,
-      classification: "SUBORDINATE",
-      parentHospital: records[0] ?? null,
-      directChildCount: 0,
-      directChildren: [],
-    };
-    const markup = render({ selectedHospital, selectedHierarchy });
+  it("links every Hospital row to its own report page, never to the directory route", () => {
+    const markup = render();
 
-    expect(markup).toContain("รายงานผู้ป่วยและโปรแกรมยังไม่พร้อมใช้งาน");
-    expect(markup).not.toMatch(/Patient\/Program|Hospital ที่|Master ทั้ง/u);
+    expect(markup).toContain(`href="/app/admin/reporting/hospitals/${parentId}"`);
+    expect(markup).toContain(`href="/app/admin/reporting/hospitals/${childId}"`);
+    expect(markup).toContain(`href="/app/admin/reporting/hospitals/${standaloneId}"`);
+    expect(markup).not.toContain("?hospitalId=");
+    expect(markup).toContain(">โรงพยาบาลแม่ข่ายทดสอบ</a>");
+    expect(markup).toContain(">รพ.สต.ลูกข่ายทดสอบ</a>");
+    expect(markup).toContain("เปิดรายงาน");
+    expect(markup).toContain("ดูสถานะ");
+    expect(markup).not.toContain("เปิดรายงานเฉพาะแห่ง");
     expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
-    expect(markup).not.toContain("Program ทั้งหมด");
-    expect(markup).not.toContain("relationship");
+  });
+
+  it("starts from the search and status in the URL", () => {
+    const markup = render("q=ลูกข่าย&hospitalStatus=PENDING_VERIFICATION");
+
+    expect(markup).toContain('value="ลูกข่าย"');
+    expect(markup).toContain('<option value="PENDING_VERIFICATION" selected="">');
+    expect(markup).toContain("พบ 1 แห่ง จากทั้งหมด 3 แห่ง");
+    expect(markup).toContain("<details class=\"mb-1 border-t border-border pt-2\" open=\"\"");
+    expect(markup).not.toContain(`href="/app/admin/reporting/hospitals/${standaloneId}"`);
+  });
+
+  it("ignores an unknown status in the URL and explains an empty search by name only", () => {
+    expect(render("hospitalStatus=RETIRED")).toContain("พบ 3 แห่ง จากทั้งหมด 3 แห่ง");
+
+    const empty = render("q=ไม่มีชื่อนี้");
+    expect(empty).toContain("ไม่พบโรงพยาบาลตามเงื่อนไขนี้");
+    expect(empty).toContain("ลองค้นหาด้วยชื่ออื่น หรือเลือกทุกสถานะ");
+    expect(empty).not.toContain("รหัส");
   });
 });

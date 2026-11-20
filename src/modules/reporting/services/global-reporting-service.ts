@@ -1,6 +1,7 @@
 import "server-only";
 
 import { HospitalStatus, type PrismaClient } from "@prisma/client";
+import { z } from "zod";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -9,7 +10,8 @@ import {
   type HospitalHierarchyDirectory,
   type HospitalHierarchyUnit,
 } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
-import { ApplicationError } from "@/shared/errors/application-error";
+import { ApplicationError, ValidationError } from "@/shared/errors/application-error";
+import { HOSPITAL_SEARCH_MAX_LENGTH, HOSPITAL_SEARCH_RESULT_LIMIT } from "@/shared/search/hospital-search";
 
 import { GLOBAL_REPORTING_CAPABILITIES } from "../policies/global-reporting-policy";
 import type { GlobalReportingDirectory } from "../projections/global-reporting-projection";
@@ -77,16 +79,58 @@ export async function getGlobalReportingDirectory(
   }
 }
 
-export function getGlobalReportingHospitalById(
-  directory: GlobalReportingDirectory,
-  hospitalId: string,
-): HospitalHierarchyUnit | null {
-  for (const group of directory.hierarchy.groups) {
-    if (group.mainHospital.id === hospitalId) return group.mainHospital;
-    const child = group.directChildren.find(({ id }) => id === hospitalId);
-    if (child) return child;
+/** A Hospital the system report can switch to; `parentName` and `registeredAt` tell same-named Hospitals apart. */
+export type GlobalReportingHospitalOption = {
+  id: string;
+  name: string;
+  parentName: string | null;
+  registeredAt: Date;
+};
+
+const globalReportingHospitalSearchSchema = z.object({
+  value: z.string().trim().min(1).max(HOSPITAL_SEARCH_MAX_LENGTH),
+}).strict();
+
+const SEARCHABLE_STATUSES = [
+  HospitalStatus.ACTIVE,
+  HospitalStatus.PENDING_VERIFICATION,
+  HospitalStatus.SUSPENDED,
+] as const;
+
+/**
+ * Platform ADMIN: the first HOSPITAL_SEARCH_RESULT_LIMIT Hospitals whose name contains the term, among those the
+ * directory lists (never RETIRED). Hospital codes are internal, so only names match. The report page re-checks
+ * access to the Hospital that is opened.
+ */
+export async function searchGlobalReportingHospitals(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  database: PrismaClient = getPrisma(),
+): Promise<GlobalReportingHospitalOption[]> {
+  const parsed = globalReportingHospitalSearchSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Hospital search is invalid");
+  await resolveGlobalReportingAccessContext(actor, GLOBAL_REPORTING_CAPABILITIES.directoryRead, undefined, database);
+  try {
+    const hospitals = await database.hospital.findMany({
+      where: { status: { in: [...SEARCHABLE_STATUSES] }, name: { contains: parsed.data.value, mode: "insensitive" } },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: HOSPITAL_SEARCH_RESULT_LIMIT,
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        serviceAreaAssignments: { where: { endedAt: null }, take: 1, select: { parent: { select: { name: true } } } },
+      },
+    });
+    return hospitals.map(({ id, name, createdAt, serviceAreaAssignments }) => ({
+      id,
+      name,
+      parentName: serviceAreaAssignments[0]?.parent.name ?? null,
+      registeredAt: createdAt,
+    }));
+  } catch (error: unknown) {
+    throw toInfrastructureError("reporting.searchGlobalReportingHospitals", error, "Global reporting Hospital search failed");
   }
-  return directory.hierarchy.outsideNetwork.find(({ id }) => id === hospitalId) ?? null;
 }
 
 export const globalReportingServiceInternals = { getStatusCounts, getUnits };

@@ -30,7 +30,7 @@ import {
   getHospitalReportingPage,
   getParentChildHospitalReportingPage,
 } from "@/modules/reporting/services/hospital-report-query-service";
-import { getGlobalReportingDirectory } from "@/modules/reporting/services/global-reporting-service";
+import { getGlobalReportingDirectory, searchGlobalReportingHospitals } from "@/modules/reporting/services/global-reporting-service";
 import { resolveGlobalReportingAccessContext } from "@/modules/reporting/services/global-reporting-access-service";
 import {
   listParentChildHospitalReportTargetGroups,
@@ -62,6 +62,13 @@ function newFixture(): Fixture {
 }
 
 async function cleanFixture(fixture: Fixture): Promise<void> {
+  // A retired fixture Hospital references its retiring user (ON DELETE RESTRICT); clear it before users are deleted.
+  if (fixture.hospitalIds.length > 0) {
+    await prisma.hospital.updateMany({
+      where: { id: { in: fixture.hospitalIds }, status: HospitalStatus.RETIRED },
+      data: { status: HospitalStatus.ACTIVE, retiredAt: null, retiredByUserId: null, retiredReason: null },
+    });
+  }
   const programIds = fixture.programIds;
   if (programIds.length > 0) {
     await clearProgramRoundCompletions(programIds);
@@ -853,6 +860,35 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       await expect(getGlobalAdminHospitalReportingPage(childOwner.actor, { hospitalId: child.id })).rejects.toBeInstanceOf(ForbiddenError);
       await expect(getGlobalAdminHospitalReportingPage(parentOwner.actor, { hospitalId: child.id })).rejects.toBeInstanceOf(ForbiddenError);
     }
+  });
+
+  it("searches directory Hospitals by name for an active ADMIN, with the Parent name, and never RETIRED ones", async () => {
+    const fixture = newFixture();
+    currentFixture = fixture;
+    const token = `ค้นสลับ${randomUUID().slice(0, 8)}`;
+    const parent = await createHospital(fixture, { name: `${token} แม่ข่าย` });
+    const child = await createHospital(fixture, { name: `${token} ลูกข่าย`, kind: "CHILD", status: HospitalStatus.PENDING_VERIFICATION });
+    const suspended = await createHospital(fixture, { name: `${token} ระงับ`, status: HospitalStatus.SUSPENDED });
+    const retired = await createHospital(fixture, { name: `${token} ถอน` });
+    const admin = await createActor(fixture, { role: Role.ADMIN });
+    // Hospital_retirement_consistency: a RETIRED Hospital records who retired it, when and why.
+    await prisma.hospital.update({
+      where: { id: retired.id },
+      data: { status: HospitalStatus.RETIRED, retiredAt: new Date(), retiredByUserId: admin.userId, retiredReason: "ถอนเพื่อทดสอบการค้นหา" },
+    });
+    const owner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parent });
+    await attachNetwork(parent.id, [child.id], owner.userId);
+
+    const results = await searchGlobalReportingHospitals(admin.actor, { value: token.toUpperCase() });
+    expect(results.map(({ id }) => id).sort()).toEqual([parent.id, child.id, suspended.id].sort());
+    expect(results.some(({ id }) => id === retired.id)).toBe(false);
+    expect(results.find(({ id }) => id === child.id)).toMatchObject({ parentName: parent.name });
+    expect(results.find(({ id }) => id === parent.id)).toMatchObject({ parentName: null, registeredAt: expect.any(Date) });
+    // Hospital codes are internal: a code never matches.
+    await expect(searchGlobalReportingHospitals(admin.actor, { value: parent.hospitalCode })).resolves.toEqual([]);
+
+    await expect(searchGlobalReportingHospitals(owner.actor, { value: token })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(searchGlobalReportingHospitals(admin.actor, { value: " " })).rejects.toMatchObject({ code: "VALIDATION" });
   });
 
   it("rechecks current ADMIN status and denies suspended users or revoked ADMIN roles", async () => {

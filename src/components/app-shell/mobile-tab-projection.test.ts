@@ -196,6 +196,12 @@ describe("server-projected mobile navigation", () => {
       "admin-review",
       "more",
     ]);
+    // A Hospital's system report page keeps the reports tab current.
+    expect(resolveActiveMobileTabId(
+      "/app/admin/reporting/hospitals/11111111-1111-4111-8111-111111111111",
+      "view=service",
+      primaryTabs(adminNavigation, "work"),
+    )).toBe("admin-reports");
     const adminMoreHrefs = hrefs(projectMoreNavigation(adminNavigation, primaryTabs(adminNavigation, "work")));
     expect(adminMoreHrefs).toContain("/app/admin/recovery");
     // WB-DF-14 (Product Owner 2026-10-26): the ADMIN reaches the support inbox from More and never submits a report.

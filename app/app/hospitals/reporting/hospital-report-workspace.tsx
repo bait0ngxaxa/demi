@@ -42,6 +42,19 @@ import {
 
 type ReportView = "overview" | "service";
 
+/** Adds `query` to `href`, which may already carry a query (the Hospital operator route keeps `hospitalId` there). */
+function appendQuery(href: string, query: string): string {
+  if (query === "") return href;
+  return `${href}${href.includes("?") ? "&" : "?"}${query}`;
+}
+
+/** A GET form drops the action's own query, so the href is split into the action path and hidden fields. */
+function formTarget(href: string): { action: string; fields: readonly [string, string][] } {
+  const queryStart = href.indexOf("?");
+  if (queryStart === -1) return { action: href, fields: [] };
+  return { action: href.slice(0, queryStart), fields: [...new URLSearchParams(href.slice(queryStart + 1)).entries()] };
+}
+
 const REPORT_VIEWS: readonly { label: string; value: ReportView }[] = [
   { label: "ภาพรวม", value: "overview" },
   { label: "รายงานการจัดบริการ", value: "service" },
@@ -492,6 +505,11 @@ export function ExportButton({
   );
 }
 
+/**
+ * One Hospital's report. The Hospital operator page (`chrome="page"`) renders its own header, Hospital selector and
+ * Hospital identity. The platform ADMIN page owns those itself (`chrome="embedded"`), so the workspace starts at the
+ * report body, and every in-report link and form stays on `reportHref`.
+ */
 export function HospitalReportWorkspace({
   hospitals,
   hierarchy,
@@ -499,6 +517,8 @@ export function HospitalReportWorkspace({
   page,
   selectedHospitalId,
   audience = "HOSPITAL_OWNER",
+  chrome = "page",
+  reportHref,
   parentGroups = [],
   selection,
 }: {
@@ -507,90 +527,81 @@ export function HospitalReportWorkspace({
   initialView: string;
   page: HospitalReportingPageProjection;
   selectedHospitalId: string;
-  audience?: "HOSPITAL_OWNER" | "GLOBAL_ADMIN";
   parentGroups?: readonly ParentChildHospitalReportTargetGroup[];
   selection?: HospitalReportTargetSelection;
-}): React.JSX.Element {
+} & (
+  | { audience?: "HOSPITAL_OWNER"; chrome?: "page"; reportHref?: undefined }
+  /** `reportHref` is the selected Hospital's report URL, e.g. `/app/admin/reporting/hospitals/{id}`. */
+  | { audience: "GLOBAL_ADMIN"; chrome: "embedded"; reportHref: string }
+)): React.JSX.Element {
   const [view, setView] = useState<ReportView>(initialView === "service" ? "service" : "overview");
   const isGlobalAdmin = audience === "GLOBAL_ADMIN";
-  const routeBase = isGlobalAdmin ? "/app/admin/reporting" : "/app/hospitals/reporting";
+  const embedded = chrome === "embedded";
+  const routeBase = "/app/hospitals/reporting";
   const includesEnded = page.cohort === "INCLUDE_ENDED";
-  const hospitalHref = `${routeBase}?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
+  const hospitalHref = reportHref ?? `${routeBase}?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
   // In-report links (pagination, views) keep the selected cohort.
-  const cohortHref = includesEnded ? `${hospitalHref}&cohort=INCLUDE_ENDED` : hospitalHref;
+  const cohortHref = appendQuery(hospitalHref, includesEnded ? "cohort=INCLUDE_ENDED" : "");
   const query = new URLSearchParams(page.filters);
-  const baseHref = `${cohortHref}&${query.toString()}`;
+  const baseHref = appendQuery(cohortHref, query.toString());
+  const filterForm = formTarget(hospitalHref);
   const allowProgramDetail = !isGlobalAdmin;
   const targetSelection = selection ?? { kind: "DIRECT_OWNER", hospitalId: selectedHospitalId };
 
+  // Embedded, the page around the workspace reads the view from `?view=` (the Hospital switcher keeps it). The
+  // native History API updates the URL without fetching the page again, so no report is re-read or re-audited.
+  function changeView(next: ReportView): void {
+    setView(next);
+    if (!embedded) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", next);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }
+
   return (
     <div className="content-workspace">
-      {isGlobalAdmin ? (
-        hospitals.length > 1 ? (
-          <Form action={routeBase} className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1">
-              <label className="type-label mb-2 block text-text" htmlFor="hospital-report-hospital">เลือกโรงพยาบาลสำหรับรายงานเฉพาะแห่ง</label>
-              <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2" defaultValue={selectedHospitalId} id="hospital-report-hospital" key={selectedHospitalId} name="hospitalId">
-                {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}
-              </select>
-              <input name="view" type="hidden" value={view} />
-            </div>
-            <PendingSubmitButton variant="secondary" pendingLabel="กำลังเปลี่ยนโรงพยาบาล...">เปลี่ยนโรงพยาบาล</PendingSubmitButton>
-          </Form>
-        ) : null
-      ) : (
-        <HospitalReportTargetSelector
-          hospitals={hospitals}
-          parentGroups={parentGroups}
-          routeBase={routeBase}
-          selection={targetSelection}
-          view={view}
-        />
+      {embedded ? null : (
+        <>
+          <HospitalReportTargetSelector
+            hospitals={hospitals}
+            parentGroups={parentGroups}
+            routeBase={routeBase}
+            selection={targetSelection}
+            view={view}
+          />
+
+          <PageHeader
+            actions={
+              <div className="flex min-w-0 flex-col items-start gap-3 sm:items-end">
+                <ExportButton cohort={page.cohort} endpoint="/api/v1/hospital/reporting/export" hospitalId={selectedHospitalId} />
+                {/* ADR-0025: a Parent's network workbook is chosen on the export page. */}
+                {parentGroups.some((group) => group.parent.id === selectedHospitalId) ? (
+                  <Link className={buttonClassName({ variant: "secondary" })} href="/app/hospitals/reporting/export" prefetch={false}>
+                    ส่งออกรายงานเครือข่าย
+                  </Link>
+                ) : null}
+              </div>
+            }
+            breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}
+            title="รายงานโรงพยาบาล"
+          />
+
+          <HospitalReportingHierarchy hierarchy={hierarchy} network={parentGroups.find((group) => group.parent.id === selectedHospitalId)} />
+        </>
       )}
 
-      <PageHeader
-        actions={
-          <div className="flex min-w-0 flex-col items-start gap-3 sm:items-end">
-            <ExportButton cohort={page.cohort} endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />
-            {/* ADR-0025: a Parent's network workbook is chosen on the export page. */}
-            {!isGlobalAdmin && parentGroups.some((group) => group.parent.id === selectedHospitalId) ? (
-              <Link className={buttonClassName({ variant: "secondary" })} href="/app/hospitals/reporting/export" prefetch={false}>
-                ส่งออกรายงานเครือข่าย
-              </Link>
-            ) : null}
+      <section aria-labelledby={embedded ? undefined : "hospital-report-context-heading"} className={embedded ? undefined : "mt-6"}>
+        {embedded ? null : (
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <h2 className="break-words text-xl font-semibold text-text" id="hospital-report-context-heading">{page.hospital.name}</h2>
+              <p className="mt-1 break-words text-sm text-text-muted">{networkClassificationLabel(hierarchy.classification)}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge variant={hierarchyStatusVariant(hierarchy.hospital.status)}>{hierarchyStatusLabel(hierarchy.hospital.status)}</StatusBadge>
+            </div>
           </div>
-        }
-        breadcrumbs={isGlobalAdmin
-          ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
-          : [{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}
-        description={isGlobalAdmin
-          ? "ไม่รวมแม่ข่าย ลูกข่าย หรือหน่วยอื่น"
-          : undefined}
-        title="รายงานโรงพยาบาล"
-      />
-
-
-      {isGlobalAdmin ? (
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/admin/reporting" prefetch={false}>
-            กลับไปภาพรวมและเลือกโรงพยาบาล
-          </Link>
-        </div>
-      ) : null}
-
-
-      <HospitalReportingHierarchy hierarchy={hierarchy} network={!isGlobalAdmin ? parentGroups.find((group) => group.parent.id === selectedHospitalId) : undefined} />
-
-      <section aria-labelledby="hospital-report-context-heading" className="mt-6">
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <h2 className="break-words text-xl font-semibold text-text" id="hospital-report-context-heading">{page.hospital.name}</h2>
-            <p className="mt-1 break-words text-sm text-text-muted">{networkClassificationLabel(hierarchy.classification)}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge variant={hierarchyStatusVariant(hierarchy.hospital.status)}>{hierarchyStatusLabel(hierarchy.hospital.status)}</StatusBadge>
-          </div>
-        </div>
+        )}
 
         {isGlobalAdmin ? null : (
           <div className="mt-4 flex min-w-0 flex-col gap-3 rounded-panel border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
@@ -606,7 +617,7 @@ export function HospitalReportWorkspace({
             </div>
             <Link
               className={buttonClassName({ variant: "secondary", size: "compact", className: "shrink-0" })}
-              href={`${includesEnded ? hospitalHref : `${hospitalHref}&cohort=INCLUDE_ENDED`}&view=${view}`}
+              href={appendQuery(hospitalHref, `${includesEnded ? "" : "cohort=INCLUDE_ENDED&"}view=${view}`)}
               prefetch={false}
             >
               {includesEnded ? "แสดงเฉพาะผู้ที่ยังอยู่ในการดูแล" : "รวมผู้ที่สิ้นสุดการดูแล"}
@@ -638,7 +649,7 @@ export function HospitalReportWorkspace({
             active={page.counts.programs.active}
             completed={page.counts.programs.completed}
             headingId="hospital-report-status-chart"
-            hrefs={{ active: `${cohortHref}&status=ACTIVE&view=${view}`, completed: `${cohortHref}&status=COMPLETED&view=${view}` }}
+            hrefs={{ active: appendQuery(cohortHref, `status=ACTIVE&view=${view}`), completed: appendQuery(cohortHref, `status=COMPLETED&view=${view}`) }}
           />
           <CountBarChart
             categories={serviceProcessCategories(page.serviceProcess)}
@@ -653,7 +664,7 @@ export function HospitalReportWorkspace({
         </div>
         <div className="mt-4">
           <CountBarChart
-            categories={roundProgressCategories(page.roundProgress, (progress) => `${cohortHref}&progress=${progress}&view=${view}`)}
+            categories={roundProgressCategories(page.roundProgress, (progress) => appendQuery(cohortHref, `progress=${progress}&view=${view}`))}
             description="แต่ละโปรแกรมอยู่ในกลุ่มเดียว รวมทุกกลุ่มเท่ากับโปรแกรมทั้งหมดในชุดข้อมูลนี้ กดชื่อกลุ่มเพื่อกรองรายการโปรแกรมด้านล่าง"
             emptyMessage="ยังไม่มีโปรแกรมในชุดข้อมูลนี้"
             headingId="hospital-report-round-progress-chart"
@@ -671,8 +682,8 @@ export function HospitalReportWorkspace({
         />
       </div>
 
-      <Form action={routeBase} className="mt-6 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <input type="hidden" name="hospitalId" value={selectedHospitalId} />
+      <Form action={filterForm.action} className="mt-6 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {filterForm.fields.map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
         <input type="hidden" name="view" value={view} />
         {includesEnded ? <input type="hidden" name="cohort" value="INCLUDE_ENDED" /> : null}
         <label className="min-w-0 text-sm">ชื่อผู้ป่วย / HN<input type="search" name="search" maxLength={100} defaultValue={page.filters.search} key={page.filters.search} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring" /></label>
@@ -680,11 +691,11 @@ export function HospitalReportWorkspace({
           <option value="">ทุกรอบ</option>{Array.from({ length: 7 }, (_, round) => <option value={round} key={round}>{round === 6 ? "ครบอย่างน้อย 6 รอบ" : `ครบ ${round} รอบ`}</option>)}<option value="AFTER_RECORDED">บันทึก After แล้ว · รอจบโปรแกรม</option><option value="COMPLETED">สิ้นสุดโปรแกรม</option>
         </select></label>
         <label className="min-w-0 text-sm">สถานะโปรแกรม<select name="status" defaultValue={page.filters.status} key={page.filters.status} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring"><option value="">ทุกสถานะ</option><option value="ACTIVE">กำลังดำเนิน</option><option value="COMPLETED">สิ้นสุดแล้ว</option></select></label>
-        <div className="flex flex-wrap items-end gap-2"><PendingSubmitButton pendingLabel="กำลังค้นหา..." variant="secondary">ค้นหา / กรอง</PendingSubmitButton><Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&view=${view}`}>ล้างตัวกรอง</Link></div>
+        <div className="flex flex-wrap items-end gap-2"><PendingSubmitButton pendingLabel="กำลังค้นหา..." variant="secondary">ค้นหา / กรอง</PendingSubmitButton><Link className={buttonClassName({ variant: "secondary" })} href={appendQuery(cohortHref, `view=${view}`)}>ล้างตัวกรอง</Link></div>
       </Form>
 
       <div className="mt-6 max-w-full overflow-x-auto pb-1">
-        <LocalNavigation ariaLabel="มุมมองรายงานโรงพยาบาล" items={REPORT_VIEWS} onChange={setView} value={view} />
+        <LocalNavigation ariaLabel="มุมมองรายงานโรงพยาบาล" items={REPORT_VIEWS} onChange={changeView} value={view} />
       </div>
 
       <section aria-labelledby={view === "overview" ? "overview-heading" : "service-heading"} className="mt-5">
@@ -713,7 +724,7 @@ export function HospitalReportWorkspace({
           <Panel>
             <h3 className="font-semibold text-text">ไม่พบโปรแกรมตามเงื่อนไขนี้</h3>
             <p className="mt-2 text-sm leading-6 text-text-muted">ยังมีโปรแกรม {page.counts.programs.total.toLocaleString("th-TH")} รายการในโรงพยาบาลนี้ ลองล้างตัวกรองหรือค้นหาด้วยชื่อ / HN อื่น</p>
-            <Link className={`${buttonClassName({ variant: "secondary" })} mt-4`} href={`${baseHref}&view=${view}`} prefetch={false}>กลับไปหน้าแรก</Link>
+            <Link className={`${buttonClassName({ variant: "secondary" })} mt-4`} href={appendQuery(baseHref, `view=${view}`)} prefetch={false}>กลับไปหน้าแรก</Link>
           </Panel>
         ) : (
           <div className="grid min-w-0 gap-4">
@@ -723,9 +734,9 @@ export function HospitalReportWorkspace({
       </section>
 
       <nav aria-label="หน้ารายการโปรแกรมของรายงานโรงพยาบาล" className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        {page.page.previousCursor ? <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.previousCursor)}&pageSize=${page.page.pageSize}&view=${view}`} prefetch={false} rel="prev">หน้าก่อนหน้า</Link> : <span aria-disabled="true" className="text-sm text-text-muted">หน้าก่อนหน้า</span>}
+        {page.page.previousCursor ? <Link className={buttonClassName({ variant: "secondary" })} href={appendQuery(baseHref, `cursor=${encodeURIComponent(page.page.previousCursor)}&pageSize=${page.page.pageSize}&view=${view}`)} prefetch={false} rel="prev">หน้าก่อนหน้า</Link> : <span aria-disabled="true" className="text-sm text-text-muted">หน้าก่อนหน้า</span>}
         <p className="text-sm text-text-muted">หน้า {page.page.number} จาก {Math.max(1, Math.ceil(page.page.total / page.page.pageSize))} · {page.page.total.toLocaleString("th-TH")} โปรแกรม</p>
-        {page.page.nextCursor ? <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.nextCursor)}&pageSize=${page.page.pageSize}&view=${view}`} prefetch={false} rel="next">หน้าถัดไป</Link> : <span aria-disabled="true" className="text-sm text-text-muted">หน้าถัดไป</span>}
+        {page.page.nextCursor ? <Link className={buttonClassName({ variant: "secondary" })} href={appendQuery(baseHref, `cursor=${encodeURIComponent(page.page.nextCursor)}&pageSize=${page.page.pageSize}&view=${view}`)} prefetch={false} rel="next">หน้าถัดไป</Link> : <span aria-disabled="true" className="text-sm text-text-muted">หน้าถัดไป</span>}
       </nav>
       <p className="mt-4 text-xs leading-5 text-text-muted">ชื่อ อสม. แสดงเฉพาะผู้ที่ได้รับมอบหมายให้ดูแลผู้ป่วยรายนี้ในปัจจุบัน รายงานนี้ไม่มีข้อมูลผู้ดูแลย้อนหลังของบริการ</p>
     </div>

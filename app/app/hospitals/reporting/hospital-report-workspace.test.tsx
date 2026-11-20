@@ -272,29 +272,45 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("ส่งออก Excel");
   });
 
-  it("uses Global exact-Hospital export and never links ADMIN-only users to Program detail", () => {
+  it("embeds the Global ADMIN report without page chrome and never links ADMIN-only users to Program detail", () => {
+    const reportHref = `/app/admin/reporting/hospitals/${hospitalId}`;
     const markup = renderToStaticMarkup(createElement(HospitalReportWorkspace, {
       hospitals,
       hierarchy,
       initialView: "overview",
-      page: page([program("33333333-3333-4333-8333-333333333333", PatientProgramStatus.ACTIVE)]),
+      page: (() => {
+        const projection = page([program("33333333-3333-4333-8333-333333333333", PatientProgramStatus.ACTIVE)], 25);
+        return { ...projection, page: { ...projection.page, nextCursor: "next-cursor" } };
+      })(),
       selectedHospitalId: hospitalId,
       audience: "GLOBAL_ADMIN",
+      chrome: "embedded",
+      reportHref,
     }));
 
-    expect(markup).toContain("ไม่รวมแม่ข่าย ลูกข่าย หรือหน่วยอื่น");
-    expect(markup).toContain("ส่งออก Excel");
+    // The ADMIN page header owns the title, breadcrumbs, Hospital name, export and switching.
+    expect(markup).not.toContain("<h1");
+    expect(markup).not.toContain("<header");
+    expect(markup).not.toContain('id="hospital-report-context-heading"');
+    expect(markup).not.toContain("กลับไปภาพรวม");
+    expect(markup).not.toContain("<select name=\"hospitalId\"");
+    expect(markup).not.toContain('id="hospital-report-hospital"');
+    expect(markup).not.toContain("ส่งออก Excel");
+    expect(markup).toContain('id="overview-heading"');
     expect(markup).not.toContain("/app/patients/");
     // COPY-DISTILL R5: no Program-detail link and no permission sentence for ADMIN-only users.
     expect(markup).not.toContain("ต้องมีสิทธิ์");
-    expect(markup).not.toContain("รายงานนี้ใช้ข้อมูลของโรงพยาบาลที่เลือกเท่านั้น");
-    expect(markup).not.toContain("รายงานเฉพาะโรงพยาบาลที่เลือก");
     expect(markup).not.toContain("exact-Hospital");
     expect(markup).not.toContain("Platform ADMIN");
     expect(markup).toContain("ไฟล์ Excel ที่จะส่งออก");
-    // The same exact-Hospital charts; their filter links stay on the Global ADMIN route.
+    // Chart filters, filter form, clear link and pagination all stay on the Hospital's own ADMIN page.
     expect(markup).toContain('id="hospital-report-service-process-chart"');
-    expect(markup).toContain(`href="/app/admin/reporting?hospitalId=${hospitalId}&amp;progress=COMPLETED&amp;view=overview"`);
+    expect(markup).toContain(`href="${reportHref}?progress=COMPLETED&amp;view=overview"`);
+    expect(markup).toContain(`action="${reportHref}"`);
+    expect(markup).not.toContain('name="hospitalId"');
+    expect(markup).toContain(`href="${reportHref}?view=overview"`);
+    expect(markup).toContain(`href="${reportHref}?search=&amp;progress=&amp;status=&amp;cursor=next-cursor&amp;pageSize=`);
+    expect(markup).not.toContain("/app/admin/reporting?");
     expect(markup).not.toContain('href="/app/hospitals/reporting?');
   });
 
