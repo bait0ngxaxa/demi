@@ -62,6 +62,13 @@ function newFixture(): Fixture {
 }
 
 async function cleanFixture(fixture: Fixture): Promise<void> {
+  // A retired fixture Hospital references its retiring user (ON DELETE RESTRICT); clear it before users are deleted.
+  if (fixture.hospitalIds.length > 0) {
+    await prisma.hospital.updateMany({
+      where: { id: { in: fixture.hospitalIds }, status: HospitalStatus.RETIRED },
+      data: { status: HospitalStatus.ACTIVE, retiredAt: null, retiredByUserId: null, retiredReason: null },
+    });
+  }
   const programIds = fixture.programIds;
   if (programIds.length > 0) {
     await clearProgramRoundCompletions(programIds);
@@ -862,8 +869,13 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     const parent = await createHospital(fixture, { name: `${token} แม่ข่าย` });
     const child = await createHospital(fixture, { name: `${token} ลูกข่าย`, kind: "CHILD", status: HospitalStatus.PENDING_VERIFICATION });
     const suspended = await createHospital(fixture, { name: `${token} ระงับ`, status: HospitalStatus.SUSPENDED });
-    const retired = await createHospital(fixture, { name: `${token} ถอน`, status: HospitalStatus.RETIRED });
+    const retired = await createHospital(fixture, { name: `${token} ถอน` });
     const admin = await createActor(fixture, { role: Role.ADMIN });
+    // Hospital_retirement_consistency: a RETIRED Hospital records who retired it, when and why.
+    await prisma.hospital.update({
+      where: { id: retired.id },
+      data: { status: HospitalStatus.RETIRED, retiredAt: new Date(), retiredByUserId: admin.userId, retiredReason: "ถอนเพื่อทดสอบการค้นหา" },
+    });
     const owner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parent });
     await attachNetwork(parent.id, [child.id], owner.userId);
 
