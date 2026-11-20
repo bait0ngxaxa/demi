@@ -25,7 +25,8 @@ export type ChildFacilityPanelProps = {
   parentHospitalId: string;
   areaId: string;
   attachedAt: string;
-  child: { id: string; hospitalCode: string; name: string; updatedAt: string };
+  /** `displayName` is disambiguated for this network list; `name` is the stored name (rename field). */
+  child: { id: string; name: string; displayName: string; updatedAt: string };
   state: "PENDING_ACTIVATION" | "ACTIVE" | "NO_OWNER" | "INACTIVE";
   invitation: {
     inviteeName: string;
@@ -97,9 +98,9 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
     <Panel aria-labelledby={headingId} className="min-w-0">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h3 className="break-words text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id={headingId} ref={headingRef} tabIndex={-1}>{child.name}</h3>
+          <h3 className="break-words text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id={headingId} ref={headingRef} tabIndex={-1}>{child.displayName}</h3>
           <p className="mt-1 text-sm text-text-muted">
-            รหัส {child.hospitalCode} · อยู่ในเครือข่ายตั้งแต่ {formatDateTime(props.attachedAt)}
+            อยู่ในเครือข่ายตั้งแต่ {formatDateTime(props.attachedAt)}
             {props.registeredByThisParent ? " · สร้างโดยแม่ข่ายนี้" : null}
           </p>
           <InvitationSummary invitation={invitation} lastDeclinedAt={props.lastDeclinedAt} />

@@ -28,6 +28,7 @@ import {
   hospitalRoleLabel,
   type OnboardingHospitalOption,
 } from "./hospital-groups";
+import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
 import { PasswordInput } from "@/components/ui/password-input";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/modules/auth/domain/password-policy";
 import { PASSWORD_POLICY_HINT } from "@/modules/auth/domain/password-policy-copy";
@@ -62,9 +63,12 @@ export function HospitalOnboardingForm({ legal }: HospitalOnboardingFormProps) {
   const focusAfterSelectionRef = useRef<"search" | "change" | null>(null);
   const searchResults = hospitalSearch.shown?.items;
   const visibleSelectionGroups = useMemo(() => groupOnboardingHospitals(searchResults ?? []), [searchResults]);
+  // Same-named options are told apart by registration date; codes are never shown.
+  const optionNames = useMemo(() => hospitalDisplayNames((searchResults ?? []).map(({ id, name, createdAt }) => ({ id, name, registeredAt: createdAt }))), [searchResults]);
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const selectedHospitalContext = selectedHospital ? hospitalRoleLabel(selectedHospital) : null;
   const selectedHospitalStatus = selectedHospital
-    ? `เลือกแล้ว: ${selectedHospital.name}${selectedHospitalContext ? ` ${selectedHospitalContext}` : ""}`
+    ? `เลือกแล้ว: ${selectedLabel ?? selectedHospital.name}${selectedHospitalContext ? ` ${selectedHospitalContext}` : ""}`
     : "กรุณาเลือกโรงพยาบาลจากรายการ";
   const hasVisibleHospitals = visibleSelectionGroups.length > 0;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
@@ -79,6 +83,7 @@ export function HospitalOnboardingForm({ legal }: HospitalOnboardingFormProps) {
   function selectHospital(hospital: OnboardingHospitalOption): void {
     focusAfterSelectionRef.current = "change";
     setSelectedHospital(hospital);
+    setSelectedLabel(optionNames.get(hospital.id) ?? hospital.name);
     hospitalSearch.setQuery("");
   }
 
@@ -156,7 +161,7 @@ export function HospitalOnboardingForm({ legal }: HospitalOnboardingFormProps) {
           <div className="flex items-start justify-between gap-4 rounded-[12px] border border-brand bg-brand-soft p-4">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-brand-strong">เลือกแล้ว</p>
-              <p className="mt-1 break-words font-semibold text-ink">{selectedHospital.name}</p>
+              <p className="mt-1 break-words font-semibold text-ink">{selectedLabel ?? selectedHospital.name}</p>
               {selectedHospitalContext ? (
                 <p className="mt-1 break-words text-sm leading-6 text-muted">
                   {selectedHospitalContext}
@@ -181,7 +186,7 @@ export function HospitalOnboardingForm({ legal }: HospitalOnboardingFormProps) {
           <>
             <div className="space-y-2">
               <label className="block text-sm font-semibold text-ink" htmlFor="hospitalSearch">
-                ค้นหาชื่อหรือรหัสโรงพยาบาลแม่ข่าย
+                ค้นหาชื่อโรงพยาบาลแม่ข่าย
               </label>
               <input
                 autoComplete="off"
@@ -207,7 +212,7 @@ export function HospitalOnboardingForm({ legal }: HospitalOnboardingFormProps) {
             >
               {hospitalSearch.belowMinimum ? (
                 <p className="px-3 py-4 text-sm leading-6 text-muted">
-                  พิมพ์ชื่อหรือรหัสโรงพยาบาลเพื่อค้นหา
+                  พิมพ์ชื่อโรงพยาบาลเพื่อค้นหา
                 </p>
               ) : !hospitalSearch.shown ? (
                 <p className="px-3 py-4 text-sm leading-6 text-muted" role="status">
@@ -246,14 +251,14 @@ export function HospitalOnboardingForm({ legal }: HospitalOnboardingFormProps) {
                           {group.hospitals.map((hospital) => (
                             <li key={hospital.id}>
                               <button
-                                aria-label={`เลือกโรงพยาบาล ${hospital.name}`}
+                                aria-label={`เลือกโรงพยาบาล ${optionNames.get(hospital.id) ?? hospital.name}`}
                                 className="w-full rounded-[10px] border border-transparent bg-white/70 px-3 py-3 text-left transition-[border-color,background-color] hover:border-line hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
                                 disabled={pending}
                                 onClick={() => selectHospital(hospital)}
                                 type="button"
                               >
                                 <span className="block break-words font-semibold text-ink">
-                                  {hospital.name}
+                                  {optionNames.get(hospital.id) ?? hospital.name}
                                 </span>
                               </button>
                             </li>

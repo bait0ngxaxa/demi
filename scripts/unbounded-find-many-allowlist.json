@@ -1,5 +1,12 @@
 [
   {
+    "file": "src/modules/hospital-service-areas/services/network-child-names.ts",
+    "function": "assertUniqueNetworkChildName",
+    "target": "hospital",
+    "occurrence": 1,
+    "reason": "Names of one Parent's own Children (attached or registered for it); compared after normalization in code."
+  },
+  {
     "file": "src/modules/account-security/services/caregiver-invitation-takeover-lock.ts",
     "function": "lockCaregiverInvitationIdentityInTransaction",
     "target": "user.workforceActivations",

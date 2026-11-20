@@ -53,6 +53,7 @@ import {
   type HospitalGovernanceMutationInput,
 } from "../schemas/hospital-governance-schemas";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
+import { assertUniqueNetworkChildName } from "@/modules/hospital-service-areas/services/network-child-names";
 
 export type HospitalGovernanceDatabase = PrismaClient;
 
@@ -939,6 +940,19 @@ export async function renameHospital(
 
         if (current.name === parsed.data.name) {
           throw new ValidationError("The Hospital already has this name");
+        }
+
+        // A Child keeps a unique name within its network (active Parent, else the Parent it was registered for).
+        const networkParent = await transaction.hospital.findUnique({
+          where: { id: current.id },
+          select: {
+            registeredForParentHospitalId: true,
+            serviceAreaAssignments: { where: { endedAt: null }, take: 1, select: { parentHospitalId: true } },
+          },
+        });
+        const parentHospitalId = networkParent?.serviceAreaAssignments[0]?.parentHospitalId ?? networkParent?.registeredForParentHospitalId ?? null;
+        if (parentHospitalId) {
+          await assertUniqueNetworkChildName(transaction, { parentHospitalId, name: parsed.data.name, exceptHospitalId: current.id });
         }
 
         const updated = await transaction.hospital.updateMany({

@@ -14,9 +14,9 @@ const childBId = "11111111-1111-4111-8111-000000000003";
 
 function preview(programs: [number, number, number], cohort: "ACTIVE" | "INCLUDE_ENDED" = "ACTIVE"): NetworkReportExportPreview {
   const hospitals = [
-    { id: parentId, hospitalCode: "P-001", name: "โรงพยาบาลแม่ข่าย", kind: "PARENT" as const, relationships: 10, relationshipsWithoutProgram: 1, programs: programs[0] },
-    { id: childAId, hospitalCode: "C-002", name: "รพ.สต.บ้านกลาง", kind: "CHILD" as const, relationships: 4, relationshipsWithoutProgram: 0, programs: programs[1] },
-    { id: childBId, hospitalCode: "C-003", name: "รพ.สต.หนองน้ำ", kind: "CHILD" as const, relationships: 2, relationshipsWithoutProgram: 2, programs: programs[2] },
+    { id: parentId, hospitalCode: "P-001", name: "โรงพยาบาลแม่ข่าย", kind: "PARENT" as const, createdAt: new Date("2026-01-05T00:00:00.000Z"), relationships: 10, relationshipsWithoutProgram: 1, programs: programs[0] },
+    { id: childAId, hospitalCode: "C-002", name: "รพ.สต.บ้านกลาง", kind: "CHILD" as const, createdAt: new Date("2026-01-05T00:00:00.000Z"), relationships: 4, relationshipsWithoutProgram: 0, programs: programs[1] },
+    { id: childBId, hospitalCode: "C-003", name: "รพ.สต.หนองน้ำ", kind: "CHILD" as const, createdAt: new Date("2026-01-05T00:00:00.000Z"), relationships: 2, relationshipsWithoutProgram: 2, programs: programs[2] },
   ];
   return {
     parent: { id: parentId, hospitalCode: "P-001", name: "โรงพยาบาลแม่ข่าย" },
@@ -96,7 +96,8 @@ describe("ADR-0025 network export selection", () => {
     mount(preview([30, 8, 0]));
     act(() => labelled("เลือกหน่วยบริการ").click());
 
-    expect(container.textContent).toContain("รหัส C-002 · 4 เคส · 8 โปรแกรม");
+    expect(container.textContent).toContain("4 เคส · 8 โปรแกรม");
+    expect(container.textContent).not.toMatch(/รหัส|C-002|P-001/u);
     expect(totals()).toEqual(["3 แห่ง", "16", "38"]);
 
     act(() => button("ไม่เลือกเลย").click());
@@ -111,7 +112,10 @@ describe("ADR-0025 network export selection", () => {
     act(() => button("เลือกทั้งหมดที่แสดง").click());
     expect(totals()).toEqual(["1 แห่ง", "2", "0"]);
 
+    // Codes are not searchable: the name finds the unit.
     type(labelled("ค้นหาหน่วยบริการ"), "C-002");
+    expect(container.textContent).toContain("ไม่พบหน่วยบริการที่ตรงกับคำค้น");
+    type(labelled("ค้นหาหน่วยบริการ"), "บ้านกลาง");
     act(() => labelled("รพ.สต.บ้านกลาง").click());
     expect(totals()).toEqual(["2 แห่ง", "6", "8"]);
 

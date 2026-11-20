@@ -44,6 +44,7 @@ import {
   type ChildOwnerInvitationIssue,
 } from "../services/child-facility-service";
 import { attachHospitalServiceArea, endHospitalServiceArea } from "../services/hospital-service-area-service";
+import { DuplicateNetworkChildNameError } from "../services/network-child-names";
 import type {
   ChildOwnerInvitationActionState,
   HospitalBulkRegistrationActionState,
@@ -57,6 +58,8 @@ function getString(formData: FormData, field: string): string {
   return typeof value === "string" ? value : "";
 }
 
+const DUPLICATE_NETWORK_CHILD_NAME_MESSAGE = "มีหน่วยบริการชื่อนี้ในเครือข่ายแล้ว";
+
 const retirementIneligibilityCopy: Record<HospitalRetirementIneligibility, string> = {
   NOT_FOUND: "ไม่พบในระบบแล้ว",
   NOT_PENDING: "ไม่ได้อยู่ในสถานะรอขึ้นทะเบียน",
@@ -66,9 +69,12 @@ const retirementIneligibilityCopy: Record<HospitalRetirementIneligibility, strin
 };
 
 function toErrorState(error: unknown, copy: ErrorCopy): HospitalNetworkActionState {
+  if (error instanceof DuplicateNetworkChildNameError) {
+    return { status: "ERROR", code: "CONFLICT", message: DUPLICATE_NETWORK_CHILD_NAME_MESSAGE };
+  }
   if (error instanceof HospitalRetirementIneligibleError) {
-    const names = error.ineligible.map(({ hospitalCode, name, reason }) =>
-      `${name ?? "โรงพยาบาลที่เลือก"}${hospitalCode ? ` (${hospitalCode})` : ""}: ${retirementIneligibilityCopy[reason]}`);
+    const names = error.ineligible.map(({ name, reason }) =>
+      `${name ?? "โรงพยาบาลที่เลือก"}: ${retirementIneligibilityCopy[reason]}`);
     return { status: "ERROR", code: "CONFLICT", message: `ยังไม่ได้ถอนโรงพยาบาลใด เนื่องจาก ${names.join(" · ")}` };
   }
   if (error instanceof ApplicationError) {
@@ -367,7 +373,7 @@ export async function createChildFacilityAction(
       name: getString(formData, "name"),
       submissionNonce: getString(formData, "submissionNonce"),
     });
-    return { invitation: result.invitation, message: `สร้าง ${result.child.name} (${result.child.hospitalCode}) ในเครือข่ายแล้ว · รอเปิดใช้งาน` };
+    return { invitation: result.invitation, message: `สร้าง ${result.child.name} ในเครือข่ายแล้ว · รอเปิดใช้งาน` };
   }, childOwnerInviteeCopy);
 }
 

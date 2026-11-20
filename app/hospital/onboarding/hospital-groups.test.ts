@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { groupOnboardingHospitals, hospitalRoleLabel, type OnboardingHospitalOption } from "./hospital-groups";
 
 function option(id: string, name: string, networkRole: OnboardingHospitalOption["networkRole"]): OnboardingHospitalOption {
-  return { id, hospitalCode: id.toUpperCase(), name, networkRole };
+  return { id, hospitalCode: id.toUpperCase(), name, createdAt: new Date("2026-01-05T00:00:00.000Z"), networkRole };
 }
 
 describe("groupOnboardingHospitals", () => {

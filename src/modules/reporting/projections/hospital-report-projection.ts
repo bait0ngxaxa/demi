@@ -231,6 +231,8 @@ export type NetworkReportingHospital = {
   id: string;
   hospitalCode: string;
   name: string;
+  /** Tells same-named network Hospitals apart; the code is never shown. */
+  createdAt: Date;
   kind: "PARENT" | "CHILD";
 };
 

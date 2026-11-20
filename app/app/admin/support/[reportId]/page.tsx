@@ -29,7 +29,7 @@ export default async function AdminSupportReportDetailPage({ params }: { params:
       <div><dt className="text-text-muted">ผู้แจ้ง</dt><dd className="mt-1 font-medium text-text">{report.reporter.displayName}</dd></div>
       <div><dt className="text-text-muted">บทบาทของผู้แจ้ง</dt><dd className="mt-1 text-text">{report.reporter.roles.length > 0 ? report.reporter.roles.map((role) => roleLabels[role]).join(" · ") : "ไม่มีบทบาทในระบบ"}</dd></div>
       <div><dt className="text-text-muted">วันที่ส่ง</dt><dd className="mt-1 text-text"><time dateTime={report.createdAt}>{formatDateTime(report.createdAt)}</time></dd></div>
-      {report.hospital ? <div><dt className="text-text-muted">โรงพยาบาลที่ผู้แจ้งเลือก</dt><dd className="mt-1 text-text">{report.hospital.name} ({report.hospital.hospitalCode})</dd><dd><Link className={linkClassName} href={`/app/admin/support?status=${SUPPORT_REPORT_INBOX_ALL_STATUSES}&hospitalId=${encodeURIComponent(report.hospital.id)}`}>ดูรายงานอื่นของโรงพยาบาลนี้</Link></dd></div> : null}
+      {report.hospital ? <div><dt className="text-text-muted">โรงพยาบาลที่ผู้แจ้งเลือก</dt><dd className="mt-1 text-text">{report.hospital.name}</dd><dd><Link className={linkClassName} href={`/app/admin/support?status=${SUPPORT_REPORT_INBOX_ALL_STATUSES}&hospitalId=${encodeURIComponent(report.hospital.id)}`}>ดูรายงานอื่นของโรงพยาบาลนี้</Link></dd></div> : null}
     </dl>
     <section aria-labelledby="support-report-message-heading" className="space-y-2">
       <h2 className="text-lg font-semibold text-text" id="support-report-message-heading">ข้อความจากผู้แจ้ง</h2>

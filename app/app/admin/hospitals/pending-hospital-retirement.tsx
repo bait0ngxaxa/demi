@@ -12,7 +12,7 @@ import { retireHospitalsAction } from "@/modules/hospital-service-areas/transpor
 
 export type PendingHospitalOption = {
   id: string;
-  hospitalCode: string;
+  /** Already disambiguated for this list. */
   name: string;
   roleLabel: string;
 };
@@ -95,7 +95,7 @@ export function PendingHospitalRetirement({
                   />
                   <span className="min-w-0 break-words">
                     <span className="font-semibold text-text">{hospital.name}</span>{" "}
-                    <span className="text-text-muted">({hospital.hospitalCode}) · {hospital.roleLabel}</span>
+                    <span className="text-text-muted">· {hospital.roleLabel}</span>
                   </span>
                 </label>
                 <Link

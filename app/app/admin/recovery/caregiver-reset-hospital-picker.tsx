@@ -8,6 +8,7 @@ import { useServerSearch } from "@/components/search/use-server-search";
 import type { MediatedPasswordResetHospitalOption } from "@/modules/account-security/services/mediated-password-reset-service";
 import { searchMediatedPasswordResetHospitalsAction } from "@/modules/account-security/transport/server-actions";
 import { HOSPITAL_SEARCH_MAX_LENGTH } from "@/shared/search/hospital-search";
+import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
 
 import { MediatedPasswordResetControl } from "../../users/mediated-password-reset-control";
 
@@ -32,6 +33,7 @@ export function CaregiverResetHospitalPicker({
     minLength: 1,
   });
   const results = search.shown?.items ?? [];
+  const names = hospitalDisplayNames(results.map(({ id, name, createdAt }) => ({ id, name, registeredAt: createdAt })));
 
   return (
     <div className="space-y-4">
@@ -41,13 +43,13 @@ export function CaregiverResetHospitalPicker({
           <Input
             maxLength={HOSPITAL_SEARCH_MAX_LENGTH}
             onChange={(event) => search.setQuery(event.target.value)}
-            placeholder="ค้นหาชื่อหรือรหัสโรงพยาบาล"
+            placeholder="ค้นหาชื่อโรงพยาบาล"
             type="search"
             value={search.query}
           />
         </label>
         {search.belowMinimum ? (
-          <p className="text-sm text-text-muted">พิมพ์ชื่อหรือรหัสโรงพยาบาลเพื่อค้นหา ระบบแสดงไม่เกิน 10 แห่ง</p>
+          <p className="text-sm text-text-muted">พิมพ์ชื่อโรงพยาบาลเพื่อค้นหา ระบบแสดงไม่เกิน 10 แห่ง</p>
         ) : !search.answered && results.length === 0 ? (
           <p className="text-sm text-text-muted" role="status">กำลังค้นหาโรงพยาบาล...</p>
         ) : search.shown?.error ? (
@@ -68,7 +70,7 @@ export function CaregiverResetHospitalPicker({
                     value={option.id}
                   />
                   <span className="min-w-0 flex-1 break-words font-semibold text-text">
-                    {option.name} <span className="font-normal text-text-muted">({option.hospitalCode})</span>
+                    {names.get(option.id) ?? option.name}
                   </span>
                 </label>
               </li>

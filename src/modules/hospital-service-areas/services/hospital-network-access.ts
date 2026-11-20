@@ -35,13 +35,14 @@ export type HospitalNetworkDatabase = PrismaClient | Prisma.TransactionClient;
  */
 export type HospitalNetworkAuthority = "OWNER" | "PATIENT_READ" | "REPORT";
 
-export type HospitalNetworkFacility = { id: string; hospitalCode: string; name: string };
+/** `createdAt` lets screens and workbooks tell same-named Hospitals apart; `hospitalCode` stays internal. */
+export type HospitalNetworkFacility = { id: string; hospitalCode: string; name: string; createdAt: Date };
 export type HospitalNetworkScope = { parent: HospitalNetworkFacility; children: HospitalNetworkFacility[] };
 export type HospitalNetworkReportExportScope = HospitalNetworkScope & {
   membershipType: typeof MembershipType.OWNER | typeof MembershipType.MEMBER;
 };
 
-const facilitySelect = { id: true, hospitalCode: true, name: true } satisfies Prisma.HospitalSelect;
+const facilitySelect = { id: true, hospitalCode: true, name: true, createdAt: true } satisfies Prisma.HospitalSelect;
 
 const networkMembershipTypes = {
   OWNER: HOSPITAL_ADMINISTRATOR_MEMBERSHIP_TYPES,
@@ -172,7 +173,7 @@ export async function findNetworkReportExportScope(
   const membershipType = parent?.memberships[0]?.membershipType;
   if (!parent || (membershipType !== MembershipType.OWNER && membershipType !== MembershipType.MEMBER)) return null;
   return {
-    parent: { id: parent.id, hospitalCode: parent.hospitalCode, name: parent.name },
+    parent: { id: parent.id, hospitalCode: parent.hospitalCode, name: parent.name, createdAt: parent.createdAt },
     membershipType,
     children: sortFacilities(parent.managedServiceAreas.map(({ child }) => child)),
   };

@@ -30,14 +30,14 @@ const childName = "รพ.สต.ลูกข่าย ก";
 
 function hospitalOptions(options: { duplicateChild?: boolean; other?: boolean } = {}): OnboardingHospitalOption[] {
   const hospitals: OnboardingHospitalOption[] = [
-    { id: parentId, hospitalCode: "PARENT-001", name: parentName, networkRole: "PARENT" },
-    { id: childId, hospitalCode: "CHILD-001", name: childName, networkRole: "CHILD" },
+    { id: parentId, hospitalCode: "PARENT-001", name: parentName, createdAt: new Date("2026-01-05T00:00:00.000Z"), networkRole: "PARENT" },
+    { id: childId, hospitalCode: "CHILD-001", name: childName, createdAt: new Date("2026-01-05T00:00:00.000Z"), networkRole: "CHILD" },
   ];
   if (options.duplicateChild) {
-    hospitals.push({ id: duplicateChildId, hospitalCode: "CHILD-002", name: childName, networkRole: "CHILD" });
+    hospitals.push({ id: duplicateChildId, hospitalCode: "CHILD-002", name: childName, createdAt: new Date("2026-02-05T00:00:00.000Z"), networkRole: "CHILD" });
   }
   if (options.other) {
-    hospitals.push({ id: otherId, hospitalCode: "OTHER-001", name: "โรงพยาบาลที่ยังไม่กำหนดประเภท", networkRole: null });
+    hospitals.push({ id: otherId, hospitalCode: "OTHER-001", name: "โรงพยาบาลที่ยังไม่กำหนดประเภท", createdAt: new Date("2026-01-05T00:00:00.000Z"), networkRole: null });
   }
   return hospitals;
 }
@@ -175,28 +175,28 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
     expect(region?.textContent).not.toContain("โรงพยาบาลอื่น");
   });
 
-  it("preserves separate identities for duplicate Hospital names", async () => {
+  it("tells duplicate Hospital names apart by registration date and keeps separate identities", async () => {
     renderForm(hospitalOptions({ duplicateChild: true }));
-    await search("CHILD-00");
-    const label = `เลือกโรงพยาบาล ${childName}`;
+    await search("รพ.สต.");
+    const first = `เลือกโรงพยาบาล ${childName} · ขึ้นทะเบียน 5 ม.ค. 2569`;
+    const second = `เลือกโรงพยาบาล ${childName} · ขึ้นทะเบียน 5 ก.พ. 2569`;
 
-    expect(
-      Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-label]"))
-        .filter((button) => button.getAttribute("aria-label") === label),
-    ).toHaveLength(2);
+    expect(container.querySelectorAll(`button[aria-label="${first}"]`)).toHaveLength(1);
+    expect(container.querySelectorAll(`button[aria-label="${second}"]`)).toHaveLength(1);
+    expect(container.textContent).not.toContain("CHILD-00");
 
-    act(() => buttonByLabel(label, 1).click());
+    act(() => buttonByLabel(second, 0).click());
 
     expect(selectedHospitalCode()).toBe("CHILD-002");
   });
 
   it("asks for two characters before searching and says when nothing matches", async () => {
     renderForm(hospitalOptions());
-    expect(container.textContent).toContain("พิมพ์ชื่อหรือรหัสโรงพยาบาลเพื่อค้นหา");
+    expect(container.textContent).toContain("พิมพ์ชื่อโรงพยาบาลเพื่อค้นหา");
 
     await search("ก");
     expect(searchOnboardingHospitalsAction).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("พิมพ์ชื่อหรือรหัสโรงพยาบาลเพื่อค้นหา");
+    expect(container.textContent).toContain("พิมพ์ชื่อโรงพยาบาลเพื่อค้นหา");
 
     await search("โรงพยาบาลที่ไม่มีในระบบ");
     expect(searchOnboardingHospitalsAction).toHaveBeenCalledWith("โรงพยาบาลที่ไม่มีในระบบ");
@@ -210,7 +210,7 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
       .mockImplementationOnce((value: string) => new Promise((resolve) => {
         answerFirst = () => resolve({
           status: "OK", page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false,
-          items: [{ id: otherId, hospitalCode: "OLD-001", name: `คำตอบเก่าของ ${value}`, networkRole: "PARENT" }],
+          items: [{ id: otherId, hospitalCode: "OLD-001", name: `คำตอบเก่าของ ${value}`, createdAt: new Date("2026-01-05T00:00:00.000Z"), networkRole: "PARENT" }],
         });
       }));
 

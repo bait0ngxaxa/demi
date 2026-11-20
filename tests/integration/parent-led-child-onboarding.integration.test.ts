@@ -14,6 +14,7 @@ import {
   HospitalBulkRegistrationRejectedError,
   HospitalRetirementIneligibleError,
   previewHospitalBulkRegistration,
+  renameHospital,
   retireHospitals,
 } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
@@ -37,7 +38,8 @@ import {
 } from "@/modules/hospital-service-areas/services/child-facility-service";
 import { findNetworkChild, findNetworkPatientReadParent, listNetworkScopes } from "@/modules/hospital-service-areas/services/hospital-network-access";
 import { setHospitalNetworkRole, transferHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
-import { endHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
+import { attachHospitalServiceArea, endHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
+import { DuplicateNetworkChildNameError } from "@/modules/hospital-service-areas/services/network-child-names";
 import { completeWorkforceActivation, previewWorkforceActivation } from "@/modules/workforce/services/workforce-service";
 import { expectEveryNativeServiceRequestable } from "./support/native-patient-services";
 import { provisionPatientFixture } from "./support/patient-provisioning";
@@ -904,6 +906,75 @@ describe("O1-E: denials", () => {
     const pendingTarget = { parentHospitalId: parent.id, childHospitalId: pending.child.id };
     await expect(issueChildOwnerLink(parentOwner, { ...pendingTarget, mode: "REMOTE" })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(cancelPendingChildFacility(parentOwner, { ...pendingTarget, confirm: true, reason: "x" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("refuses a Child name already used in the same network on create, rename, attach and transfer, not in another network", async () => {
+    const { parent, parentOwner } = await setup();
+    const first = await createChildFacility(parentOwner, childInput(parent.id, { name: "รพ.สต.บ้านใหม่" }));
+
+    // Normalized equal (whitespace): refused, and nothing is created for that submission.
+    const duplicateInput = childInput(parent.id, { name: "รพ.สต. บ้านใหม่" });
+    await expect(createChildFacility(parentOwner, duplicateInput)).rejects.toBeInstanceOf(DuplicateNetworkChildNameError);
+    expect(await db.hospital.count({ where: { registrationNonce: String(duplicateInput.submissionNonce) } })).toBe(0);
+
+    const second = await createChildFacility(parentOwner, childInput(parent.id, { name: "รพ.สต.อื่น" }));
+    const before = await db.hospital.findUniqueOrThrow({ where: { id: second.child.id }, select: { updatedAt: true } });
+    await expect(renameChildFacility(parentOwner, {
+      parentHospitalId: parent.id, childHospitalId: second.child.id, name: "รพ.สต.บ้านใหม่ ", expectedUpdatedAt: before.updatedAt.toISOString(),
+    })).rejects.toBeInstanceOf(DuplicateNetworkChildNameError);
+    expect((await db.hospital.findUniqueOrThrow({ where: { id: second.child.id }, select: { name: true } })).name).toBe("รพ.สต.อื่น");
+    // A Child is never compared with itself, so the first Child is untouched.
+    expect(await db.hospital.findUniqueOrThrow({ where: { id: first.child.id }, select: { name: true } })).toEqual({ name: "รพ.สต.บ้านใหม่" });
+
+    // Another network may use the name.
+    const other = await setup();
+    await expect(createChildFacility(other.parentOwner, childInput(other.parent.id, { name: "รพ.สต.บ้านใหม่" }))).resolves.toMatchObject({
+      child: { name: "รพ.สต.บ้านใหม่" },
+    });
+
+    // Attach of a free Child with the same name is refused and creates no area.
+    const free = await hospital(HospitalStatus.ACTIVE, "CHILD");
+    await db.hospital.update({ where: { id: free.id }, data: { name: "รพ.สต.บ้านใหม่" } });
+    await expect(attachHospitalServiceArea(parentOwner, { parentHospitalId: parent.id, childHospitalId: free.id }))
+      .rejects.toBeInstanceOf(DuplicateNetworkChildNameError);
+    expect(await db.hospitalServiceArea.count({ where: { childHospitalId: free.id } })).toBe(0);
+
+    // ADMIN transfer into the network is refused the same way; the original area stays active.
+    const third = await setup();
+    await attachHospitalServiceArea(third.parentOwner, { parentHospitalId: third.parent.id, childHospitalId: free.id });
+    const area = await db.hospitalServiceArea.findFirstOrThrow({ where: { childHospitalId: free.id, endedAt: null } });
+    await expect(transferHospitalServiceArea(admin, { areaId: area.id, toParentHospitalId: parent.id, confirm: true, reason: "ย้ายเครือข่าย" }))
+      .rejects.toBeInstanceOf(DuplicateNetworkChildNameError);
+    expect(await db.hospitalServiceArea.findUniqueOrThrow({ where: { id: area.id }, select: { endedAt: true } })).toEqual({ endedAt: null });
+  });
+
+  it("applies the same network name rule to the platform ADMIN rename, not to a Hospital outside any network", async () => {
+    const { parent, parentOwner } = await setup();
+    await createChildFacility(parentOwner, childInput(parent.id, { name: "รพ.สต.ชื่อเดิม" }));
+    const sibling = await createChildFacility(parentOwner, childInput(parent.id, { name: "รพ.สต.อีกแห่ง" }));
+    const rename = async (hospitalId: string, name: string) => {
+      const { updatedAt } = await db.hospital.findUniqueOrThrow({ where: { id: hospitalId }, select: { updatedAt: true } });
+      return renameHospital(admin, { hospitalId, expectedUpdatedAt: updatedAt.toISOString(), name });
+    };
+
+    // Registered-for (pending) and attached Children both count; normalized equal is refused and nothing changes.
+    await expect(rename(sibling.child.id, "รพ.สต. ชื่อเดิม")).rejects.toBeInstanceOf(DuplicateNetworkChildNameError);
+    expect(await db.hospital.findUniqueOrThrow({ where: { id: sibling.child.id }, select: { name: true } })).toEqual({ name: "รพ.สต.อีกแห่ง" });
+    expect(await db.auditEvent.count({ where: { resourceId: sibling.child.id, action: "hospital.renamed" } })).toBe(0);
+    await expect(rename(sibling.child.id, "รพ.สต.ชื่อใหม่")).resolves.toMatchObject({ name: "รพ.สต.ชื่อใหม่" });
+
+    // A Hospital in no network keeps today's behaviour.
+    const standalone = await hospital(HospitalStatus.ACTIVE, null);
+    await expect(rename(standalone.id, "รพ.สต.ชื่อเดิม")).resolves.toMatchObject({ name: "รพ.สต.ชื่อเดิม" });
+  });
+
+  it("frees a Child name once that Child was cancelled (retired)", async () => {
+    const { parent, parentOwner } = await setup();
+    const created = await createChildFacility(parentOwner, childInput(parent.id, { name: "รพ.สต.ยกเลิกแล้ว" }));
+    await cancelPendingChildFacility(parentOwner, { parentHospitalId: parent.id, childHospitalId: created.child.id, confirm: true, reason: "สร้างผิด" });
+    await expect(createChildFacility(parentOwner, childInput(parent.id, { name: "รพ.สต.ยกเลิกแล้ว" }))).resolves.toMatchObject({
+      child: { name: "รพ.สต.ยกเลิกแล้ว" },
+    });
   });
 
   it("ADMIN cannot retire a Hospital in an active area (ACTIVE_SERVICE_AREA)", async () => {

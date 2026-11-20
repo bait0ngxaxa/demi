@@ -24,7 +24,7 @@ function entry(
   extra: Partial<HospitalNetworkDirectoryEntry> = {},
 ): HospitalNetworkDirectoryEntry {
   return {
-    id, hospitalCode: `CODE-${id}`, name: `โรงพยาบาล ${id}`, status, role,
+    id, hospitalCode: `CODE-${id}`, name: `โรงพยาบาล ${id}`, status, role, createdAt: new Date("2026-01-05T00:00:00.000Z"),
     networkParentId: null, networkParentName: null, registeredForParentHospitalId: null, registeredForParentHospitalName: null,
     activeChildCount: 0,
     ...extra,
