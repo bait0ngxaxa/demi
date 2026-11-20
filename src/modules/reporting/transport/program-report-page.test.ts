@@ -595,6 +595,7 @@ describe("Program factual report presentation", () => {
     const markup = renderReport(
       report({
         followups: page([followup(1)]),
+        rounds: [{ roundNumber: 1, title: "ครั้งที่ 1", completed: true, doneItems: 1, plannedItems: 2, skippedItems: 0, notDoneAtCloseItems: 1, patientRecordedItems: 0 }],
       }),
     );
 
@@ -608,5 +609,14 @@ describe("Program factual report presentation", () => {
     expect(markup).toContain("overflow-x-auto");
     expect(markup).toContain('role="region"');
     expect(markup).toContain('tabindex="0"');
+  });
+
+  it("titles the round section and never renders a header-only round table", () => {
+    const markup = renderReport(report());
+
+    expect(markup).toContain("ผลการจัดบริการรายครั้ง</h2>");
+    expect(markup).not.toContain("ครั้งเพิ่มเติม (จำนวน):");
+    expect(markup).not.toContain("<table");
+    expect(markup).toContain("ยังไม่มีครั้งบริการที่เปิดไว้");
   });
 });

@@ -8,7 +8,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import { CAREGIVER_RESOURCE_CONTRACTS } from "../domain/caregiver-sharing-contract";
-import { assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
+import { assertCaregiverAcceptorIsNotPlatformAdmin, assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
 import { resourceGrantCaregiverWhere, resourceGrantOwnerWhere } from "../policies/resource-grant-policy";
 import { proposeResourceGrantInputSchema, resourceGrantIdSchema } from "../schemas/caregiver-relationship-schemas";
 import { appointmentGrantNow, rethrowAppointmentGrantError } from "./appointment-grant-service";
@@ -57,6 +57,7 @@ export async function acceptResourceGrant(
   actor: ActorContext | null | undefined, grantId: unknown, dependencies: ResourceGrantDependencies = {},
 ): Promise<void> {
   assertFamilyAuthenticatedActor(actor);
+  assertCaregiverAcceptorIsNotPlatformAdmin(actor.roles);
   const parsed = resourceGrantIdSchema.safeParse(grantId);
   if (!parsed.success) throw new NotFoundError();
   const now = appointmentGrantNow(dependencies);

@@ -13,6 +13,7 @@ import {
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/policies/patient-directory-policy";
 import { canSubmitSupportReport } from "@/modules/support/domain/support-report";
+import { canUseFamilyWorkspace } from "@/modules/family/domain/family-access";
 import {
   hasDirectHospitalProvisioningScope,
 } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
@@ -340,13 +341,13 @@ const PERSONAL_CUSTOMER_MENU_DESTINATIONS: Readonly<Record<CustomerMenuId, Pick<
   contact: { href: "/app/personal#personal-hospital-contact", match: "exact" },
 };
 
-function projectPersonalCustomerSections(): ApplicationNavigationGroup[] {
+function projectPersonalCustomerSections(showsFamily: boolean): ApplicationNavigationGroup[] {
   const items = (menu: readonly { id: CustomerMenuId; label: string }[]): ApplicationNavigationItem[] =>
     menu.map(({ id, label }) => ({ ...PERSONAL_CUSTOMER_MENU_DESTINATIONS[id], label, menuId: id }));
 
   return [
     ...section("primary", "personal", items(CUSTOMER_PRIMARY_MENU)),
-    ...section("top-menu", "personal", items(CUSTOMER_TOP_MENU)),
+    ...section("top-menu", "personal", items(CUSTOMER_TOP_MENU.filter(({ id }) => showsFamily || id !== "family"))),
   ];
 }
 
@@ -354,8 +355,11 @@ function projectPersonalCustomerSections(): ApplicationNavigationGroup[] {
  * UI-01: in the Personal workspace the customer menus come first; every other Personal item stays a secondary
  * destination in its UI-4 section, minus the Personal home entry and any href a customer menu entry already opens.
  */
-function withPersonalCustomerNavigation(groups: readonly ApplicationNavigationGroup[]): ApplicationNavigationGroup[] {
-  const customerGroups = projectPersonalCustomerSections();
+function withPersonalCustomerNavigation(
+  groups: readonly ApplicationNavigationGroup[],
+  showsFamily: boolean,
+): ApplicationNavigationGroup[] {
+  const customerGroups = projectPersonalCustomerSections(showsFamily);
   const taken = new Set(customerGroups.flatMap(({ items }) => items.map(({ href }) => href)));
   const otherGroups = groups
     .map((group) => group.workspace !== "personal"
@@ -405,13 +409,15 @@ export function projectApplicationNavigation(
   }
 
   // Family serves any authenticated account: a delegated caregiver needs no PATIENT role (docs/CONTEXT.md).
+  // Owner decision 2026-11-19: never for an account holding Role.ADMIN, whatever its other roles.
+  const showsFamily = canUseFamilyWorkspace(actor.roles);
   const supportsAccountTools = actor.roles.some((role) =>
     role === Role.PATIENT || role === Role.OSM || role === Role.HOSPITAL || role === Role.CAREGIVER,
   );
   const accountItems = (workspace: ApplicationWorkspaceContext | null): ApplicationNavigationItem[] => compact([
     // The Patient's own profile stays in the Personal workspace, as before UI-4.
     workspace === "personal" && { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
-    !isCaregiverOnly && { href: "/app/family", label: "ครอบครัวและผู้ดูแล", match: "prefix" },
+    !isCaregiverOnly && showsFamily && { href: "/app/family", label: "ครอบครัวและผู้ดูแล", match: "prefix" },
     supportsAccountTools && { href: "/app/settings", label: "ตั้งค่าบัญชีส่วนตัว", match: "prefix" },
     // WB-DF-14 (2026-10-26): every non-ADMIN account reports, CAREGIVER-only included; an ADMIN is the recipient.
     canSubmitSupportReport(actor.roles) && { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
@@ -425,5 +431,5 @@ export function projectApplicationNavigation(
     groups.push(...section("account", workspace, accountItems(workspace)));
   }
 
-  return hasPersonalWorkspace ? withPersonalCustomerNavigation(groups) : groups;
+  return hasPersonalWorkspace ? withPersonalCustomerNavigation(groups, showsFamily) : groups;
 }

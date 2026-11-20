@@ -8,10 +8,10 @@ import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "
 import type { AppointmentGrantManagement, AppointmentGrantManagementItem } from "@/modules/family/services/appointment-grant-management-query-service";
 import type { ResourceGrantManagementItem } from "@/modules/family/services/caregiver-resource-grant-service";
 import type { FamilyManagementOverview } from "@/modules/family/services/caregiver-relationship-query-service";
-const mocks = vi.hoisted(() => ({ detail: vi.fn(), connection: vi.fn(), redirect: vi.fn() }));
+const mocks = vi.hoisted(() => ({ detail: vi.fn(), connection: vi.fn(), redirect: vi.fn(), pageAccess: vi.fn() }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: mocks.redirect }));
-vi.mock("@/modules/family/transport/appointment-grant-page-context", () => ({ getDelegatedAppointmentPageContext: mocks.detail }));
+vi.mock("@/modules/family/transport/appointment-grant-page-context", () => ({ getDelegatedAppointmentPageContext: mocks.detail, assertFamilyWorkspacePageAccess: mocks.pageAccess }));
 import ListPage from "./grants/[grantId]/appointments/page";
 import DetailPage from "./grants/[grantId]/appointments/[appointmentId]/page";
 
@@ -193,6 +193,8 @@ describe("bounded appointment sharing UI", () => {
     mocks.redirect.mockImplementation(() => { throw new Error("redirected"); });
     await expect(ListPage({ params: Promise.resolve({ grantId: "grant" }) })).rejects.toThrow("redirected");
     expect(mocks.redirect).toHaveBeenCalledWith("/app/personal/appointments?subject=grant&tab=upcoming");
+    // The Family ADMIN/sign-in guard runs before the onward redirect.
+    expect(mocks.pageAccess).toHaveBeenCalledTimes(1);
     mocks.detail.mockResolvedValue(appointment);
     const detail = renderToStaticMarkup(await DetailPage({ params: Promise.resolve({ grantId: "grant", appointmentId: "appointment" }) }));
     expect(mocks.detail).toHaveBeenCalledWith("grant", "appointment"); expect(detail).toContain("ยกเลิกแล้ว");

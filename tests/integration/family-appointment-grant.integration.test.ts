@@ -239,7 +239,8 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     const f = await fixture();
     const wrong = await withIndependentRole(await actor(), kind, f.hospitalId);
     const { grantId } = await proposeAppointmentGrant(f.patient, proposal(f), deps);
-    await expect(acceptAppointmentGrant(wrong, grantId, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    // Owner decision 2026-11-19: an ADMIN is refused before the grant is looked up.
+    await expect(acceptAppointmentGrant(wrong, grantId, deps)).rejects.toMatchObject({ code: kind === "ADMIN" ? "FORBIDDEN" : "NOT_FOUND" });
     await acceptAppointmentGrant(f.caregiver, grantId, deps);
     const id = await appointment(f);
     await expect(listDelegatedAppointments(wrong, { grantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });

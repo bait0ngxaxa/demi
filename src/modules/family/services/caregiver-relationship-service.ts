@@ -31,7 +31,11 @@ import {
 } from "@/shared/errors/application-error";
 
 import { formatCaregiverRelationshipLabel } from "../domain/caregiver-sharing-contract";
-import { assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
+import {
+  assertCaregiverAcceptorIsNotPlatformAdmin,
+  assertFamilyAuthenticatedActor,
+  assertFamilyPatientSelf,
+} from "../policies/caregiver-relationship-policy";
 import {
   caregiverInvitationIdSchema,
   caregiverRelationshipIdSchema,
@@ -893,6 +897,7 @@ export async function acceptCaregiverInvitation(
   dependencies: CaregiverRelationshipServiceDependencies = {},
 ): Promise<AcceptedCaregiverInvitation> {
   assertFamilyAuthenticatedActor(actor);
+  assertCaregiverAcceptorIsNotPlatformAdmin(actor.roles);
   const parsedToken = caregiverInvitationTokenSchema.safeParse(plaintextToken);
 
   if (!parsedToken.success) {
@@ -904,6 +909,8 @@ export async function acceptCaregiverInvitation(
   try {
     const outcome = await runSerializableTransaction(getDatabase(dependencies), async (transaction) => {
       const user = await assertActiveUser(transaction, actor);
+      // The persisted roles decide too: a session that predates an ADMIN grant cannot accept.
+      assertCaregiverAcceptorIsNotPlatformAdmin(user.roles.map(({ role }) => role));
       const invitation = await transaction.caregiverInvitation.findUnique({
         where: { tokenHash },
         select: {

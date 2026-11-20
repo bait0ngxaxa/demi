@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { HospitalReportProgramRow, HospitalReportingPageProjection } from "@/modules/reporting/projections/hospital-report-projection";
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
 import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
+import type { RoundReport } from "@/modules/reporting/projections/round-report-projection";
 
 import { HospitalReportWorkspace } from "./hospital-report-workspace";
 
@@ -352,5 +353,86 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).not.toContain("โรงพยาบาลลูกข่ายที่ใช้งาน");
     expect(markup).not.toContain("ลูกข่ายในเครือข่าย");
     expect(markup).toContain("แม่ข่าย: โรงพยาบาลแม่ข่ายทดสอบ");
+  });
+
+  describe("expanded per-person detail", () => {
+    function round(roundNumber: number, overrides: Partial<RoundReport> = {}): RoundReport {
+      return {
+        roundNumber,
+        title: `ครั้งที่ ${roundNumber}`,
+        completed: true,
+        doneItems: 2,
+        plannedItems: 3,
+        skippedItems: 0,
+        notDoneAtCloseItems: 0,
+        patientRecordedItems: 0,
+        ...overrides,
+      };
+    }
+
+    function expandedRow(view: string, rounds: RoundReport[]): HTMLDetailsElement {
+      const container = document.createElement("div");
+      const row = { ...program("33333333-3333-4333-8333-333333333333", PatientProgramStatus.ACTIVE), rounds };
+      container.innerHTML = render(view, [row]);
+      const details = container.querySelector("details");
+      if (!details) throw new Error("Expected a compact Program row");
+      return details;
+    }
+
+    it("hides the native disclosure marker and uses a rotating chevron with workspace container columns", () => {
+      const details = expandedRow("overview", []);
+      const summary = details.querySelector("summary");
+      if (!summary) throw new Error("Expected a summary");
+      expect(details.classList).toContain("group");
+      expect(summary.classList).toContain("list-none");
+      expect(summary.classList).toContain("[&::-webkit-details-marker]:hidden");
+      expect(summary.classList).toContain("min-h-12");
+      expect(summary.querySelector("svg")?.classList).toContain("group-open:rotate-180");
+      const grid = summary.querySelector("span");
+      expect(grid?.classList).toContain("grid");
+      expect(grid?.classList).not.toContain("inline-grid");
+      expect(summary.outerHTML).not.toMatch(/(?:sm|xl):grid-cols/u);
+      expect(summary.outerHTML).toContain("@5xl/workspace:grid-cols-[minmax(0,2fr)_repeat(5,minmax(0,1fr))]");
+      expect(summary.textContent).not.toContain("กดเพื่อดูรายละเอียด");
+    });
+
+    it.each(["overview", "service"])("names the patient once and orders context, rounds, then detail (%s)", (view) => {
+      const details = expandedRow(view, [round(1)]);
+      const html = details.outerHTML;
+      expect(html.match(/สมชาย ใจดี/gu)).toHaveLength(1);
+      expect(details.querySelector("summary")?.textContent).toContain("สมชาย ใจดี");
+      expect(details.querySelectorAll("h2")).toHaveLength(0);
+      expect(details.querySelector("h3")?.textContent).toBe("ผลการจัดบริการรายครั้ง");
+      expect(html).not.toContain("ครั้งเพิ่มเติม (จำนวน):");
+      expect(html.indexOf("รหัสผู้ป่วยในโรงพยาบาล")).toBeLessThan(html.indexOf("ผลการจัดบริการรายครั้ง"));
+      expect(html.indexOf("ผลการจัดบริการรายครั้ง")).toBeLessThan(html.indexOf("ก่อนเริ่ม · ข้อมูลตั้งต้น"));
+    });
+
+    it("renders only the fixed table when every round fits rounds 1-6", () => {
+      const details = expandedRow("overview", [round(1, { skippedItems: 1 }), round(2)]);
+      const tables = details.querySelectorAll("table");
+      expect(tables).toHaveLength(1);
+      expect(tables[0]?.classList).toContain("min-w-[44rem]");
+      expect(details.textContent).not.toContain("ครั้งบริการสถานะ");
+      expect(details.textContent).not.toContain("ยังไม่มีครั้งบริการที่เปิดไว้");
+      const cells = Array.from(tables[0]?.querySelectorAll("tbody td") ?? []);
+      expect(cells[0]?.textContent).toContain("ทำแล้ว 2/3");
+      expect(cells[0]?.textContent).toContain("ข้าม 1");
+      expect(cells[1]?.textContent).not.toContain("ข้าม");
+      expect(cells[1]?.textContent).not.toContain("ผู้ป่วยบันทึกเอง");
+      expect(cells[2]?.querySelector('[aria-hidden="true"]')?.textContent).toBe("—");
+      expect(cells[2]?.querySelector(".sr-only")?.textContent).toBe("ยังไม่เปิดครั้งบริการ");
+      const region = details.querySelector('[role="region"]');
+      expect(region?.getAttribute("tabindex")).toBe("0");
+    });
+
+    it("adds the extra-rounds table only when round 7 exists", () => {
+      const details = expandedRow("overview", [1, 2, 3, 4, 5, 6, 7].map((roundNumber) => round(roundNumber)));
+      const tables = details.querySelectorAll("table");
+      expect(tables).toHaveLength(2);
+      const extraRows = tables[1]?.querySelectorAll("tbody tr");
+      expect(extraRows).toHaveLength(1);
+      expect(extraRows?.[0]?.querySelector("th")?.textContent).toBe("ครั้งที่ 7");
+    });
   });
 });

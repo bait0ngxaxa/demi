@@ -11,6 +11,7 @@ import { LocalNavigation } from "@/components/ui/local-navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ChevronGlyph } from "@/components/ui/glyphs";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { CountBarChart } from "@/components/reporting-charts/count-bar-chart";
 import { ProgramStatusDonut } from "@/components/reporting-charts/program-status-donut";
@@ -179,7 +180,7 @@ function ProgramContext({ program }: { program: HospitalReportProgramRow }): Rea
       : "ยังไม่บันทึกวันที่สิ้นสุด";
 
   return (
-    <dl className="grid min-w-0 gap-x-6 gap-y-3 border-b border-border pb-5 sm:grid-cols-2 @5xl/workspace:grid-cols-4">
+    <dl className="grid min-w-0 gap-x-6 gap-y-3 @2xl/workspace:grid-cols-2 @5xl/workspace:grid-cols-4">
       <div className="min-w-0"><dt className="text-sm text-text-muted">รหัสผู้ป่วยในโรงพยาบาล</dt><dd className="mt-1 break-words font-medium">{hospitalNumber}</dd></div>
       <div className="min-w-0"><dt className="text-sm text-text-muted">เริ่มโปรแกรม</dt><dd className="mt-1 break-words font-medium">{displayDate(program.lifecycle.startedAt)}</dd></div>
       <div className="min-w-0"><dt className="text-sm text-text-muted">วันที่สิ้นสุด</dt><dd className="mt-1 break-words font-medium">{completedAt}</dd></div>
@@ -205,7 +206,8 @@ function ProgramDetailAccess({
   ) : null;
 }
 
-function ProgramOverview({
+// Rendered inside the expanded row: the summary already names the patient and status.
+function ProgramOverviewBody({
   program,
   allowProgramDetail,
 }: {
@@ -213,21 +215,10 @@ function ProgramOverview({
   allowProgramDetail: boolean;
 }): React.JSX.Element {
   return (
-    <Panel aria-labelledby={`overview-program-${program.patientProgramId}`} className="p-5 sm:p-6">
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h3 className="break-words text-lg font-semibold text-text" id={`overview-program-${program.patientProgramId}`}>{program.patient.displayName}</h3>
-        </div>
-        <StatusBadge variant={program.lifecycle.status === "ACTIVE" ? "info" : "neutral"}>
-          {program.lifecycle.status === "ACTIVE" ? "กำลังดำเนินโปรแกรม" : "สิ้นสุดโปรแกรมแล้ว"}
-        </StatusBadge>
-      </div>
-
-      <ProgramContext program={program} />
-
-      <div className="grid min-w-0 gap-6 pt-5 @5xl/workspace:grid-cols-3">
+    <>
+      <div className="grid min-w-0 gap-6 py-5 @5xl/workspace:grid-cols-3">
         <section aria-labelledby={`before-${program.patientProgramId}`} className="min-w-0">
-          <h4 className="mb-3 font-semibold text-text" id={`before-${program.patientProgramId}`}>ก่อนเริ่ม · ข้อมูลตั้งต้น</h4>
+          <h3 className="mb-3 font-semibold text-text" id={`before-${program.patientProgramId}`}>ก่อนเริ่ม · ข้อมูลตั้งต้น</h3>
           {program.baseline.state === "PRESENT" ? (
             <>
               <p className="mb-3 text-sm text-text-muted">บันทึกวันที่ {displayDate(program.baseline.value.recordedOn)}</p>
@@ -243,7 +234,7 @@ function ProgramOverview({
         </section>
 
         <section aria-labelledby={`during-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
-          <h4 className="mb-3 font-semibold text-text" id={`during-${program.patientProgramId}`}>ระหว่างโปรแกรม · การติดตามผล</h4>
+          <h3 className="mb-3 font-semibold text-text" id={`during-${program.patientProgramId}`}>ระหว่างโปรแกรม · การติดตามผล</h3>
           <ul className="mb-4 space-y-1 text-sm text-text-muted">
             {([["ครั้งที่ 1", program.roundVitals.round1], ["ครั้งที่ 2", program.roundVitals.round2]] as const).map(([label, vitals]) => (
               <li key={label}>
@@ -256,7 +247,7 @@ function ProgramOverview({
             <ol className="space-y-4">
               {program.followups.items.map((followup) => (
                 <li className="min-w-0 border-b border-border pb-4 last:border-b-0" key={followup.id}>
-                  <h5 className="font-medium text-text">ครั้งที่ {followup.roundNumber} · บันทึก {displayDateTime(followup.recordedAt)}</h5>
+                  <h4 className="font-medium text-text">ครั้งที่ {followup.roundNumber} · บันทึก {displayDateTime(followup.recordedAt)}</h4>
                   <div className="mt-3"><MeasurementList measurements={followup.measurements} /></div>
                 </li>
               ))}
@@ -266,7 +257,7 @@ function ProgramOverview({
         </section>
 
         <section aria-labelledby={`after-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
-          <h4 className="mb-3 font-semibold text-text" id={`after-${program.patientProgramId}`}>หลังจบโปรแกรม · การประเมินครั้งสุดท้าย</h4>
+          <h3 className="mb-3 font-semibold text-text" id={`after-${program.patientProgramId}`}>หลังจบโปรแกรม · การประเมินครั้งสุดท้าย</h3>
           {program.finalAssessment.state === "PRESENT" ? (
             <>
               <p className="mb-3 text-sm text-text-muted">วันที่ประเมิน {program.finalAssessment.value.serviceDate ?? "ไม่ได้บันทึก"} · บันทึกวันที่ {displayDateTime(program.finalAssessment.value.recordedAt)}</p>
@@ -282,11 +273,11 @@ function ProgramOverview({
         </section>
       </div>
 
-      <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 pt-4 @2xl/workspace:flex-row @2xl/workspace:items-center @2xl/workspace:justify-between">
         <p className="break-words text-xs text-text-muted">ระยะเวลาที่ป่วย: {program.illnessDuration.state === "RECORDED" ? `${program.illnessDuration.value} ปี` : "ไม่ทราบปีวินิจฉัย"}</p>
         <ProgramDetailAccess allowed={allowProgramDetail} program={program} />
       </div>
-    </Panel>
+    </>
   );
 }
 
@@ -329,7 +320,7 @@ function achievementOver70Text(program: HospitalReportProgramRow): string {
 function ServiceFollowup({ followup }: { followup: HospitalReportFollowup }): React.JSX.Element {
   return (
     <li className="min-w-0 border-b border-border py-4 first:pt-0 last:border-b-0 last:pb-0">
-      <h5 className="font-semibold text-text">ครั้งที่ {followup.roundNumber} · บันทึก {displayDateTime(followup.recordedAt)}</h5>
+      <h4 className="font-semibold text-text">ครั้งที่ {followup.roundNumber} · บันทึก {displayDateTime(followup.recordedAt)}</h4>
       <p className="mt-1 text-sm text-text-muted">วันที่ให้บริการ: {followup.serviceDate ?? "ไม่ได้บันทึก"}</p>
       <div className="mt-3"><MeasurementList measurements={followup.measurements} /></div>
       <ul className="mt-3 space-y-1 text-sm text-text-muted">
@@ -337,7 +328,7 @@ function ServiceFollowup({ followup }: { followup: HospitalReportFollowup }): Re
         <li>ปรับแผนใหม่: {answerText(followup.planAdjusted, "ปรับ", "ไม่ปรับ")} · อุปสรรค: {answerText(followup.hasObstacle, "มี", "ไม่มี")}</li>
       </ul>
       <div className="mt-4">
-        <h6 className="text-sm font-semibold text-text">ความคืบหน้ากิจกรรมที่บันทึก</h6>
+        <h5 className="text-sm font-semibold text-text">ความคืบหน้ากิจกรรมที่บันทึก</h5>
         {followup.activityProgress.length === 0 ? <p className="mt-1 text-sm text-text-muted">ไม่มีรายการความคืบหน้ากิจกรรมในการติดตามผลครั้งนี้</p> : (
           <ul className="mt-2 space-y-2">
             {followup.activityProgress.map((item, index) => (
@@ -353,7 +344,8 @@ function ServiceFollowup({ followup }: { followup: HospitalReportFollowup }): Re
   );
 }
 
-function ServiceProgram({
+// Rendered inside the expanded row: the summary already names the patient and status.
+function ServiceProgramBody({
   program,
   allowProgramDetail,
 }: {
@@ -362,16 +354,10 @@ function ServiceProgram({
 }): React.JSX.Element {
   const goalPlans = program.goalPlans.items;
   return (
-    <Panel aria-labelledby={`service-program-${program.patientProgramId}`} className="p-5 sm:p-6">
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0"><h3 className="break-words text-lg font-semibold text-text" id={`service-program-${program.patientProgramId}`}>{program.patient.displayName}</h3></div>
-        <StatusBadge variant={program.lifecycle.status === "ACTIVE" ? "info" : "neutral"}>{program.lifecycle.status === "ACTIVE" ? "กำลังดำเนินโปรแกรม" : "สิ้นสุดโปรแกรมแล้ว"}</StatusBadge>
-      </div>
-      <ProgramContext program={program} />
-
-      <div className="grid min-w-0 gap-6 pt-5 @5xl/workspace:grid-cols-2">
+    <>
+      <div className="grid min-w-0 gap-6 py-5 @5xl/workspace:grid-cols-2">
         <section aria-labelledby={`service-before-${program.patientProgramId}`} className="min-w-0">
-          <h4 className="mb-3 font-semibold text-text" id={`service-before-${program.patientProgramId}`}>ก่อนเริ่ม · ข้อมูลตั้งต้น</h4>
+          <h3 className="mb-3 font-semibold text-text" id={`service-before-${program.patientProgramId}`}>ก่อนเริ่ม · ข้อมูลตั้งต้น</h3>
           {program.baseline.state === "PRESENT" ? <MeasurementList measurements={program.baseline.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับโปรแกรมนี้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
             <li>แบบประเมิน PAM: {program.screening.pam.state === "PRESENT" ? `คะแนน ${program.screening.pam.value.score}` : "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1"}</li>
@@ -379,7 +365,7 @@ function ServiceProgram({
             <li>ไม้บรรทัดวัดใจ (0–10): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.confidenceScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับโปรแกรมนี้"}</li>
             <li>เวลาออกกำลังกายต่อสัปดาห์: {weeklyExerciseText(program.weeklyExercise.before)}</li>
           </ul>
-          <h4 className="mb-3 mt-6 font-semibold text-text">หลังจบโปรแกรม · ข้อมูลการประเมิน</h4>
+          <h3 className="mb-3 mt-6 font-semibold text-text">หลังจบโปรแกรม · ข้อมูลการประเมิน</h3>
           {program.finalAssessment.state === "PRESENT" ? <MeasurementList measurements={program.finalAssessment.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบโปรแกรมที่บันทึกไว้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
             <li>เวลาออกกำลังกายต่อสัปดาห์: {program.finalAssessment.state === "PRESENT" ? weeklyExerciseText(program.weeklyExercise.after) : "ไม่มีการประเมินหลังจบโปรแกรม"}</li>
@@ -388,17 +374,17 @@ function ServiceProgram({
         </section>
 
         <section aria-labelledby={`service-one-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
-          <h4 className="mb-3 font-semibold text-text" id={`service-one-${program.patientProgramId}`}>บริการ 1 · รู้จักตัวเอง</h4>
+          <h3 className="mb-3 font-semibold text-text" id={`service-one-${program.patientProgramId}`}>บริการ 1 · รู้จักตัวเอง</h3>
           <ServiceOne program={program} />
         </section>
 
         <section aria-labelledby={`service-goal-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5">
-          <h4 className="mb-3 font-semibold text-text" id={`service-goal-${program.patientProgramId}`}>บริการ 2 · ทำแผนสุขภาพ</h4>
+          <h3 className="mb-3 font-semibold text-text" id={`service-goal-${program.patientProgramId}`}>บริการ 2 · ทำแผนสุขภาพ</h3>
           {goalPlans.length === 0 ? <p className="text-sm text-text-muted">ไม่มีแผนสุขภาพที่ผูกกับโปรแกรมนี้</p> : (
             <ol className="space-y-4">
               {goalPlans.map((plan) => (
                 <li className="min-w-0 border-b border-border pb-4 last:border-b-0" key={plan.id}>
-                  <h5 className="font-medium">แผนรอบที่ {plan.roundNumber}: {plan.primaryGoalLabel}</h5>
+                  <h4 className="font-medium">แผนรอบที่ {plan.roundNumber}: {plan.primaryGoalLabel}</h4>
                   {plan.items.length === 0 ? <p className="mt-2 text-sm text-text-muted">ไม่มีเป้าหมายกิจกรรมในแผนนี้</p> : (
                     <ul className="mt-3 space-y-2">
                       {plan.items.map((item) => (
@@ -418,7 +404,7 @@ function ServiceProgram({
         </section>
 
         <section aria-labelledby={`service-followup-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5">
-          <h4 className="mb-3 font-semibold text-text" id={`service-followup-${program.patientProgramId}`}>บริการ 3 เป็นต้นไป · การติดตามผลและความคืบหน้า</h4>
+          <h3 className="mb-3 font-semibold text-text" id={`service-followup-${program.patientProgramId}`}>บริการ 3 เป็นต้นไป · การติดตามผลและความคืบหน้า</h3>
           {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มีบันทึกติดตามผลในโปรแกรมนี้</p> : <ol><>{program.followups.items.map((followup) => <ServiceFollowup followup={followup} key={followup.id} />)}</></ol>}
           {program.followups.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · {allowProgramDetail ? "ดูทั้งหมดในรายละเอียดโปรแกรมหรือไฟล์ Excel" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
@@ -427,29 +413,35 @@ function ServiceProgram({
         </section>
       </div>
 
-      <div className="mt-5 flex justify-end border-t border-border pt-4">
-        <ProgramDetailAccess allowed={allowProgramDetail} program={program} />
-      </div>
-    </Panel>
+      {allowProgramDetail ? (
+        <div className="flex justify-end pt-4">
+          <ProgramDetailAccess allowed={allowProgramDetail} program={program} />
+        </div>
+      ) : null}
+    </>
   );
 }
 
 function CompactProgram({ program, view, allowProgramDetail }: {
   program: HospitalReportCompactProgramRow; view: ReportView; allowProgramDetail: boolean;
 }): React.JSX.Element {
-  return <details className="min-w-0 rounded-panel border border-border bg-surface">
-    <summary className="min-h-12 cursor-pointer rounded-control p-4 hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">
-      <span className="inline-grid w-full min-w-0 gap-2 align-top sm:grid-cols-2 xl:grid-cols-6">
-        <span className="min-w-0 break-words font-semibold">{program.patient.displayName}<span className="mt-1 block text-xs font-normal text-text-muted">กดเพื่อดูรายละเอียด</span></span>
+  return <details className="group min-w-0 rounded-panel border border-border bg-surface">
+    <summary className="flex min-h-12 cursor-pointer list-none items-start gap-3 rounded-panel p-4 hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring @2xl/workspace:px-6 [&::-webkit-details-marker]:hidden">
+      <span className="grid min-w-0 flex-1 gap-2 @2xl/workspace:grid-cols-2 @5xl/workspace:grid-cols-[minmax(0,2fr)_repeat(5,minmax(0,1fr))]">
+        <span className="min-w-0 break-words font-semibold">{program.patient.displayName}</span>
         <span className="min-w-0 break-words text-sm">HN: {factText(program.patient.hospitalNumber)}</span>
         <span className="min-w-0 break-words text-sm">อสม.: {program.currentRelationshipOsmAssignment.state === "PRESENT" ? program.currentRelationshipOsmAssignment.value.displayName : "ยังไม่มอบหมาย"}</span>
         <span className="text-sm">{program.lifecycle.status === "ACTIVE" ? "กำลังดำเนินโปรแกรม" : "สิ้นสุดโปรแกรมแล้ว"}</span>
         <span className="text-sm tabular-nums">จัดบริการแล้ว {program.completedRounds} ครั้ง</span>
         <span className="text-sm">บริการล่าสุด: {program.latestServiceDate ? displayDate(program.latestServiceDate) : "ยังไม่บันทึก"}</span>
       </span>
+      <ChevronGlyph className="mt-0.5 size-5 shrink-0 text-text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none" direction="down" />
     </summary>
-    <div className="px-4 pb-4"><RoundReportTable fixedColumns rounds={program.rounds} extraRoundsCompleted={program.extraRoundsCompleted} /></div>
-    {view === "overview" ? <ProgramOverview program={program} allowProgramDetail={allowProgramDetail} /> : <ServiceProgram program={program} allowProgramDetail={allowProgramDetail} />}
+    <div className="divide-y divide-border border-t border-border px-4 pb-4 @2xl/workspace:px-6">
+      <div className="py-5"><ProgramContext program={program} /></div>
+      <div className="py-5"><RoundReportTable fixedColumns rounds={program.rounds} extraRoundsCompleted={program.extraRoundsCompleted} /></div>
+      {view === "overview" ? <ProgramOverviewBody program={program} allowProgramDetail={allowProgramDetail} /> : <ServiceProgramBody program={program} allowProgramDetail={allowProgramDetail} />}
+    </div>
   </details>;
 }
 
