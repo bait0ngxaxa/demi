@@ -122,8 +122,10 @@ describe("Hospital operational service areas / PostgreSQL", () => {
     expect(remaining.nextAfterId).toBeNull();
     // ADR-0015: any free CHILD-role facility; unclassified ones never.
     expect(new Set([...candidates.items, ...remaining.items].map(({ id }) => id))).toEqual(new Set([childId, secondChild, otherFreeChild]));
-    const { hospitalCode } = await db.hospital.findUniqueOrThrow({ where: { id: secondChild } });
-    const searched = await listEligibleServiceAreaCandidates(owner, { parentHospitalId: parentId, query: hospitalCode.toLowerCase() });
+    // Name search only: a Hospital code no longer finds a candidate.
+    const { hospitalCode } = await db.hospital.update({ where: { id: secondChild }, data: { name: "รพ.สต.ค้นหาด้วยชื่อ" } });
+    expect((await listEligibleServiceAreaCandidates(owner, { parentHospitalId: parentId, query: hospitalCode.toLowerCase() })).items).toEqual([]);
+    const searched = await listEligibleServiceAreaCandidates(owner, { parentHospitalId: parentId, query: "ค้นหาด้วยชื่อ" });
     expect(searched.items.map(({ id }) => id)).toEqual([secondChild]);
     const area = await attach();
     await attachHospitalServiceArea(owner, { parentHospitalId: parentId, childHospitalId: secondChild });

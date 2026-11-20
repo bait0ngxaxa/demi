@@ -21,8 +21,11 @@ import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type OnboardingHospitalOption = {
   id: string;
+  /** Submitted as the hidden form field that binds the request; never shown. */
   hospitalCode: string;
   name: string;
+  /** Tells same-named options apart. */
+  createdAt: Date;
   /** ADMIN-set network role (ADR-0015); a grouping label only. */
   networkRole: HospitalServiceAreaFacilityKind | null;
 };
@@ -33,6 +36,7 @@ const onboardingHospitalSelect = {
   id: true,
   hospitalCode: true,
   name: true,
+  createdAt: true,
   serviceAreaEligibility: { select: { kind: true } },
 } satisfies Prisma.HospitalSelect;
 
@@ -43,6 +47,7 @@ function toOnboardingHospitalOption(
     id: hospital.id,
     hospitalCode: hospital.hospitalCode,
     name: hospital.name,
+    createdAt: hospital.createdAt,
     networkRole: hospital.serviceAreaEligibility?.kind ?? null,
   };
 }
@@ -114,10 +119,8 @@ export async function searchOnboardingHospitals(
       where: {
         AND: [
           publicOnboardableHospitalWhere,
-          { OR: [
-            { name: { contains: parsed.data, mode: "insensitive" } },
-            { hospitalCode: { contains: parsed.data, mode: "insensitive" } },
-          ] },
+          // Hospital codes are internal: the public search matches names only.
+          { name: { contains: parsed.data, mode: "insensitive" } },
         ],
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],

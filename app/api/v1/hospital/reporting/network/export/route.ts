@@ -6,7 +6,6 @@ import { parseNetworkReportExportQuery } from "@/modules/reporting/schemas/hospi
 import { HospitalReportExportLimitError } from "@/modules/reporting/services/hospital-report-query-service";
 import { recordNetworkReportExportRefusal } from "@/modules/reporting/services/network-report-audit-service";
 import { exportNetworkReportWorkbook } from "@/modules/reporting/services/network-report-export-service";
-import { safeReportFilenamePart } from "@/modules/reporting/transport/report-export-filename";
 import {
   ApplicationError,
   ForbiddenError,
@@ -73,8 +72,8 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    const { buffer, generatedAt, parent } = await exportNetworkReportWorkbook(actor, query);
-    const filename = `demi-network-report-${safeReportFilenamePart(parent.hospitalCode)}-${toServiceDateOnly(generatedAt)}.xlsx`;
+    const { buffer, generatedAt } = await exportNetworkReportWorkbook(actor, query);
+    const filename = `demi-network-report-${toServiceDateOnly(generatedAt)}.xlsx`;
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {

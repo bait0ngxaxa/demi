@@ -78,13 +78,13 @@ function counts(relationships: number, active: number, completed: number, withou
 }
 
 const parentSection: NetworkReportingSection = {
-  hospital: { id: "11111111-1111-4111-8111-000000000001", hospitalCode: "P-001", name: "โรงพยาบาลแม่ข่าย", kind: "PARENT" },
+  hospital: { id: "11111111-1111-4111-8111-000000000001", hospitalCode: "P-001", name: "โรงพยาบาลแม่ข่าย", createdAt: new Date("2026-01-05T00:00:00.000Z"), kind: "PARENT" },
   counts: counts(3, 2, 0, 1),
   // Five Follow-ups: the first Program spans two rows on both sheets.
   programs: [program(1, "แม่หนึ่ง", 5), program(2, "แม่สอง")],
 };
 const childSection: NetworkReportingSection = {
-  hospital: { id: "11111111-1111-4111-8111-000000000002", hospitalCode: "C-002", name: "รพ.สต.ลูกข่าย ก", kind: "CHILD" },
+  hospital: { id: "11111111-1111-4111-8111-000000000002", hospitalCode: "C-002", name: "รพ.สต.ลูกข่าย ก", createdAt: new Date("2026-01-05T00:00:00.000Z"), kind: "CHILD" },
   counts: counts(1, 1, 0, 0),
   programs: [program(3, "ลูกหนึ่ง")],
 };
@@ -151,10 +151,10 @@ describe("ADR-0025 network report workbook", () => {
       expect([9, 10, 11, 12].map((row) => target.getCell(`B${row}`).value)).toEqual(["แม่หนึ่ง", "แม่หนึ่ง", "แม่สอง", "ลูกหนึ่ง"]);
       expect([9, 10, 11, 12].map((row) => target.getCell(`A${row}`).value)).toEqual([1, "", 2, 3]);
       expect([9, 10, 11, 12].map((row) => target.getCell(`${unitColumn}${row}`).value)).toEqual([
-        "โรงพยาบาลแม่ข่าย (P-001)",
-        "โรงพยาบาลแม่ข่าย (P-001)",
-        "โรงพยาบาลแม่ข่าย (P-001)",
-        "รพ.สต.ลูกข่าย ก (C-002)",
+        "โรงพยาบาลแม่ข่าย",
+        "โรงพยาบาลแม่ข่าย",
+        "โรงพยาบาลแม่ข่าย",
+        "รพ.สต.ลูกข่าย ก",
       ]);
       expect(target.getCell(`${unitColumn}13`).value).toBeNull();
     }
@@ -181,12 +181,31 @@ describe("ADR-0025 network report workbook", () => {
     const rows = [1, 2, 3, 4].map((row) => (summary.getRow(row).values as unknown[]).slice(1));
 
     expect(rows).toEqual([
-      ["หน่วยบริการ", "รหัส", "ประเภท", "จำนวนเคส", "Program ทั้งหมด", "ACTIVE", "COMPLETED", "ความสัมพันธ์ที่ยังไม่มี Program"],
-      ["โรงพยาบาลแม่ข่าย", "P-001", "แม่ข่าย", 3, 2, 2, 0, 1],
-      ["รพ.สต.ลูกข่าย ก", "C-002", "ลูกข่าย", 1, 1, 1, 0, 0],
-      ["รวม", "", "", 4, 3, 3, 0, 1],
+      ["หน่วยบริการ", "ประเภท", "จำนวนเคส", "Program ทั้งหมด", "ACTIVE", "COMPLETED", "ความสัมพันธ์ที่ยังไม่มี Program"],
+      ["โรงพยาบาลแม่ข่าย", "แม่ข่าย", 3, 2, 2, 0, 1],
+      ["รพ.สต.ลูกข่าย ก", "ลูกข่าย", 1, 1, 1, 0, 0],
+      ["รวม", "", 4, 3, 3, 0, 1],
     ]);
     expect(summary.rowCount).toBe(4);
     expect(JSON.stringify(rows)).not.toContain("แม่หนึ่ง");
+    expect(JSON.stringify(rows)).not.toMatch(/P-001|C-002/u);
+  });
+
+  it("tells a same-named Child apart by its Parent in the unit column and summary, never by code", async () => {
+    const dataset = networkDataset();
+    const twin: NetworkReportingSection = {
+      ...dataset.hospitals[1] as NetworkReportingSection,
+      hospital: { id: "11111111-1111-4111-8111-000000000003", hospitalCode: "C-003", name: "รพ.สต.ลูกข่าย  ก", createdAt: new Date("2026-02-05T00:00:00.000Z"), kind: "CHILD" },
+      programs: [],
+    };
+    const parentTwin: NetworkReportingSection = { ...parentSection, hospital: { ...parentSection.hospital, name: "รพ.สต.ลูกข่าย ก" } };
+    const workbook = await load(await generateNetworkReportWorkbook({ ...dataset, hospitals: [parentTwin, ...dataset.hospitals.slice(1), twin] }));
+    const summary = sheet(workbook, SUMMARY);
+
+    expect([2, 3, 4].map((row) => summary.getCell(`A${row}`).value)).toEqual([
+      "รพ.สต.ลูกข่าย ก · ขึ้นทะเบียน 5 ม.ค. 2569",
+      "รพ.สต.ลูกข่าย ก · ลูกข่ายของ โรงพยาบาลแม่ข่าย · ขึ้นทะเบียน 5 ม.ค. 2569",
+      "รพ.สต.ลูกข่าย  ก · ลูกข่ายของ โรงพยาบาลแม่ข่าย · ขึ้นทะเบียน 5 ก.พ. 2569",
+    ]);
   });
 });

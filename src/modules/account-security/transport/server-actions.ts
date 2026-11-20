@@ -284,7 +284,7 @@ export async function searchMediatedPasswordResetHospitalsAction(value: string):
     return { status: "OK", items, page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false };
   } catch (error: unknown) {
     if (error instanceof ApplicationError && error.code === "VALIDATION") {
-      return { status: "ERROR", message: "กรุณาพิมพ์ชื่อหรือรหัสโรงพยาบาล (ไม่เกิน 100 ตัวอักษร)" };
+      return { status: "ERROR", message: "กรุณาพิมพ์ชื่อโรงพยาบาล (ไม่เกิน 100 ตัวอักษร)" };
     }
     return { status: "ERROR", message: "ไม่สามารถค้นหาโรงพยาบาลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };
   }

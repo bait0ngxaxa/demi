@@ -1352,14 +1352,16 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
 
     const target = extraHospitals[10]!;
     expect(await searchMediatedPasswordResetHospitals(admin, { value: ` ${target.name} ` }, db))
-      .toEqual([{ id: target.id, hospitalCode: target.hospitalCode, name: target.name }]);
-    const broad = await searchMediatedPasswordResetHospitals(admin, { value: "REC1-" }, db);
+      .toEqual([{ id: target.id, name: target.name, createdAt: target.createdAt }]);
+    // Name search only: a Hospital code finds nothing.
+    expect(await searchMediatedPasswordResetHospitals(admin, { value: target.hospitalCode }, db)).toEqual([]);
+    const broad = await searchMediatedPasswordResetHospitals(admin, { value: "REC-1" }, db);
     expect(broad).toHaveLength(10);
     expect(broad.map(({ name }) => name)).toEqual([...broad.map(({ name }) => name)].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)));
     await db.hospital.update({ where: { id: target.id }, data: { status: HospitalStatus.SUSPENDED } });
     expect(await searchMediatedPasswordResetHospitals(admin, { value: target.name }, db)).toEqual([]);
     await expect(searchMediatedPasswordResetHospitals(admin, { value: " " }, db)).rejects.toBeInstanceOf(ValidationError);
-    await expect(searchMediatedPasswordResetHospitals(await createOwner(hospital.id), { value: "REC1-" }, db)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(searchMediatedPasswordResetHospitals(await createOwner(hospital.id), { value: "REC-1" }, db)).rejects.toBeInstanceOf(ForbiddenError);
 
     // The reset is recorded against the Hospital the ADMIN chose, as before.
     const chosen = extraHospitals[0]!;

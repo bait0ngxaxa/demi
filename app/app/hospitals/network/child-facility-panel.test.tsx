@@ -18,7 +18,7 @@ const base: ChildFacilityPanelProps = {
   parentHospitalId: "11111111-1111-4111-8111-111111111111",
   areaId: "22222222-2222-4222-8222-222222222222",
   attachedAt: "2026-10-21T03:00:00.000Z",
-  child: { id: "33333333-3333-4333-8333-333333333333", hospitalCode: "H-ABCDEF", name: "รพ.สต.บ้านใหม่", updatedAt: "2026-10-21T03:00:00.000Z" },
+  child: { id: "33333333-3333-4333-8333-333333333333", name: "รพ.สต.บ้านใหม่", displayName: "รพ.สต.บ้านใหม่", updatedAt: "2026-10-21T03:00:00.000Z" },
   state: "PENDING_ACTIVATION",
   invitation: {
     inviteeName: "สมหญิง ดูแลดี",

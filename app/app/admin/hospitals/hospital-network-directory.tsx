@@ -18,6 +18,7 @@ import type {
   HospitalNetworkDirectoryPage,
 } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { createNetworkHospitalAction } from "@/modules/hospital-service-areas/transport/server-actions";
+import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
 
 import { HospitalBulkRegistration } from "./hospital-bulk-registration";
 import { PendingHospitalRetirement } from "./pending-hospital-retirement";
@@ -97,7 +98,6 @@ function CreateHospitalPanel({ submissionNonce }: { submissionNonce: string }): 
           <div className="min-w-0">
             <label className="text-sm font-semibold text-text" htmlFor="create-hospital-name">ชื่อโรงพยาบาล</label>
             <Input className="mt-2" id="create-hospital-name" maxLength={200} name="name" required />
-            <p className="mt-1 text-xs text-text-muted">ระบบสร้างรหัสโรงพยาบาลให้อัตโนมัติ</p>
           </div>
         </div>
       </NetworkMutationForm>
@@ -155,7 +155,7 @@ function DirectorySearch({
       {filter !== "network" ? <input name="status" type="hidden" value={filter} /> : null}
       {filter === "network" && placement !== "all" ? <input name="placement" type="hidden" value={placement} /> : null}
       <label className="min-w-0 flex-1 text-sm font-semibold text-text" htmlFor="hospital-directory-search">
-        ค้นหาชื่อหรือรหัสโรงพยาบาล
+        ค้นหาชื่อโรงพยาบาล
         <Input
           className="mt-2"
           defaultValue={value}
@@ -210,13 +210,14 @@ function RetiredHospitalList({
   value: string;
 }): React.JSX.Element {
   const hospitals = directory.items;
+  const names = directoryDisplayNames(hospitals);
   return (
     <Panel aria-labelledby="retired-hospitals-heading">
       <h2 className="text-lg font-semibold" id="retired-hospitals-heading">
         ถอนออกจากรายชื่อแล้ว ({directory.total.toLocaleString("th-TH")})
       </h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        ไม่แสดงในหน้าขึ้นทะเบียนสาธารณะและไม่อยู่ในเครือข่าย ข้อมูลยังอยู่ครบ รหัสโรงพยาบาลยังสงวนไว้ และคืนสู่รายชื่อรอสมัครได้จากหน้ารายละเอียด
+        ไม่แสดงในหน้าขึ้นทะเบียนสาธารณะและไม่อยู่ในเครือข่าย ข้อมูลยังอยู่ครบ และคืนสู่รายชื่อรอสมัครได้จากหน้ารายละเอียด
       </p>
       {hospitals.length === 0 ? (
         <p className="mt-4 text-sm text-text-muted">{value ? "ไม่พบโรงพยาบาลที่ตรงกับคำค้นหา" : "ไม่มี"}</p>
@@ -225,8 +226,8 @@ function RetiredHospitalList({
           {hospitals.map((hospital) => (
             <li className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2" key={hospital.id}>
               <span className="min-w-0 break-words">
-                <span className="font-medium text-text">{hospital.name}</span>{" "}
-                <span className="text-sm text-text-muted">({hospital.hospitalCode}) · {networkRoleLabel(hospital.role)}</span>
+                <span className="font-medium text-text">{names.get(hospital.id) ?? hospital.name}</span>{" "}
+                <span className="text-sm text-text-muted">· {networkRoleLabel(hospital.role)}</span>
               </span>
               <Link
                 className="text-sm font-semibold text-brand-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
@@ -291,11 +292,23 @@ function networkPlacementLabel(hospital: HospitalNetworkDirectoryEntry): string 
   return networkRoleLabel(hospital.role);
 }
 
+/** Same-named rows on one page are told apart by Parent (active or registered-for) or registration date. */
+function directoryDisplayNames(hospitals: readonly HospitalNetworkDirectoryEntry[]): ReadonlyMap<string, string> {
+  return hospitalDisplayNames(hospitals.map((hospital) => ({
+    id: hospital.id,
+    name: hospital.name,
+    parentName: hospital.networkParentName ?? hospital.registeredForParentHospitalName,
+    registeredAt: hospital.createdAt,
+  })));
+}
+
 function NetworkHospitalRow({
   hospital,
+  displayName,
   onboardingPath,
 }: {
   hospital: HospitalNetworkDirectoryEntry;
+  displayName: string;
   onboardingPath: string | null;
 }): React.JSX.Element {
   return (
@@ -305,7 +318,7 @@ function NetworkHospitalRow({
           className="break-words font-medium text-brand-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
           href={`/app/admin/hospitals/${hospital.id}`}
         >
-          {hospital.name} <span className="text-sm font-normal text-text-muted">({hospital.hospitalCode})</span>
+          {displayName}
         </Link>
         <p className="mt-0.5 break-words text-sm text-text-muted">
           {networkPlacementLabel(hospital)}{provenanceLabel(hospital)}
@@ -351,6 +364,7 @@ export function HospitalNetworkDirectory({
   /** O1-A: a separate per-request nonce for the file import. */
   bulkSubmissionNonce: string;
 }): React.JSX.Element {
+  const names = directoryDisplayNames(directory.items);
   if (filter !== "network") {
     return (
       <div className="space-y-6 pt-8">
@@ -362,8 +376,7 @@ export function HospitalNetworkDirectory({
             <PendingHospitalRetirement
               hospitals={directory.items.map((hospital) => ({
                 id: hospital.id,
-                hospitalCode: hospital.hospitalCode,
-                name: hospital.name,
+                name: names.get(hospital.id) ?? hospital.name,
                 roleLabel: [
                   `${networkRoleLabel(hospital.role)}${provenanceLabel(hospital)}`,
                   onboardingPathLabel(onboardingPaths[hospital.id]),
@@ -403,6 +416,7 @@ export function HospitalNetworkDirectory({
             <ul className="mt-3 divide-y divide-border border-t border-border">
               {directory.items.map((hospital) => (
                 <NetworkHospitalRow
+                  displayName={names.get(hospital.id) ?? hospital.name}
                   hospital={hospital}
                   key={hospital.id}
                   onboardingPath={onboardingPathLabel(onboardingPaths[hospital.id])}

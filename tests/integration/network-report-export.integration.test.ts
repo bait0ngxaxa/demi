@@ -207,7 +207,7 @@ describe("ADR-0025 network report export / PostgreSQL", () => {
     const exporter = basis === "OWNER" ? f.parentOwner : f.parentMember;
 
     const { buffer, parent } = await exportNetworkReportWorkbook(exporter, all(f));
-    expect(parent).toEqual(f.parent);
+    expect(parent).toEqual({ ...f.parent, createdAt: expect.any(Date) });
 
     const singleCounts = async (hospitalId: string, owner: ActorContext): Promise<number[]> => {
       const single = await getHospitalReportingDatasetForExport(owner, { hospitalId });
@@ -220,11 +220,11 @@ describe("ADR-0025 network report export / PostgreSQL", () => {
       ];
     };
     expect(await summaryRows(buffer)).toEqual([
-      ["หน่วยบริการ", "รหัส", "ประเภท", "จำนวนเคส", "Program ทั้งหมด", "ACTIVE", "COMPLETED", "ความสัมพันธ์ที่ยังไม่มี Program"],
-      [f.parent.name, f.parent.hospitalCode, "แม่ข่าย", ...await singleCounts(f.parent.id, f.parentOwner)],
-      [f.childA.name, f.childA.hospitalCode, "ลูกข่าย", ...await singleCounts(f.childA.id, f.childOwner)],
-      [f.childB.name, f.childB.hospitalCode, "ลูกข่าย", ...await singleCounts(f.childB.id, f.childBOwner)],
-      ["รวม", "", "", 3, 2, 2, 0, 1],
+      ["หน่วยบริการ", "ประเภท", "จำนวนเคส", "Program ทั้งหมด", "ACTIVE", "COMPLETED", "ความสัมพันธ์ที่ยังไม่มี Program"],
+      [f.parent.name, "แม่ข่าย", ...await singleCounts(f.parent.id, f.parentOwner)],
+      [f.childA.name, "ลูกข่าย", ...await singleCounts(f.childA.id, f.childOwner)],
+      [f.childB.name, "ลูกข่าย", ...await singleCounts(f.childB.id, f.childBOwner)],
+      ["รวม", "", 3, 2, 2, 0, 1],
     ]);
 
     const events = await audits(exporter);
@@ -257,7 +257,7 @@ describe("ADR-0025 network report export / PostgreSQL", () => {
     const subset = await exportNetworkReportWorkbook(f.parentMember, { parentHospitalId: f.parent.id, hospitalIds: [f.childA.id] });
     const subsetRows = await summaryRows(subset.buffer);
     expect(subsetRows.slice(1).map((row) => row[0])).toEqual([f.childA.name, "รวม"]);
-    expect(subsetRows[1]?.slice(3)).toEqual([1, 1, 1, 0, 0]);
+    expect(subsetRows[1]?.slice(2)).toEqual([1, 1, 1, 0, 0]);
 
     const history = await exportNetworkReportWorkbook(f.parentMember, {
       parentHospitalId: f.parent.id,
@@ -266,7 +266,7 @@ describe("ADR-0025 network report export / PostgreSQL", () => {
     });
     const historyRows = await summaryRows(history.buffer);
     expect(historyRows.slice(1).map((row) => row[0])).toEqual([f.parent.name, f.childA.name, "รวม"]);
-    expect(historyRows[2]?.slice(3)).toEqual([2, 2, 1, 1, 0]);
+    expect(historyRows[2]?.slice(2)).toEqual([2, 2, 1, 1, 0]);
 
     const events = await audits(f.parentMember);
     expect(events.filter(({ action }) => action === "hospital_reporting.network_export.prepared").map(({ metadata }) => metadata))

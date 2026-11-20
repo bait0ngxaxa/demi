@@ -115,9 +115,9 @@ describe("ADMIN Hospital directory (paged, filtered in SQL)", () => {
     const pending = await listHospitalNetworkDirectoryForAdmin(admin, { filter: "pending", value: token });
     expect(pending.total).toBe(13);
     expect(pending.items.every(({ status }) => status === HospitalStatus.PENDING_VERIFICATION)).toBe(true);
-    // The code search matches too.
+    // Hospital codes are internal: a code search finds nothing.
     const byCode = await listHospitalNetworkDirectoryForAdmin(admin, { filter: "retired", value: retired.hospitalCode.slice(0, 12).toLowerCase() });
-    expect(byCode.items.map(({ id }) => id)).toEqual([retired.id]);
+    expect(byCode.items).toEqual([]);
     const nothing = await listHospitalNetworkDirectoryForAdmin(admin, { filter: "network", value: `${token}-ไม่มี`, page: 4 });
     expect(nothing).toMatchObject({ items: [], page: 1, totalPages: 1, total: 0 });
   });
@@ -200,7 +200,7 @@ describe("ADMIN Hospital directory (paged, filtered in SQL)", () => {
 });
 
 describe("ADMIN transfer targets (server search, 10 results)", () => {
-  it("answers the first ten ACTIVE Parents by name or code, never the current Parent, a Child or an inactive Parent", async () => {
+  it("answers the first ten ACTIVE Parents by name, never the current Parent, a Child or an inactive Parent", async () => {
     const current = await hospital(`${token} ปัจจุบัน`, HospitalStatus.ACTIVE, "PARENT");
     const child = await hospital(`${token} ลูกข่ายโอน`, HospitalStatus.ACTIVE, "CHILD");
     await db.hospitalServiceArea.create({ data: { parentHospitalId: current.id, childHospitalId: child.id, createdByUserId: admin.userId } });
@@ -214,8 +214,11 @@ describe("ADMIN transfer targets (server search, 10 results)", () => {
     const found = await searchHospitalTransferTargetsForAdmin(admin, { hospitalId: child.id, value: token });
     expect(found.map(({ id }) => id)).toEqual(targets.slice(0, 10).map(({ id }) => id));
     expect(found.map(({ id }) => id)).not.toContain(current.id);
-    expect(found[0]).toEqual({ id: targets[0]!.id, hospitalCode: targets[0]!.hospitalCode, name: targets[0]!.name, status: HospitalStatus.ACTIVE });
-    expect(await searchHospitalTransferTargetsForAdmin(admin, { hospitalId: child.id, value: targets[11]!.hospitalCode }))
+    expect(found[0]).toEqual({
+      id: targets[0]!.id, hospitalCode: targets[0]!.hospitalCode, name: targets[0]!.name, status: HospitalStatus.ACTIVE, createdAt: expect.any(Date),
+    });
+    expect(await searchHospitalTransferTargetsForAdmin(admin, { hospitalId: child.id, value: targets[11]!.hospitalCode })).toEqual([]);
+    expect(await searchHospitalTransferTargetsForAdmin(admin, { hospitalId: child.id, value: targets[11]!.name }))
       .toEqual([expect.objectContaining({ id: targets[11]!.id })]);
     // No active Parent: nothing to transfer from.
     expect(await searchHospitalTransferTargetsForAdmin(admin, { hospitalId: current.id, value: token })).toEqual([]);
@@ -227,7 +230,7 @@ describe("ADMIN transfer targets (server search, 10 results)", () => {
 describe("Public onboarding Hospital search (min 2 characters, 10 results, rate limited)", () => {
   const allow = { consume: async (): Promise<boolean> => true };
 
-  it("answers at most ten onboardable Parents by name, matching the name or the code", async () => {
+  it("answers at most ten onboardable Parents by name, never by code", async () => {
     const parents = [];
     for (let index = 0; index < 12; index += 1) {
       parents.push(await hospital(`${token} สมัคร ${pad(index)}`, HospitalStatus.PENDING_VERIFICATION, "PARENT"));
@@ -239,8 +242,9 @@ describe("Public onboarding Hospital search (min 2 characters, 10 results, rate 
     expect(found.map(({ id }) => id)).toEqual(parents.slice(0, 10).map(({ id }) => id));
     expect(found.map(({ id }) => id)).not.toContain(child.id);
     expect(found.map(({ id }) => id)).not.toContain(active.id);
-    expect(Object.keys(found[0] ?? {}).sort()).toEqual(["hospitalCode", "id", "name", "networkRole"]);
-    expect(await searchOnboardingHospitals(parents[11]!.hospitalCode.toLowerCase(), { ipAddress: "127.0.0.1" }, { rateLimiter: allow }))
+    expect(Object.keys(found[0] ?? {}).sort()).toEqual(["createdAt", "hospitalCode", "id", "name", "networkRole"]);
+    expect(await searchOnboardingHospitals(parents[11]!.hospitalCode.toLowerCase(), { ipAddress: "127.0.0.1" }, { rateLimiter: allow })).toEqual([]);
+    expect(await searchOnboardingHospitals(parents[11]!.name, { ipAddress: "127.0.0.1" }, { rateLimiter: allow }))
       .toEqual([expect.objectContaining({ id: parents[11]!.id })]);
     await expect(searchOnboardingHospitals("ก", { ipAddress: "127.0.0.1" }, { rateLimiter: allow })).rejects.toBeInstanceOf(ValidationError);
   });

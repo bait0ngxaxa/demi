@@ -80,6 +80,36 @@ function violations(source: string, filename: string, banned: readonly BannedPhr
     .map(({ phrase, rule }) => `${filename}:${line} "${phrase}" (${rule})`));
 }
 
+// PR 2 (2026-11-19): Hospital codes are generated and internal, so no screen under app/** names or renders them.
+// Allow-list: none. The hidden onboarding field and React keys are attributes, not rendered text.
+const HOSPITAL_CODE_PHRASES: readonly BannedPhrase[] = [
+  { phrase: "รหัสโรงพยาบาล", rule: "Hospital codes are internal", pattern: /รหัสโรงพยาบาล/u, thaiOnly: false },
+  { phrase: "รหัสหน่วยบริการ", rule: "Hospital codes are internal", pattern: /รหัสหน่วยบริการ/u, thaiOnly: false },
+];
+
+/** `.hospitalCode` read inside a JSX child expression (rendered), not inside an attribute value. */
+function renderedHospitalCodes(source: string, filename: string): string[] {
+  const file = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, filename.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const found: string[] = [];
+  function rendered(node: ts.Node): boolean {
+    for (let current: ts.Node | undefined = node.parent; current; current = current.parent) {
+      if (ts.isJsxAttribute(current)) return false;
+      if (ts.isJsxExpression(current) && (ts.isJsxElement(current.parent) || ts.isJsxFragment(current.parent))) return true;
+    }
+    return false;
+  }
+  function visit(node: ts.Node): void {
+    // `fieldErrors.hospitalCode` is the validation message of the hidden form field, not the code itself.
+    const isFieldError = ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "fieldErrors";
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "hospitalCode" && !isFieldError && rendered(node)) {
+      found.push(`${filename}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1} renders .hospitalCode`);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+  return found;
+}
+
 describe("COPY-DISTILL copy guard", () => {
   it("finds a banned phrase in Thai copy but not in comments, identifiers or non-Thai configuration", () => {
     const fixture = [
@@ -114,6 +144,27 @@ describe("COPY-DISTILL copy guard", () => {
     const found = paths.flatMap((path) => {
       const filename = relative(process.cwd(), path).replaceAll("\\", "/");
       return violations(readFileSync(path, "utf8"), filename, BANNED.filter(isImplementationRule));
+    });
+    expect(found).toEqual([]);
+  });
+
+  it("detects Hospital code copy and rendered codes but not attributes", () => {
+    const fixture = [
+      'export const a = <p>รหัสโรงพยาบาล {hospital.hospitalCode}</p>;',
+      'export const b = <input value={hospital.hospitalCode} key={hospital.hospitalCode} />;',
+      'export const c = <span>{`รหัส ${child.hospitalCode}`}</span>;',
+    ].join("\n");
+    expect(violations(fixture, "fixture.tsx", HOSPITAL_CODE_PHRASES)).toEqual(['fixture.tsx:1 "รหัสโรงพยาบาล" (Hospital codes are internal)']);
+    expect(renderedHospitalCodes(fixture, "fixture.tsx")).toEqual(["fixture.tsx:1 renders .hospitalCode", "fixture.tsx:3 renders .hospitalCode"]);
+  });
+
+  it("never names or renders a Hospital code anywhere under app/", () => {
+    const found = sourceFiles("app").flatMap((path) => {
+      const filename = relative(process.cwd(), path).replaceAll("\\", "/");
+      const source = readFileSync(path, "utf8");
+      // Only a file containing one of these strings can violate the rule, so the rest are not parsed.
+      if (!/hospitalCode|รหัสโรงพยาบาล|รหัสหน่วยบริการ/u.test(source)) return [];
+      return [...violations(source, filename, HOSPITAL_CODE_PHRASES), ...renderedHospitalCodes(source, filename)];
     });
     expect(found).toEqual([]);
   });

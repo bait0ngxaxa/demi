@@ -102,7 +102,8 @@ describe("application home workspace routing", () => {
 
     expect(mockedRedirect).not.toHaveBeenCalled();
     expect(markup).toContain("คำเชิญเป็นผู้ดูแล โรงพยาบาลชุมชนใหม่");
-    expect(markup).toContain("จาก ผู้ดูแลระบบ DEMI · รหัสโรงพยาบาล H-PARENT");
+    expect(markup).toContain("จาก ผู้ดูแลระบบ DEMI</p>");
+    expect(markup).not.toContain("H-PARENT");
     expect(markup).toContain("คุณจะเป็นแอดมินโรงพยาบาลนี้");
     expect(markup).not.toContain("(แม่ข่าย)");
   });
