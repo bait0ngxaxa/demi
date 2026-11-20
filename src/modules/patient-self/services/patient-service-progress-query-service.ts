@@ -11,6 +11,7 @@ import {
   buildProgramRoundDetail,
   buildProgramRoundsOverview,
   programRoundSelect,
+  roundFollowupSummary,
   type ProgramRoundDetail,
 } from "@/modules/patient-program-rounds/services/round-query-service";
 import { ApplicationError, InfrastructureError } from "@/shared/errors/application-error";
@@ -39,8 +40,10 @@ export type ServiceProgress = {
     selfRecordable: ServiceProgressItem[];
     staffWillDo: ServiceProgressItem[];
     done: ServiceProgressItem[];
+    /** Rounds 3-12: the round's behaviour-practice Follow-up is recorded. */
+    followupRecorded: boolean;
   } | null;
-  rounds: Array<{ number: number; state: "COMPLETED" | "CURRENT" | "LOCKED" }>;
+  rounds: Array<{ number: number; state: "COMPLETED" | "CURRENT" | "LOCKED"; completedAt: Date | null }>;
   /** undefined means the caller has no appointment grant; render no hint of appointment data. */
   nextAppointment?: { scheduledAt: Date } | null;
 };
@@ -138,10 +141,12 @@ export function buildServiceProgress(
         selfRecordable,
         staffWillDo,
         done,
+        followupRecorded: program !== null && roundFollowupSummary(program, round.roundNumber) !== null,
       } : null,
       rounds: program ? buildProgramRoundsOverview(program, { recorderNames: false }).rounds.map((summary) => ({
         number: summary.roundNumber,
         state: completed.has(summary.roundNumber) ? "COMPLETED" : summary.roundNumber === current ? "CURRENT" : "LOCKED",
+        completedAt: summary.completedAt,
       })) : [],
       ...(nextAppointment === undefined ? {} : { nextAppointment }),
     },

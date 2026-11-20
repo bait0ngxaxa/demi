@@ -15,6 +15,9 @@ import {
   PatientSelfEmptyState,
   PatientSelfHospitalContext,
   PatientSelfHistoryMoreLink,
+  patientFollowupDateText,
+  patientFollowupRoundLabel,
+  patientFollowupServiceRound,
   patientSelfHistoryPageHref,
 } from "./patient-self-care-presentation";
 
@@ -44,7 +47,7 @@ export function PatientSelfProgramDetailView({
       <PageHeader
         breadcrumbs={[
           { href: "/app/personal", label: "พื้นที่ส่วนตัว" },
-          { href: "/app/personal/care", label: "ข้อมูลการดูแล" },
+          { href: "/app/personal/care", label: "บริการ" },
           {
             href: `/app/personal/care/${encodeURIComponent(relationshipId)}`,
             label: relationship.hospitalName,
@@ -176,11 +179,8 @@ export function PatientSelfProgramDetailView({
                     className={`${linkClassName} break-words`}
                     href={`/app/personal/care/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(followup.followupId)}`}
                   >
-                    ติดตาม รอบที่ {followup.roundNumber}
+                    {patientFollowupRoundLabel(patientFollowupServiceRound(followup.roundNumber, true))} · {patientFollowupDateText(followup.serviceDate, followup.recordedAt)}
                   </Link>
-                  <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-                    บันทึก {formatPatientDateTime(followup.recordedAt)}
-                  </p>
                 </li>
               ))}
             </ul>

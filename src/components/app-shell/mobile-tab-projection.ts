@@ -166,8 +166,8 @@ function projectPersonalTabs(
     {
       href: "/app/personal/care",
       id: "care",
-      label: "ดูแล",
-      accessibleLabel: "ข้อมูลการดูแล",
+      label: "บริการ",
+      accessibleLabel: "บริการ",
       icon: "care",
     },
   ] as const;

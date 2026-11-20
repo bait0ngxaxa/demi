@@ -25,12 +25,16 @@ import {
   getOwnPatientAppointmentDetail,
   getOwnPatientAppointmentHistory,
   getOwnPatientCareJourney,
+  getOwnLatestPatientGoalPlan,
   getOwnPatientFollowupDetail,
   getOwnPatientGoalPlanDetail,
   getOwnPatientProgramDetail,
   getOwnPatientProgramRounds,
+  listOwnFollowupSummaries,
   listOwnPatientAppointmentHub,
   type PatientSelfAppointmentHub,
+  type PatientSelfFollowupSummary,
+  type PatientSelfGoalPlanDetail,
   type PatientSelfAppointmentHubTab,
   type PatientSelfCareJourneyPageRequests,
   type PatientSelfProgramDetailPageRequests,
@@ -147,6 +151,20 @@ export async function getPatientSelfFollowupDetailPageContext(
   return withPatientSelfPageContext((actor) =>
     getOwnPatientFollowupDetail(actor, relationshipId, followupId),
   );
+}
+
+/** Services hub "การติดตาม": both reads recheck SELF ownership of the exact relationship. */
+export async function getPatientServicesHubFollowupsPageContext(
+  relationshipId: string,
+  returnTo?: LoginReturnTo,
+): Promise<{ followups: PatientSelfFollowupSummary[]; plan: PatientSelfGoalPlanDetail | null } | PatientAccessUnavailable> {
+  return withPatientSelfPageContext(async (actor) => {
+    const [followups, plan] = await Promise.all([
+      listOwnFollowupSummaries(actor, relationshipId),
+      getOwnLatestPatientGoalPlan(actor, relationshipId),
+    ]);
+    return { followups, plan };
+  }, returnTo, PATIENT_ACCESS_UNAVAILABLE);
 }
 
 export async function getPatientSelfAppointmentHistoryPageContext(

@@ -41,7 +41,7 @@ export function PatientSelfProgramRoundsView({
       <PageHeader
         breadcrumbs={[
           { href: "/app/personal", label: "พื้นที่ส่วนตัว" },
-          { href: "/app/personal/care", label: "ข้อมูลการดูแล" },
+          { href: "/app/personal/care", label: "บริการ" },
           { href: careHref, label: rounds.relationship.hospitalName },
           { href: programHref, label: "โปรแกรม" },
           { label: "ประวัติการรับบริการรายครั้ง" },

@@ -1596,6 +1596,27 @@
     "reason": "One follow-up's progress: one row per goal activity (unique followupId, goalActivityCode)."
   },
   {
+    "file": "src/modules/patient-self/services/patient-self-care-query-service.ts",
+    "function": "getOwnPatientFollowupDetail",
+    "target": "patientFollowup.sourceGoalPlan.items",
+    "occurrence": 1,
+    "reason": "The one source goal plan's own activity targets, used to score this follow-up (BR-04)."
+  },
+  {
+    "file": "src/modules/patient-self/services/patient-self-care-query-service.ts",
+    "function": "listOwnFollowupSummaries",
+    "target": "patientFollowup.sourceGoalPlan.items",
+    "occurrence": 1,
+    "reason": "Each listed follow-up's source goal plan targets; the list is capped at 24 follow-ups."
+  },
+  {
+    "file": "src/modules/patient-self/services/patient-self-care-query-service.ts",
+    "function": "listOwnFollowupSummaries",
+    "target": "patientFollowup.activityProgress",
+    "occurrence": 1,
+    "reason": "One row per goal activity per follow-up (unique followupId, goalActivityCode); the list is capped at 24."
+  },
+  {
     "file": "src/modules/patient-self/services/patient-self-query-service.ts",
     "function": "resolveOwnPatientContext",
     "target": "person.patientProfile.hospitalRelationships",

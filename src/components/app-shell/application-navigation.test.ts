@@ -591,7 +591,7 @@ describe("application navigation visibility (unchanged policies)", () => {
   });
 
   it("gives the Patient the customer menus verbatim in every Personal workspace and never in Work", () => {
-    const bottom = ["หน้าหลัก", "ข้อมูลสุขภาพ", "นัดหมาย", "ติดตาม", "โปรไฟล์"];
+    const bottom = ["หน้าหลัก", "ข้อมูลสุขภาพ", "นัดหมาย", "บริการ", "โปรไฟล์"];
     const top = ["ประวัติการนัดหมาย", "ครอบครัวของฉัน", "ยา", "Food & Finess", "ติดต่อเรา"];
     for (const roles of [[Role.PATIENT], [Role.PATIENT, Role.OSM], [Role.PATIENT, Role.HOSPITAL], [Role.PATIENT, Role.ADMIN], [Role.PATIENT, Role.CAREGIVER]] as const) {
       const groups = project(actor({ roles, osmHospitalRelationships: [osm(hospitalId)], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }));
@@ -599,6 +599,8 @@ describe("application navigation visibility (unchanged policies)", () => {
         groups.filter((group) => group.id === id && group.workspace === context).flatMap(({ items }) => items.map(({ label }) => label));
 
       expect(labels("primary", "personal")).toEqual(bottom);
+      // UI-01 rev. 2026-11-20 (owner): the service request page is the hub's "ขอรับบริการ" action, same route.
+      expect(groups.find((group) => group.id === "care" && group.workspace === "personal")?.items).toEqual(expect.arrayContaining([expect.objectContaining({ href: "/app/personal/services", label: "ขอรับบริการ" })]));
       // Owner decision 2026-11-19: an account that also holds ADMIN loses only ครอบครัวของฉัน.
       expect(labels("top-menu", "personal")).toEqual((roles as readonly Role[]).includes(Role.ADMIN) ? top.filter((label) => label !== "ครอบครัวของฉัน") : top);
       expect(labels("primary", "work")).toEqual([]);

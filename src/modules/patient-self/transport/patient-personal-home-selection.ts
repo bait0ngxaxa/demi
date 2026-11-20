@@ -5,7 +5,7 @@ import type { PatientSelfContext } from "@/modules/patient-self/services/patient
 export type ActivePatientHospital = PatientSelfContext["hospitalRelationships"][number];
 
 type PatientWithHospitalRelationships = {
-  hospitalRelationships: readonly ActivePatientHospital[];
+  hospitalRelationships: readonly Pick<ActivePatientHospital, "relationshipId" | "careEndedAt" | "hospitalStatus">[];
 };
 
 export function getActivePatientHospitals<T extends PatientWithHospitalRelationships>(

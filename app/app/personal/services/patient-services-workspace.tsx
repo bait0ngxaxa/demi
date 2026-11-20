@@ -20,8 +20,8 @@ export function PatientServicesWorkspace({
   return (
     <div className="max-w-4xl">
       <PageHeader
-        breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "บริการของฉัน" }]}
-        title="บริการของฉัน"
+        breadcrumbs={[{ href: "/app/personal/care", label: "บริการ" }, { label: "ขอรับบริการ" }]}
+        title="ขอรับบริการ"
       />
 
       {relationships.length === 0 ? (

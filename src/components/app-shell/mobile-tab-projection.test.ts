@@ -86,7 +86,7 @@ describe("server-projected mobile navigation", () => {
     const patientOsm = projectApplicationNavigation(actor([Role.PATIENT, Role.OSM]));
     const patientOwner = projectApplicationNavigation(actor([Role.PATIENT, Role.HOSPITAL]));
     const expectedIds = ["home", "health", "appointments", "followup", "more"];
-    const expectedLabels = ["หน้าหลัก", "ข้อมูลสุขภาพ", "นัดหมาย", "ติดตาม", "โปรไฟล์"];
+    const expectedLabels = ["หน้าหลัก", "ข้อมูลสุขภาพ", "นัดหมาย", "บริการ", "โปรไฟล์"];
     const expectedHrefs = ["/app/personal", "/app/personal/health", "/app/personal/appointments", "/app/personal/care", "/app/more"];
 
     expect(projectMobileNavigation(patient).availableWorkspaces).toEqual(["personal"]);

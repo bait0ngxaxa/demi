@@ -36,7 +36,7 @@ import {
 import { recordRoundAchieveScore } from "@/modules/patient-program-rounds/services/round-achieve-score-service";
 import { addRoundPlanItem, removeRoundPlanItem, markCustomItemDone, unmarkCustomItemDone, addProgramRound } from "@/modules/patient-program-rounds/services/round-plan-write-service";
 import { roundAchieveScoreReceiptQuery, roundPlanReceiptQuery, roundRecordingReceiptQuery } from "@/modules/patient-program-rounds/services/round-recording-receipt";
-import { getOwnPatientProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
+import { getOwnPatientFollowupDetail, getOwnPatientProgramRounds, listOwnFollowupSummaries } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { getOwnServiceProgress } from "@/modules/patient-self/services/patient-service-progress-query-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import {
@@ -1969,6 +1969,33 @@ describe("Patient self-recording in the current active round (FR-4)", () => {
     expect(JSON.stringify(after)).not.toContain("completedByUser");
     await prisma.patientHospitalRelationship.update({ where: { id: fixture.relationshipId }, data: { endedAt: new Date(), endedByUserId: fixture.owner.userId, endReason: "PP-1 test" } });
     expect((await getOwnServiceProgress(patient, { database: prisma })).map(({ relationshipId }) => relationshipId)).toEqual([secondOwn.id]);
+  }, 20_000);
+
+  it("PATIENT-SERVICES-HUB: lists own Follow-ups by service round with the staff BR-04 score, and never another patient's", async () => {
+    const fixture = await createFixture("hub-self");
+    const patient = await patientActor(fixture);
+    const other = await createFixture("hub-other");
+    await skipRestAndComplete(fixture, 1);
+    const plan = await createGoalPlanForProgram(fixture.osm.actor, goalInput(fixture.programId));
+    await skipRestAndComplete(fixture, 2);
+    const followup = await createFollowupForProgram(fixture.osm.actor, followupInput(fixture.programId, { sourceGoalPlanId: plan.goalPlanId, planAdjusted: false, hasObstacle: true }));
+
+    const summaries = await listOwnFollowupSummaries(patient, fixture.relationshipId, { database: prisma });
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({ followupId: followup.followupId, roundNumber: 3, planAdjusted: false, hasObstacle: true });
+    expect(summaries[0]?.serviceDate?.toISOString().slice(0, 10)).toBe("2026-08-20");
+    // The fixture reports every plan activity at its target: the shared BR-04 function scores 100%.
+    expect(summaries[0]?.achievement).toMatchObject({ ratePercent: 100, aboveThreshold: true });
+    expect(summaries[0]?.achievement?.achievedDays).toBe(summaries[0]?.achievement?.targetDays);
+    const detail = await getOwnPatientFollowupDetail(patient, fixture.relationshipId, followup.followupId, { database: prisma });
+    expect(detail.achievement).toEqual(summaries[0]?.achievement);
+
+    const [progress] = await getOwnServiceProgress(patient, { database: prisma });
+    expect(progress?.currentRound).toMatchObject({ number: 3, followupRecorded: true });
+    expect(progress?.rounds.slice(0, 2).every(({ state, completedAt }) => state === "COMPLETED" && completedAt instanceof Date)).toBe(true);
+
+    await expectDenied(listOwnFollowupSummaries(patient, other.relationshipId, { database: prisma }));
+    await expectDenied(listOwnFollowupSummaries(fixture.osm.actor, fixture.relationshipId, { database: prisma }));
   }, 20_000);
 
   it("FR-6: removes and re-adds in round 1, ends rounds 1-6 early, adds two CUSTOM items in round 7, then records Final and the extra-round report", async () => {

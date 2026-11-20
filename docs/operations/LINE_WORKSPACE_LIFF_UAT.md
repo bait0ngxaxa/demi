@@ -41,7 +41,7 @@ https://liff.line.me/<WORKSPACE_LIFF_ID>
 | 1 | Patient → บันทึกสุขภาพ | แตะปุ่มใน Rich Menu | เปิด `/app/personal/wellness` ใน LIFF ไม่มี footer | | |
 | 2 | Patient → ยาของฉัน | Rich Menu | `/app/personal/medications` ใน LIFF | | |
 | 3 | Patient → นัดหมายทั้งหมด | Rich Menu | `/app/personal/appointments` ใน LIFF | | |
-| 4 | Patient → ข้อมูลการดูแล / เพิ่มเติม | Rich Menu | `/app/personal/care`, `/app/personal` ใน LIFF | | |
+| 4 | Patient → บริการ / เพิ่มเติม | Rich Menu | `/app/personal/care`, `/app/personal` ใน LIFF | | |
 | 5 | OSM → ผู้ป่วยที่ดูแล | Rich Menu | `/app/patients/assigned` เฉพาะผู้ป่วยที่ได้รับมอบหมาย | | |
 | 6 | OSM → คัดกรอง / บันทึกติดตาม | Rich Menu | `?task=screening` และ `/app/services` ตาม scope เดิม | | |
 | 7 | Hospital → งานทั้งหมด | Rich Menu | `/app` งานโรงพยาบาลใน LIFF | | |

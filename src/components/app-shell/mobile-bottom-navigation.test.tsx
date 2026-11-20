@@ -63,7 +63,7 @@ const navigation: readonly ApplicationNavigationGroup[] = [
     items: [
       { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
       { href: "/app/personal/wellness", label: "อาหารและออกกำลังกาย", match: "prefix" },
-      { href: "/app/personal/care", label: "ข้อมูลการดูแล", match: "prefix" },
+      { href: "/app/personal/care", label: "บริการ", match: "prefix" },
     ],
   },
   { id: "home", label: null, workspace: "work", items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }] },

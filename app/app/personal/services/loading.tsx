@@ -6,7 +6,7 @@ import {
 
 export default function PatientServicesLoading(): React.JSX.Element {
   return (
-    <LoadingRegion label="กำลังโหลดบริการของฉัน...">
+    <LoadingRegion label="กำลังโหลดขอรับบริการ...">
       <div className="max-w-4xl">
         <PageHeaderSkeleton />
         <div className="mt-6 space-y-6">

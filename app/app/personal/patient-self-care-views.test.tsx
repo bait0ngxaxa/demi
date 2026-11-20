@@ -99,6 +99,7 @@ const journey: PatientSelfCareJourney = {
       followupId: "55555555-5555-4555-8555-555555555555",
       roundNumber: 7,
       recordedAt,
+      serviceDate: recordedAt,
       program,
     },
   ],
@@ -161,9 +162,12 @@ const followupDetail: PatientSelfFollowupDetail = {
     systolicBloodPressure: 121,
     diastolicBloodPressure: 81,
   },
+  planAdjusted: null,
+  hasObstacle: null,
   activityProgress: [
-    { activityLabel: "เดินออกกำลังกาย", status: FollowupActivityProgressStatus.DONE },
+    { activityLabel: "เดินออกกำลังกาย", status: FollowupActivityProgressStatus.DONE, achievedDays: null, targetDays: 3 },
   ],
+  achievement: null,
 };
 
 const contactPhones = { assignedOsmPhone: null, hospitalPhone: "021234567", patientPhone: null };
@@ -224,7 +228,7 @@ describe("Patient Personal care read views", () => {
       "165 cm",
       "แผนสุขภาพ รอบที่ 7",
       "การติดตาม",
-      "ติดตาม รอบที่ 7",
+      "ครั้งที่ 9 · ติดตาม",
       "โปรแกรมการดูแล",
       "โรงพยาบาล ก",
     ]) {
@@ -467,7 +471,7 @@ describe("Patient Personal care read views", () => {
       "Dream Card",
       "Confidence",
       "แผนสุขภาพ รอบที่ 7",
-      "ติดตาม รอบที่ 7",
+      "ครั้งที่ 9 · ติดตาม",
       "การประเมินสิ้นสุด",
       "68 kg",
     ]) {
@@ -496,7 +500,7 @@ describe("Patient Personal care read views", () => {
     expect(goalMarkup).not.toContain("Health Plan");
     expect(goalMarkup).not.toContain("PAM");
 
-    expect(followupMarkup).toContain("การติดตาม รอบที่ 7");
+    expect(followupMarkup).toContain("ครั้งที่ 9 · การติดตาม");
     expect(followupMarkup).toContain("70 kg");
     expect(followupMarkup).toContain("121 / 81 mmHg");
     expect(followupMarkup).toContain("เดินออกกำลังกาย");

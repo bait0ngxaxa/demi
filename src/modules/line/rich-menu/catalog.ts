@@ -41,7 +41,7 @@ const patientQuickActions: readonly LineMenuAction[] = [
   { type: "uri", intent: "OPEN_PATIENT_APPOINTMENTS", label: "นัดหมายทั้งหมด" },
   { type: "uri", intent: "OPEN_PATIENT_WELLNESS", label: "บันทึกสุขภาพ" },
   { type: "uri", intent: "OPEN_PATIENT_MEDICATIONS", label: "ยาของฉัน" },
-  { type: "uri", intent: "OPEN_PATIENT_CARE", label: "ข้อมูลการดูแล" },
+  { type: "uri", intent: "OPEN_PATIENT_CARE", label: "บริการ" },
 ];
 
 const osmQuickActions: readonly LineMenuAction[] = [

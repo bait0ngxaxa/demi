@@ -29,6 +29,7 @@ import {
   appointmentIdSchema,
   appointmentRelationshipIdSchema,
 } from "@/modules/appointments/schemas/appointment-schemas";
+import { computeFollowupAchievement, type FollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import { FOLLOWUP_READ_CAPABILITY } from "@/modules/followups/policies/followup-policy";
 import {
   followupIdSchema,
@@ -53,6 +54,7 @@ import {
   type ProgramRoundDetail,
   type ProgramRoundsOverview,
 } from "@/modules/patient-program-rounds/services/round-query-service";
+import { toProgramRoundNumber } from "@/modules/patient-program-rounds/domain/round-catalog";
 import { SCREENING_READ_CAPABILITY } from "@/modules/screening/policies/screening-policy";
 import {
   ApplicationError,
@@ -150,6 +152,8 @@ export type PatientSelfFollowupHistoryItem = {
   followupId: string;
   roundNumber: number;
   recordedAt: Date;
+  /** วันที่ติดตาม; null only on records made before the date was captured. */
+  serviceDate: Date | null;
   program: PatientSelfProgramContext | null;
 };
 
@@ -214,12 +218,33 @@ export type PatientSelfGoalPlanDetail = PatientSelfGoalPlanHistoryItem & {
 
 export type PatientSelfFollowupDetail = PatientSelfFollowupHistoryItem & {
   relationship: PatientSelfRelationshipContext;
+  planAdjusted: boolean | null;
+  hasObstacle: boolean | null;
   measurements: PatientSelfMeasurementFacts;
   activityProgress: Array<{
     activityLabel: string;
     status: FollowupActivityProgressStatus;
+    achievedDays: number | null;
+    /** The source plan's target for this activity; null when the plan has no such activity. */
+    targetDays: number | null;
   }>;
+  /** BR-04, computed by the shared domain function; null when the Follow-up cannot be scored. */
+  achievement: FollowupAchievement | null;
 };
+
+/** One behaviour-practice Follow-up as the patient's services hub lists it. */
+export type PatientSelfFollowupSummary = {
+  followupId: string;
+  /** The Program service round (ครั้งที่, 3-12); null = recorded on the relationship before a Program started. */
+  roundNumber: number | null;
+  serviceDate: Date | null;
+  recordedAt: Date;
+  achievement: FollowupAchievement | null;
+  planAdjusted: boolean | null;
+  hasObstacle: boolean | null;
+};
+
+export const PATIENT_SELF_FOLLOWUP_SUMMARY_LIMIT = 24;
 
 export type PatientSelfAppointmentItem = {
   serviceCode: PatientServiceCode | null;
@@ -325,6 +350,7 @@ const followupHistorySelect = {
   id: true,
   roundNumber: true,
   recordedAt: true,
+  serviceDate: true,
   patientProgram: {
     select: {
       status: true,
@@ -381,10 +407,31 @@ const goalPlanDetailSelect = {
   },
 } satisfies Prisma.PatientGoalPlanSelect;
 
+/** The source plan's targets, with its relationship so a plan outside the exact SELF scope is never scored. */
+const followupSourcePlanTargetsSelect = {
+  patientHospitalRelationshipId: true,
+  items: { select: { activityCode: true, targetDays: true } },
+} satisfies Prisma.PatientGoalPlanSelect;
+
+const followupSummarySelect = {
+  id: true,
+  roundNumber: true,
+  patientProgramId: true,
+  serviceDate: true,
+  recordedAt: true,
+  planAdjusted: true,
+  hasObstacle: true,
+  sourceGoalPlan: { select: followupSourcePlanTargetsSelect },
+  activityProgress: { select: { goalActivityCode: true, status: true, achievedDays: true } },
+} satisfies Prisma.PatientFollowupSelect;
+
 const followupDetailSelect = {
   id: true,
   roundNumber: true,
   recordedAt: true,
+  serviceDate: true,
+  planAdjusted: true,
+  hasObstacle: true,
   weight: true,
   waistCircumference: true,
   systolicBloodPressure: true,
@@ -400,6 +447,7 @@ const followupDetailSelect = {
     select: {
       templateKey: true,
       templateVersion: true,
+      ...followupSourcePlanTargetsSelect,
     },
   },
   activityProgress: {
@@ -407,6 +455,7 @@ const followupDetailSelect = {
     select: {
       goalActivityCode: true,
       status: true,
+      achievedDays: true,
     },
   },
 } satisfies Prisma.PatientFollowupSelect;
@@ -585,11 +634,26 @@ function toGoalPlanHistoryItem(record: GoalPlanHistoryRecord): PatientSelfGoalPl
   };
 }
 
+/** BR-04 through the shared domain function; a source plan outside the exact relationship is never scored. */
+function scoreOwnFollowup(
+  relationshipId: string,
+  record: {
+    activityProgress: Parameters<typeof computeFollowupAchievement>[0];
+    sourceGoalPlan: { patientHospitalRelationshipId: string; items: Parameters<typeof computeFollowupAchievement>[1] } | null;
+  },
+): FollowupAchievement | null {
+  const plan = record.sourceGoalPlan;
+  return plan && plan.patientHospitalRelationshipId === relationshipId
+    ? computeFollowupAchievement(record.activityProgress, plan.items)
+    : null;
+}
+
 function toFollowupHistoryItem(record: FollowupHistoryRecord): PatientSelfFollowupHistoryItem {
   return {
     followupId: record.id,
     roundNumber: record.roundNumber,
     recordedAt: record.recordedAt,
+    serviceDate: record.serviceDate,
     program: getProgramContext(record.patientProgram),
   };
 }
@@ -1081,6 +1145,11 @@ export async function getOwnPatientFollowupDetail(
       throw new InfrastructureError("Follow-up activities have no source Goal Plan");
     }
 
+    const ownSourcePlan = record.sourceGoalPlan?.patientHospitalRelationshipId === relationship.relationshipId
+      ? record.sourceGoalPlan
+      : null;
+    const targetDaysByActivity = new Map(ownSourcePlan?.items.map((item) => [item.activityCode, item.targetDays]) ?? []);
+
     const activityProgress = record.activityProgress.map((progress) => {
       if (!template) {
         throw new InfrastructureError("Follow-up activity template is unavailable");
@@ -1095,6 +1164,8 @@ export async function getOwnPatientFollowupDetail(
       return {
         activityLabel: activity.label,
         status: progress.status,
+        achievedDays: progress.achievedDays,
+        targetDays: targetDaysByActivity.get(progress.goalActivityCode) ?? null,
       };
     });
 
@@ -1104,8 +1175,12 @@ export async function getOwnPatientFollowupDetail(
       roundNumber: record.roundNumber,
       recordedAt: record.recordedAt,
       program: getProgramContext(record.patientProgram),
+      serviceDate: record.serviceDate,
+      planAdjusted: record.planAdjusted,
+      hasObstacle: record.hasObstacle,
       measurements: toMeasurements(record),
       activityProgress,
+      achievement: scoreOwnFollowup(relationship.relationshipId, record),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -1113,6 +1188,66 @@ export async function getOwnPatientFollowupDetail(
     }
 
     throw toInfrastructureError("patient-self.getOwnPatientFollowupDetail", error, "Patient Follow-up could not be loaded");
+  }
+}
+
+/**
+ * Services hub "การติดตาม": the latest Program's Follow-ups plus the relationship-only ones recorded before a
+ * Program, newest first and bounded. Every row is scoped to the exact SELF relationship on the server.
+ */
+export async function listOwnFollowupSummaries(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: PatientSelfCareQueryDependencies = {},
+): Promise<PatientSelfFollowupSummary[]> {
+  const parsedRelationshipId = followupRelationshipIdSchema.safeParse(relationshipId);
+
+  if (!parsedRelationshipId.success) {
+    throw new NotFoundError();
+  }
+
+  const database = getDatabase(dependencies);
+
+  try {
+    const relationship = await resolveAuthorizedRelationship(
+      actor,
+      parsedRelationshipId.data,
+      FOLLOWUP_READ_CAPABILITY,
+      database,
+    );
+    assertPatientSelfReadPolicy({ actor, capability: PATIENT_PROGRAM_READ_CAPABILITY });
+    assertPatientSelfReadPolicy({ actor, capability: GOAL_READ_CAPABILITY });
+    const scope = { patientHospitalRelationshipId: relationship.relationshipId };
+    const latestProgram = await database.patientProgram.findFirst({
+      where: scope,
+      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+      select: { id: true },
+    });
+    const records = await database.patientFollowup.findMany({
+      where: {
+        ...scope,
+        OR: [{ patientProgramId: null }, ...(latestProgram ? [{ patientProgramId: latestProgram.id }] : [])],
+      },
+      orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+      take: PATIENT_SELF_FOLLOWUP_SUMMARY_LIMIT,
+      select: followupSummarySelect,
+    });
+
+    return records.map((record) => ({
+      followupId: record.id,
+      roundNumber: record.patientProgramId === null ? null : toProgramRoundNumber(record.roundNumber),
+      serviceDate: record.serviceDate,
+      recordedAt: record.recordedAt,
+      achievement: scoreOwnFollowup(relationship.relationshipId, record),
+      planAdjusted: record.planAdjusted,
+      hasObstacle: record.hasObstacle,
+    }));
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw toInfrastructureError("patient-self.listOwnFollowupSummaries", error, "Patient Follow-ups could not be loaded");
   }
 }
 

@@ -20,6 +20,9 @@ import {
   PatientSelfEmptyState,
   PatientSelfHospitalContext,
   PatientSelfHistoryMoreLink,
+  patientFollowupDateText,
+  patientFollowupRoundLabel,
+  patientFollowupServiceRound,
   patientSelfHistoryPageHref,
 } from "./patient-self-care-presentation";
 
@@ -106,7 +109,7 @@ function FollowupHistoryItem({
   return (
     <SavedRecordCard as="li" tone="history">
       <Link className={`${linkClassName} break-words`} href={href}>
-        ติดตาม รอบที่ {item.roundNumber}
+        {patientFollowupRoundLabel(patientFollowupServiceRound(item.roundNumber, item.program !== null))} · {patientFollowupDateText(item.serviceDate, item.recordedAt)}
       </Link>
       <p className="mt-1 break-words text-sm leading-6 text-text-muted">
         บันทึก {formatPatientDateTime(item.recordedAt)} · {programContextText(item.program)}
@@ -148,10 +151,10 @@ export function PatientSelfCareJourneyView({
         }
         breadcrumbs={[
           { href: "/app/personal", label: "พื้นที่ส่วนตัว" },
-          { href: "/app/personal/care", label: "ข้อมูลการดูแล" },
+          { href: "/app/personal/care", label: "บริการ" },
           { label: journey.relationship.hospitalName },
         ]}
-        title="ข้อมูลการดูแล"
+        title="ประวัติการรับบริการ"
       />
 
       <div className="space-y-8 pt-6">

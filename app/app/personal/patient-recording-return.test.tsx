@@ -14,7 +14,7 @@ import { CustomItemDoneForm } from "../patients/[relationshipId]/programs/[progr
 
 let container: HTMLDivElement;
 let root: Root;
-const returnHref = "/app/personal/care#service-relationship";
+const returnHref = "/app/personal/care?tab=rounds&relationshipId=relationship";
 
 beforeAll(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
 beforeEach(() => {
