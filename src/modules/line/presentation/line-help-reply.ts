@@ -27,7 +27,7 @@ const QUICK_REPLIES_BY_ROLE: Readonly<Record<OperationalLineRole, readonly Quick
     { type: "uri", label: "นัดหมายทั้งหมด", intent: "OPEN_PATIENT_APPOINTMENTS" },
     { type: "uri", label: "บันทึกสุขภาพ", intent: "OPEN_PATIENT_WELLNESS" },
     { type: "uri", label: "ยาของฉัน", intent: "OPEN_PATIENT_MEDICATIONS" },
-    { type: "uri", label: "ข้อมูลการดูแล", intent: "OPEN_PATIENT_CARE" },
+    { type: "uri", label: "บริการ", intent: "OPEN_PATIENT_CARE" },
   ],
   OSM: [
     { type: "uri", label: "ผู้ป่วยที่ดูแล", intent: "OPEN_OSM_ASSIGNED_PATIENTS" },

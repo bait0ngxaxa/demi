@@ -81,7 +81,7 @@ async function writeThaiGlyphProof(outputDirectory: string): Promise<void> {
     "นัดหมายทั้งหมด",
     "บันทึกสุขภาพ",
     "ยาของฉัน",
-    "ข้อมูลการดูแล",
+    "บริการ",
     "ผู้ป่วยที่ดูแล",
     "คัดกรองผู้ป่วย",
     "บันทึกติดตาม",

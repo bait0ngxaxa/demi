@@ -9,6 +9,10 @@ import {
   FOLLOWUP_PROGRESS_STATUS_LABELS,
   type FollowupProgressStatus,
 } from "@/modules/followups/domain/followup-definitions";
+import {
+  followupAchievementLine,
+  followupAchievementThresholdLabel,
+} from "@/modules/followups/presentation/followup-achievement-summary";
 import type {
   PatientSelfAppointmentDetail,
   PatientSelfAppointmentHistory,
@@ -24,6 +28,8 @@ import {
   patientProgramStatusLabels,
   PatientSelfEmptyState,
   PatientSelfHospitalContext,
+  patientFollowupRoundLabel,
+  patientFollowupServiceRound,
 } from "./patient-self-care-presentation";
 import {
   ORDINARY_PATIENT_APPOINTMENT_LINKS,
@@ -63,10 +69,10 @@ export function PatientSelfGoalPlanDetailView({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<Link className={linkClassName} href={careHref}>กลับข้อมูลการดูแล</Link>}
+        actions={<Link className={linkClassName} href={careHref}>กลับประวัติการรับบริการ</Link>}
         breadcrumbs={[
           { href: "/app/personal", label: "พื้นที่ส่วนตัว" },
-          { href: "/app/personal/care", label: "ข้อมูลการดูแล" },
+          { href: "/app/personal/care", label: "บริการ" },
           { href: careHref, label: relationship.hospitalName },
           { label: `แผนสุขภาพ รอบที่ ${detail.roundNumber}` },
         ]}
@@ -155,19 +161,18 @@ export function PatientSelfFollowupDetailView({
   detail: PatientSelfFollowupDetail;
 }): React.JSX.Element {
   const relationship = detail.relationship;
-  const careHref = `/app/personal/care/${encodeURIComponent(relationship.relationshipId)}`;
+  const hubHref = `/app/personal/care?tab=followups&relationshipId=${encodeURIComponent(relationship.relationshipId)}`;
+  const title = `${patientFollowupRoundLabel(patientFollowupServiceRound(detail.roundNumber, detail.program !== null))} · การติดตาม`;
+  const achievement = detail.achievement;
 
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<Link className={linkClassName} href={careHref}>กลับข้อมูลการดูแล</Link>}
         breadcrumbs={[
-          { href: "/app/personal", label: "พื้นที่ส่วนตัว" },
-          { href: "/app/personal/care", label: "ข้อมูลการดูแล" },
-          { href: careHref, label: relationship.hospitalName },
-          { label: `การติดตาม รอบที่ ${detail.roundNumber}` },
+          { href: hubHref, label: "บริการ" },
+          { label: title },
         ]}
-        title={`การติดตาม รอบที่ ${detail.roundNumber}`}
+        title={title}
       />
 
       <div className="space-y-6 pt-6">
@@ -175,9 +180,9 @@ export function PatientSelfFollowupDetailView({
         <Panel>
           <dl className="grid min-w-0 gap-x-8 gap-y-4 sm:grid-cols-2">
             <div className="min-w-0">
-              <dt className="text-sm font-semibold text-text-muted">วันที่บันทึก</dt>
+              <dt className="text-sm font-semibold text-text-muted">{detail.serviceDate ? "วันที่ติดตาม" : "วันที่บันทึก"}</dt>
               <dd className="mt-1 break-words font-semibold text-text">
-                {formatPatientDateTime(detail.recordedAt)}
+                {detail.serviceDate ? formatPatientDateOnly(detail.serviceDate) : formatPatientDateTime(detail.recordedAt)}
               </dd>
             </div>
             <div className="min-w-0">
@@ -186,8 +191,53 @@ export function PatientSelfFollowupDetailView({
                 {programContextText(detail.program)}
               </dd>
             </div>
+            {detail.planAdjusted === null ? null : (
+              <div className="min-w-0">
+                <dt className="text-sm font-semibold text-text-muted">ปรับแผน</dt>
+                <dd className="mt-1 font-semibold text-text">{detail.planAdjusted ? "ปรับ" : "ไม่ปรับ"}</dd>
+              </div>
+            )}
+            {detail.hasObstacle === null ? null : (
+              <div className="min-w-0">
+                <dt className="text-sm font-semibold text-text-muted">อุปสรรค</dt>
+                <dd className="mt-1 font-semibold text-text">{detail.hasObstacle ? "มี" : "ไม่มี"}</dd>
+              </div>
+            )}
           </dl>
         </Panel>
+
+        <section aria-labelledby="patient-self-followup-progress-heading">
+          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-followup-progress-heading">
+            ผลการทำตามแผน
+          </h2>
+          {achievement ? (
+            <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-text">
+              <span className="font-semibold tabular-nums">{followupAchievementLine(achievement)}</span>
+              {achievement.aboveThreshold ? (
+                <StatusBadge variant="success">{followupAchievementThresholdLabel(achievement)}</StatusBadge>
+              ) : null}
+            </p>
+          ) : null}
+          {detail.activityProgress.length > 0 ? (
+            <ul className="mt-4 divide-y divide-border border-y border-border">
+              {detail.activityProgress.map((item, index) => (
+                <li className="flex min-w-0 flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between" key={`${item.activityLabel}-${index}`}>
+                  <div className="min-w-0">
+                    <p className="break-words font-medium text-text">{item.activityLabel}</p>
+                    {item.status !== "NOT_APPLICABLE" && item.achievedDays !== null && item.targetDays !== null ? (
+                      <p className="mt-1 text-sm tabular-nums text-text-muted">ทำได้ {item.achievedDays} จาก {item.targetDays} วัน</p>
+                    ) : null}
+                  </div>
+                  <StatusBadge variant="neutral">
+                    {followupStatusLabel(item.status as FollowupProgressStatus)}
+                  </StatusBadge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <PatientSelfEmptyState title="ยังไม่มีข้อมูลกิจกรรมในครั้งนี้" />
+          )}
+        </section>
 
         <Panel>
           <h2 className="text-lg font-semibold text-text">ค่าที่บันทึก</h2>
@@ -215,26 +265,6 @@ export function PatientSelfFollowupDetailView({
             </div>
           </dl>
         </Panel>
-
-        <section aria-labelledby="patient-self-followup-progress-heading">
-          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-followup-progress-heading">
-            ความคืบหน้ากิจกรรมที่บันทึก
-          </h2>
-          {detail.activityProgress.length > 0 ? (
-            <ul className="mt-4 divide-y divide-border border-y border-border">
-              {detail.activityProgress.map((item, index) => (
-                <li className="flex min-w-0 flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between" key={`${item.activityLabel}-${index}`}>
-                  <span className="break-words font-medium text-text">{item.activityLabel}</span>
-                  <StatusBadge variant="neutral">
-                    {followupStatusLabel(item.status as FollowupProgressStatus)}
-                  </StatusBadge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <PatientSelfEmptyState title="ยังไม่มีข้อมูลกิจกรรมในรอบนี้" />
-          )}
-        </section>
       </div>
     </div>
   );

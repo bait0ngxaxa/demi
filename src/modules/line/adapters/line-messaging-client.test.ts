@@ -164,7 +164,7 @@ describe("DEMI LINE Messaging API boundary", () => {
       { type: "uri", label: "นัดหมายทั้งหมด", uri: "https://demi.example.org/app/personal/appointments" },
       { type: "uri", label: "บันทึกสุขภาพ", uri: "https://demi.example.org/app/personal/wellness" },
       { type: "uri", label: "ยาของฉัน", uri: "https://demi.example.org/app/personal/medications" },
-      { type: "uri", label: "ข้อมูลการดูแล", uri: "https://demi.example.org/app/personal/care" },
+      { type: "uri", label: "บริการ", uri: "https://demi.example.org/app/personal/care" },
       { type: "uri", label: "เพิ่มเติม", uri: "https://demi.example.org/app/personal" },
       { type: "richmenuswitch", label: "งาน อสม.", richMenuAliasId: "d17j1_o_poh", data: LINE_WORKSPACE_SWITCH_MARKER },
       { type: "richmenuswitch", label: "งานโรงพยาบาล", richMenuAliasId: "d17j1_h_poh", data: LINE_WORKSPACE_SWITCH_MARKER },

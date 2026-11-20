@@ -64,7 +64,7 @@ export function PatientSelfRelationshipNavigation({
                 href={hrefFor ? hrefFor(relationship.relationshipId) : `/app/personal/${area}/${encodeURIComponent(relationship.relationshipId)}`}
                 prefetch={false}
               >
-                {area === "care" ? "ดูข้อมูลการดูแล" : "ดูนัดหมาย"}
+                {area === "care" ? "ดูประวัติการรับบริการ" : "ดูนัดหมาย"}
                 <span className="sr-only"> · {relationship.hospitalName}</span>
               </Link>
             </nav>

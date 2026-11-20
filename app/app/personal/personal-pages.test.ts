@@ -357,7 +357,7 @@ describe("Patient Personal pages", () => {
   it("shows a truthful empty care selection with a Personal return path", async () => {
     vi.mocked(getPatientSelfRelationshipNavigationPageContext).mockResolvedValue([]);
     const markup = renderToStaticMarkup(await PersonalCarePage());
-    expect(markup).toContain("ยังไม่มีข้อมูลการดูแลจากโรงพยาบาล");
+    expect(markup).toContain("ยังไม่มีหน่วยบริการที่ดูแลอยู่");
     expect(markup).toContain('href="/app/personal"');
     expect(markup).not.toMatch(/href="\/app\/personal\/(?:care|appointments)\//u);
   });
@@ -373,7 +373,7 @@ describe("Patient Personal pages", () => {
 
   it.each([
     { page: PersonalHomePage, title: "พื้นที่ส่วนตัว" },
-    { page: PersonalCarePage, title: "ติดตาม" },
+    { page: PersonalCarePage, title: "บริการ" },
     { page: PersonalAppointmentsPage, title: "นัดหมาย" },
   ])("explains a denied $title entry instead of redirecting, without Patient data", async ({ page, title }) => {
     vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue(PATIENT_ACCESS_UNAVAILABLE);

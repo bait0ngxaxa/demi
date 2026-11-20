@@ -2,6 +2,7 @@ import { HospitalStatus } from "@prisma/client";
 import Link from "next/link";
 
 import { Panel } from "@/components/ui/panel";
+import { toProgramRoundNumber } from "@/modules/patient-program-rounds/domain/round-catalog";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PatientSelfRelationshipContext } from "@/modules/patient-self/services/patient-self-query-service";
 
@@ -29,6 +30,21 @@ export function formatPatientDateOnly(value: Date): string {
     dateStyle: "long",
     timeZone: "UTC",
   }).format(calendarDate);
+}
+
+/** Patient wording for one Follow-up: its service round (ครั้งที่), or before the Program when it has none. */
+export function patientFollowupRoundLabel(serviceRoundNumber: number | null): string {
+  return serviceRoundNumber === null ? "ก่อนเริ่มโปรแกรม" : `ครั้งที่ ${serviceRoundNumber}`;
+}
+
+/** A stored Follow-up number counts Follow-ups (round 3 is Follow-up 1); only Program Follow-ups have a round. */
+export function patientFollowupServiceRound(followupRoundNumber: number, programLinked: boolean): number | null {
+  return programLinked ? toProgramRoundNumber(followupRoundNumber) : null;
+}
+
+/** "ติดตาม {date}" from the follow-up date; a record made before that date was captured shows when it was saved. */
+export function patientFollowupDateText(serviceDate: Date | null, recordedAt: Date): string {
+  return serviceDate ? `ติดตาม ${formatPatientDateOnly(serviceDate)}` : `บันทึก ${formatPatientDateOnly(recordedAt)}`;
 }
 
 export function displayPatientMeasurement(value: number | null, unit: string): string {

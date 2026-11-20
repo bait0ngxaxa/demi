@@ -8,7 +8,7 @@ import { PatientHealthHistorySection } from "../../../patients/[relationshipId]/
 import { PatientSelfCareJourneyView } from "../../patient-self-care-journey-view";
 
 export const metadata: Metadata = {
-  title: "ข้อมูลการดูแล",
+  title: "ประวัติการรับบริการ",
 };
 
 type PatientSelfCareJourneyPageProps = {

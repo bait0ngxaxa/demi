@@ -24,8 +24,8 @@
     "linux": "af9086eb577b22b1a6dc170b1cc19d02f7cd96f6ab2f69864001f954b4d6b60b"
   },
   "patient_direct.png": {
-    "committed": "772b59e1e94a94c613532235b3f1393639274bf96621ba7df4529b895cc56292",
-    "linux": "2aaf61c6c131b74b6c95736eb81828bab533281a5ecb6dfe65c87e20e9233bbd"
+    "committed": "a2c01e72eb688ff673e780dede966f7f18a13d61b311f7c78a9acaf1cd3b0f4b",
+    "linux": "bbbd73ad7d6880c861c8e3102688d6021ec0d6681d2dab8b38aac9f1e39052bb"
   },
   "osm_direct.png": {
     "committed": "a32876f53d5dc6c760f6cc82dd91f8c95583ff02e3083e0048f28e4b17dae00d",
@@ -36,16 +36,16 @@
     "linux": "422658f19a38f8273d080233bb3fce1aab810ef1695163e1cbf7b4b91bf14a81"
   },
   "patient_patient_osm.png": {
-    "committed": "f2378a8b53b0a568f6b39e20b122a5ccd0378c46ab11a6b78d1aa43474ca52e4",
-    "linux": "418c0b72ef472078f6124910ce3f66572c88c6716b277574c15617b58128b435"
+    "committed": "f0534e3c10e3c3471a1ca41cdba63cced724f39a694ef58cc274a16064fa3b74",
+    "linux": "b967acb96099c56dc37a80caa44341e08e4e04781130cd38cf2aa6e6f9620d54"
   },
   "osm_patient_osm.png": {
     "committed": "8b026a9528f8101ee2e3c8cd6bb7506398cbd212c0ea5d4c2f8d6f3741ed7594",
     "linux": "3e1111ce2138daea0bdd15aba380e2f5e18ee066eb62bae2a9fd93d68bded5d5"
   },
   "patient_patient_hospital.png": {
-    "committed": "6cba41bcc4c342c4e1a1301eec6d39aa1456995b28cb131fc14a10d663ce3d67",
-    "linux": "81db7cfb3918387aa0cf44731877b93e8e552ed36b04a944e813d27619a439b2"
+    "committed": "9b55e4beb485ac2a99a366461d9fe4a2e114d5939e72858750310f031451fd31",
+    "linux": "8bab18d46cdc9a0b54f01c0ba160dfedde230512558b3284fe758732d845ace4"
   },
   "hospital_patient_hospital.png": {
     "committed": "aa08ad16e415a3e0d67772c4301fac5e3b8e8add4b7ae84385a7d4d7ce60aa97",
@@ -60,8 +60,8 @@
     "linux": "95a20d50efe451c43b996728136cfab2148a3ea666ae984d631d2d8d00e07323"
   },
   "patient_patient_osm_hospital.png": {
-    "committed": "409b44614e903c70f9ff635f2723a11365652cff072d2e6d50188568e135a85d",
-    "linux": "8ef5b6aa75ca6930c732cdc09af6e7177fee7b4caeea3e2562f0f73bba794e65"
+    "committed": "cb296c5602bac11198c7bc8a1eb6edc1c7fdcdb172716e66eae59606e91555ef",
+    "linux": "e3865108d2f58d947f6fe8ac79aa5aaf37f5c1e872be9b178c107e1960e4da15"
   },
   "osm_patient_osm_hospital.png": {
     "committed": "e1e482e9331c19c68cbd82ec142e99cb0ad40fa0864af1b48bcd965a81ba3785",

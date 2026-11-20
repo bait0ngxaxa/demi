@@ -2,13 +2,14 @@ import type { MobileNavigationIcon } from "./mobile-tab-projection";
 
 /**
  * UI-01 customer menus for the general Patient (Personal workspace), with the customer's exact labels and order.
- * Destinations live in `application-navigation.ts`; Work roles keep their own role navigation.
+ * UI-01 rev. 2026-11-20 (owner): the fourth menu "ติดตาม" is renamed "บริการ" (service rounds and Follow-ups,
+ * same id and route). Destinations live in `application-navigation.ts`; Work roles keep their own role navigation.
  */
 export const CUSTOMER_PRIMARY_MENU = [
   { id: "home", label: "หน้าหลัก", icon: "home" },
   { id: "health", label: "ข้อมูลสุขภาพ", icon: "care" },
   { id: "appointments", label: "นัดหมาย", icon: "appointments" },
-  { id: "followup", label: "ติดตาม", icon: "followup" },
+  { id: "followup", label: "บริการ", icon: "followup" },
   { id: "profile", label: "โปรไฟล์", icon: "profile" },
 ] as const satisfies readonly { id: string; label: string; icon: MobileNavigationIcon }[];
 

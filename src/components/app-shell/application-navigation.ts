@@ -254,8 +254,8 @@ function projectPersonalSections(): ApplicationNavigationGroup[] {
     ...section("home", "personal", [{ href: "/app/personal", label: "หน้าส่วนตัว", match: "exact" }]),
     ...section("care", "personal", [
       { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
-      { href: "/app/personal/care", label: "ข้อมูลการดูแล", match: "prefix" },
-      { href: "/app/personal/services", label: "คำขอรับบริการ", match: "prefix" },
+      { href: "/app/personal/care", label: "บริการ", match: "prefix" },
+      { href: "/app/personal/services", label: "ขอรับบริการ", match: "prefix" },
     ]),
     ...section("health-records", "personal", [
       { href: "/app/personal/medications", label: "ยาของฉัน", match: "prefix" },

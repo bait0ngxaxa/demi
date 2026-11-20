@@ -10,7 +10,7 @@ import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/applicatio
 import { PatientServicesWorkspace } from "./patient-services-workspace";
 
 export const metadata: Metadata = {
-  title: "บริการของฉัน",
+  title: "ขอรับบริการ",
 };
 
 export default async function PatientServicesPage(): Promise<React.JSX.Element> {

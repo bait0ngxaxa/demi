@@ -32,7 +32,7 @@ describe("LINE HELP reply", () => {
       { type: "uri", label: "นัดหมายทั้งหมด", uri: `${origin}/app/personal/appointments` },
       { type: "uri", label: "บันทึกสุขภาพ", uri: `${origin}/app/personal/wellness` },
       { type: "uri", label: "ยาของฉัน", uri: `${origin}/app/personal/medications` },
-      { type: "uri", label: "ข้อมูลการดูแล", uri: `${origin}/app/personal/care` },
+      { type: "uri", label: "บริการ", uri: `${origin}/app/personal/care` },
     ]);
   });
 
@@ -54,7 +54,7 @@ describe("LINE HELP reply", () => {
 
     expect(buildLineHelpReply(["PATIENT", "OSM", "HOSPITAL"]).text).toBe(LINE_HELP_REPLY_COPY.PATIENT);
     expect(combined.map(({ label }) => label)).toEqual([
-      "ตรวจสอบนัดหมาย", "นัดหมายทั้งหมด", "บันทึกสุขภาพ", "ยาของฉัน", "ข้อมูลการดูแล",
+      "ตรวจสอบนัดหมาย", "นัดหมายทั้งหมด", "บันทึกสุขภาพ", "ยาของฉัน", "บริการ",
       "ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม",
       "งานโรงพยาบาล",
     ]);

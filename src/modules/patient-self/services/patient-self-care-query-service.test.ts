@@ -13,6 +13,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { computeFollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import { InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
@@ -25,7 +26,9 @@ import {
   getOwnLatestPatientGoalPlan,
   getOwnPatientProgramDetail,
   getOwnPatientProgramRounds,
+  listOwnFollowupSummaries,
   listOwnPatientAppointmentHub,
+  PATIENT_SELF_FOLLOWUP_SUMMARY_LIMIT,
   patientSelfCareQueryInternals,
   type PatientSelfCareQueryDatabase,
 } from "./patient-self-care-query-service";
@@ -514,6 +517,79 @@ describe("Patient SELF care read projections", () => {
     expect(JSON.stringify(patientSelfCareQueryInternals.followupDetailSelect)).not.toContain(
       "bloodSugar",
     );
+  });
+
+  it("scores the Follow-up detail with the shared BR-04 function and never against a plan outside the relationship", async () => {
+    const database = createDatabase();
+    const progress = [{ goalActivityCode: "exercise_walk", status: FollowupActivityProgressStatus.DONE, achievedDays: 3 }];
+    const items = [{ activityCode: "exercise_walk", targetDays: 4 }];
+    database.patientFollowup.findFirst = vi.fn().mockResolvedValue(followupHistoryRecord({
+      serviceDate: new Date("2026-08-04T00:00:00.000Z"), planAdjusted: true, hasObstacle: false,
+      sourceGoalPlan: { templateKey: "demi-goals", templateVersion: "legacy-prototype-v1", patientHospitalRelationshipId: relationshipId, items },
+      activityProgress: progress,
+    }));
+    const scored = await getOwnPatientFollowupDetail(actor(), relationshipId, followupId, { database });
+    expect(scored.achievement).toEqual(computeFollowupAchievement(progress, items));
+    expect(scored).toMatchObject({ planAdjusted: true, hasObstacle: false, serviceDate: new Date("2026-08-04T00:00:00.000Z") });
+    expect(scored.activityProgress).toEqual([{ activityLabel: "เดินออกกำลังกาย", status: "DONE", achievedDays: 3, targetDays: 4 }]);
+
+    database.patientFollowup.findFirst = vi.fn().mockResolvedValue(followupHistoryRecord({
+      sourceGoalPlan: { templateKey: "demi-goals", templateVersion: "legacy-prototype-v1", patientHospitalRelationshipId: foreignRelationshipId, items },
+      activityProgress: progress,
+    }));
+    const foreignPlan = await getOwnPatientFollowupDetail(actor(), relationshipId, followupId, { database });
+    expect(foreignPlan.achievement).toBeNull();
+    expect(foreignPlan.activityProgress[0]?.targetDays).toBeNull();
+  });
+
+  it("lists the latest Program's and relationship-only Follow-ups, bounded and scored like staff", async () => {
+    const database = createDatabase();
+    const items = [{ activityCode: "exercise_walk", targetDays: 5 }];
+    const scorable = [{ goalActivityCode: "exercise_walk", status: FollowupActivityProgressStatus.PARTIAL, achievedDays: 4 }];
+    database.patientProgram.findFirst = vi.fn().mockResolvedValue({ id: programId });
+    database.patientFollowup.findMany = vi.fn().mockResolvedValue([
+      { id: "f-4", roundNumber: 2, patientProgramId: programId, serviceDate: recordedAt, recordedAt, planAdjusted: false, hasObstacle: true,
+        sourceGoalPlan: { patientHospitalRelationshipId: relationshipId, items }, activityProgress: scorable },
+      { id: "f-3", roundNumber: 1, patientProgramId: programId, serviceDate: null, recordedAt, planAdjusted: null, hasObstacle: null,
+        sourceGoalPlan: { patientHospitalRelationshipId: relationshipId, items },
+        activityProgress: [{ goalActivityCode: "exercise_walk", status: FollowupActivityProgressStatus.DONE, achievedDays: null }] },
+      { id: "f-0", roundNumber: 1, patientProgramId: null, serviceDate: recordedAt, recordedAt, planAdjusted: null, hasObstacle: null,
+        sourceGoalPlan: null, activityProgress: [] },
+    ]);
+
+    const result = await listOwnFollowupSummaries(actor(), relationshipId, { database });
+
+    expect(database.patientProgram.findFirst).toHaveBeenCalledWith({
+      where: { patientHospitalRelationshipId: relationshipId },
+      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+      select: { id: true },
+    });
+    expect(database.patientFollowup.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { patientHospitalRelationshipId: relationshipId, OR: [{ patientProgramId: null }, { patientProgramId: programId }] },
+      orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+      take: PATIENT_SELF_FOLLOWUP_SUMMARY_LIMIT,
+    }));
+    expect(PATIENT_SELF_FOLLOWUP_SUMMARY_LIMIT).toBe(24);
+    expect(result.map(({ followupId: id, roundNumber }) => [id, roundNumber])).toEqual([["f-4", 4], ["f-3", 3], ["f-0", null]]);
+    expect(result[0]?.achievement).toEqual(computeFollowupAchievement(scorable, items));
+    expect(result[0]).toMatchObject({ planAdjusted: false, hasObstacle: true });
+    expect(result[1]?.achievement).toBeNull();
+    expect(result[2]?.achievement).toBeNull();
+  });
+
+  it("lists only relationship-only Follow-ups before a Program and denies another patient's relationship", async () => {
+    const database = createDatabase();
+    database.patientProgram.findFirst = vi.fn().mockResolvedValue(null);
+    database.patientFollowup.findMany = vi.fn().mockResolvedValue([]);
+    await expect(listOwnFollowupSummaries(actor(), relationshipId, { database })).resolves.toEqual([]);
+    expect(database.patientFollowup.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { patientHospitalRelationshipId: relationshipId, OR: [{ patientProgramId: null }] },
+    }));
+
+    const denied = createDatabase();
+    await expect(listOwnFollowupSummaries(actor(), foreignRelationshipId, { database: denied })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(listOwnFollowupSummaries(actor([Role.OSM]), relationshipId, { database: denied })).rejects.toThrow();
+    expect(denied.patientFollowup.findMany).not.toHaveBeenCalled();
   });
 
   it("fails safely when Follow-up activity labels cannot be resolved", async () => {

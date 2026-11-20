@@ -87,7 +87,7 @@ export function PatientHealthSummary({ hospitals, selected, summary }: {
         groups={[{ label: null, options: hospitals.map((hospital) => ({ value: hospital.relationshipId, label: hospital.hospitalName })) }]}
         selectedLabel={selected?.hospitalName ?? null} selectedValue={id ?? null} />}
     />
-    {!summary || !selected ? <Alert className="mt-6" variant="info">ยังไม่มีโรงพยาบาลที่พร้อมแสดงข้อมูลสุขภาพ ดูประวัติเดิมได้ที่ <Link className={linkClass} href="/app/personal/care">ข้อมูลการดูแล</Link></Alert> : <>
+    {!summary || !selected ? <Alert className="mt-6" variant="info">ยังไม่มีโรงพยาบาลที่พร้อมแสดงข้อมูลสุขภาพ ดูประวัติเดิมได้ที่ <Link className={linkClass} href="/app/personal/care">บริการ</Link></Alert> : <>
       <section aria-labelledby="health-general" className="mt-8">
         <h2 className="text-xl font-semibold text-text" id="health-general">ข้อมูลทั่วไป</h2>
         <div className="mt-2 grid gap-x-8 sm:grid-cols-2">

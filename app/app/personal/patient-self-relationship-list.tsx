@@ -109,7 +109,7 @@ export function PatientSelfRelationshipList({
                     href={`/app/personal/care/${encodeURIComponent(relationship.relationshipId)}`}
                     prefetch={false}
                   >
-                    ข้อมูลการดูแลของโรงพยาบาลนี้
+                    ประวัติการรับบริการของโรงพยาบาลนี้
                     <span className="sr-only"> · {relationship.hospitalName}</span>
                   </Link>
                 ) : null}
