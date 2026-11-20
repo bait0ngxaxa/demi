@@ -16,6 +16,7 @@ import {
 } from "@/modules/patient-program-rounds/services/round-query-service";
 import { getScreeningPatientForSubmission } from "@/modules/screening/services/screening-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { reportUnexpectedError } from "@/shared/errors/unexpected-error-report";
 
 import { RoundOneScreeningAlert } from "./round-one-screening-alert";
 import { ScreeningForm } from "./screening-form";
@@ -101,7 +102,10 @@ async function resolveActor() {
   }
 }
 
-/** A screener who may not read Programs simply records without the round-1 hint. */
+/**
+ * The round-1 hint is optional: the form never depended on a Program read, so any failure (no Program read
+ * scope, an unknown Program, an infrastructure error) renders the form without it. Only a lost session stops.
+ */
 async function findRoundOneScreeningGap(
   actor: Awaited<ReturnType<typeof resolveActor>>,
   relationshipId: string,
@@ -110,8 +114,11 @@ async function findRoundOneScreeningGap(
   try {
     return await getRoundOneScreeningGap(actor, relationshipId, instrument);
   } catch (error: unknown) {
-    if (error instanceof ForbiddenError) return null;
-    throw error;
+    if (error instanceof UnauthenticatedError) throw error;
+    if (!(error instanceof ForbiddenError) && !(error instanceof NotFoundError)) {
+      reportUnexpectedError("screening.newScreeningPage.roundOneHint", error);
+    }
+    return null;
   }
 }
 

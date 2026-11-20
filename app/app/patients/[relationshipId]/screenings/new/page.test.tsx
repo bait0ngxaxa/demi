@@ -3,13 +3,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ForbiddenError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 const mocks = vi.hoisted(() => ({
   getActor: vi.fn(),
   getPatient: vi.fn(),
   getOverview: vi.fn(),
   getGap: vi.fn(),
+  report: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ connection: vi.fn().mockResolvedValue(undefined) }));
@@ -23,6 +24,7 @@ vi.mock("@/modules/patient-program-rounds/services/round-query-service", () => (
   getProgramRoundsOverview: mocks.getOverview,
   getRoundOneScreeningGap: mocks.getGap,
 }));
+vi.mock("@/shared/errors/unexpected-error-report", () => ({ reportUnexpectedError: mocks.report }));
 vi.mock("./screening-form", async () => {
   const { RoundOneScreeningAlert } = await import("./round-one-screening-alert");
   return {
@@ -89,11 +91,23 @@ describe("new screening: OSM-SCREENING-IN-ROUND1 round-1 hint", () => {
     expect(linked.querySelector("[data-form]")?.getAttribute("data-program")).toBe(programId);
   });
 
-  it("records without the hint for a screener who may not read Programs", async () => {
-    mocks.getGap.mockRejectedValue(new ForbiddenError());
-    const root = await render({ instrument: "PAM" });
+  it.each([
+    ["no Program read scope", new ForbiddenError(), false],
+    ["a relationship outside the Program read scope", new NotFoundError(), false],
+    ["an infrastructure failure", new InfrastructureError("Program round 1 could not be loaded"), true],
+    ["an unexpected error", new Error("synthetic"), true],
+  ])("still renders the form without the hint for %s", async (_name, error, reported) => {
+    mocks.getGap.mockRejectedValue(error);
+    for (const searchParams of [{ instrument: "PAM" }, {}] as Record<string, string>[]) {
+      const root = await render(searchParams);
+      expect(root.querySelector("[data-round-one-screening]")).toBeNull();
+      expect(root.querySelector(searchParams.instrument ? "[data-form]" : "h1")).not.toBeNull();
+    }
+    expect(mocks.report).toHaveBeenCalledTimes(reported ? 2 : 0);
+  });
 
-    expect(root.querySelector("[data-round-one-screening]")).toBeNull();
-    expect(root.querySelector("[data-form]")).not.toBeNull();
+  it("does not swallow a lost session", async () => {
+    mocks.getGap.mockRejectedValue(new UnauthenticatedError());
+    await expect(render({ instrument: "PAM" })).rejects.toBeInstanceOf(UnauthenticatedError);
   });
 });
