@@ -65,7 +65,7 @@ export function MobileBottomNavigation({
     return null;
   }
 
-  const activeTabId = resolveActiveMobileTabId(pathname, searchParams.toString(), tabs);
+  const activeTabId = resolveActiveMobileTabId(pathname, tabs);
 
   return (
     <nav

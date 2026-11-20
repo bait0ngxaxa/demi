@@ -365,9 +365,9 @@ describe("LINE reactive Patient appointment execution", () => {
   });
 
   it.each([
-    [["OSM"], ["ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม"]],
+    [["OSM"], ["ผู้ป่วยที่ดูแล", "จัดบริการ"]],
     [["HOSPITAL"], ["งานโรงพยาบาล"]],
-    [["OSM", "HOSPITAL"], ["ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม", "งานโรงพยาบาล"]],
+    [["OSM", "HOSPITAL"], ["ผู้ป่วยที่ดูแล", "จัดบริการ", "งานโรงพยาบาล"]],
   ])("replies with the role-aware HELP menu to a workforce-only %j account", async (roles, labels) => {
     stubWorkspaceLiff();
     const harness = createHarness();

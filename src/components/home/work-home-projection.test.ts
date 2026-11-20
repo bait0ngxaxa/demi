@@ -67,8 +67,6 @@ function project(subject: ActorContext, workspaces: readonly ActorHospitalWorksp
 const path = (href: string): string => href.split("?")[0] ?? href;
 const withHospital = (href: string, hospitalId: string): string => `${href}${href.includes("?") ? "&" : "?"}hospitalId=${hospitalId}`;
 const appointmentsAt = (hospitalId: string): string => withHospital("/app/appointments", hospitalId);
-const screening = "/app/patients/assigned?task=screening";
-const screeningAt = (id: string): string => `${screening}&hospitalId=${id}`;
 // CT-D2: the OSM's จัดบริการ workspace replaces the former follow-up task tile.
 const servicesAt = (id: string): string => `/app/services?hospitalId=${id}`;
 const governance = ["/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding"];
@@ -121,7 +119,7 @@ describe("desktop work home tool groups", () => {
   it.each([
     { name: "OWNER", subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalA, MembershipType.OWNER)] }), hrefs: ownerTiles(hospitalA) },
     { name: "MEMBER", subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalA, MembershipType.MEMBER)] }), hrefs: ownerTiles(hospitalA).filter((href) => !["/app/users", "/app/hospitals/knowledge", "/app/patients/provision", "/app/hospitals/settings"].includes(path(href))) },
-    { name: "อสม.", subject: actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalA)] }), hrefs: [appointmentsAt(hospitalA), servicesAt(hospitalA), screeningAt(hospitalA)] },
+    { name: "อสม.", subject: actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalA)] }), hrefs: [appointmentsAt(hospitalA), servicesAt(hospitalA)] },
     { name: "ADMIN", subject: actor({ roles: [Role.ADMIN] }), hrefs: governance },
   ])("includes the complete authorized tool set for $name", ({ subject, hrefs }) => {
     const { home } = project(subject, [workspace(hospitalA)]);
@@ -161,7 +159,7 @@ const cases: Case[] = [
     workspaces: [workspace(hospitalA)],
     scope: "hospital", selected: hospitalA,
     hero: appointmentsAt(hospitalA),
-    tiles: [appointmentsAt(hospitalA), servicesAt(hospitalA), screeningAt(hospitalA)],
+    tiles: [appointmentsAt(hospitalA), servicesAt(hospitalA)],
     shared: [],
   },
   {
@@ -171,7 +169,7 @@ const cases: Case[] = [
     requested: hospitalB.toUpperCase(),
     scope: "hospital", selected: hospitalB,
     hero: appointmentsAt(hospitalB),
-    tiles: [appointmentsAt(hospitalB), servicesAt(hospitalB), screeningAt(hospitalB)],
+    tiles: [appointmentsAt(hospitalB), servicesAt(hospitalB)],
     shared: [],
   },
   {
@@ -236,7 +234,7 @@ const cases: Case[] = [
     workspaces: [workspace(hospitalA)],
     scope: "hospital", selected: hospitalA,
     hero: appointmentsAt(hospitalA),
-    tiles: [appointmentsAt(hospitalA), servicesAt(hospitalA), screeningAt(hospitalA)],
+    tiles: [appointmentsAt(hospitalA), servicesAt(hospitalA)],
     shared: [],
   },
   {
@@ -349,11 +347,11 @@ describe("work home projection per actor", () => {
   it("keys icons by href with a neutral default and keeps unknown hrefs after ordered ones", () => {
     const tiles = projectWorkHomeTiles([
       { href: "/app/unknown", label: "อื่น ๆ" },
-      { href: screening, label: "คัดกรอง" },
+      { href: "/app/services", label: "จัดบริการ" },
       { href: withHospital("/app/workforce", hospitalA), label: "บุคลากร" },
-    ], ["/app/patients/assigned?task=screening", "/app/workforce"]);
+    ], ["/app/services", "/app/workforce"]);
     expect(tiles.map(({ href, icon }) => [href, icon])).toEqual([
-      [screening, "screening"],
+      ["/app/services", "care"],
       [withHospital("/app/workforce", hospitalA), "workforce"],
       ["/app/unknown", "default"],
     ]);

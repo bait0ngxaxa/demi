@@ -34,9 +34,6 @@ describe("LINE intent deep links", () => {
   );
 
   it("includes only bounded OSM task modes in the quick-action URLs", () => {
-    expect(buildLineIntentUrl("START_OSM_SCREENING")).toBe(
-      "https://demi.example.org/app/patients/assigned?task=screening",
-    );
     // CT-3: the follow-up entry opens the จัดบริการ workspace.
     expect(buildLineIntentUrl("START_OSM_FOLLOWUP")).toBe(
       "https://demi.example.org/app/services",
@@ -131,7 +128,7 @@ describe("LINE intent deep links", () => {
     it("uses the supported LIFF URL format for the workspace entries", () => {
       expect(buildWorkspaceLiffUrl("OPEN_WORK_WORKSPACE")).toBe("https://liff.line.me/1234567890-WorkSpace/app");
       expect(buildWorkspaceLiffUrl("OPEN_PATIENT_WORKSPACE")).toBe("https://liff.line.me/1234567890-WorkSpace/app/personal");
-      expect(buildWorkspaceLiffUrl("START_OSM_SCREENING")).toBe("https://liff.line.me/1234567890-WorkSpace/app/patients/assigned?task=screening");
+      expect(buildWorkspaceLiffUrl("START_OSM_FOLLOWUP")).toBe("https://liff.line.me/1234567890-WorkSpace/app/services");
     });
 
     it.each(["LINK_ACCOUNT", "MANAGE_ACCOUNT", "SWITCH_WORKSPACE"] as const)("keeps %s on the existing Account LIFF", (intent) => {

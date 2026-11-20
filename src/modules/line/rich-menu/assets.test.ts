@@ -55,7 +55,7 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
       LINK_ACCOUNT: "account-linking",
       OPEN_PATIENT_APPOINTMENTS: "patient-appointment-history", OPEN_PATIENT_WELLNESS: "patient-wellness-recording",
       OPEN_PATIENT_MEDICATIONS: "patient-medication-review", OPEN_PATIENT_CARE: "patient-care-guidance",
-      OPEN_OSM_ASSIGNED_PATIENTS: "osm-community-workspace", START_OSM_SCREENING: "osm-screening",
+      OPEN_OSM_ASSIGNED_PATIENTS: "osm-community-workspace",
       START_OSM_FOLLOWUP: "osm-home-visit", OPEN_PATIENT_WORKSPACE: "patient-workspace",
       OPEN_WORK_WORKSPACE: "osm-workflow-coordination",
     };
@@ -83,7 +83,7 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
         expect(metadata.height).toBeGreaterThan(0);
       }
     }
-    expect(seenIllustrations.size).toBe(12);
+    expect(seenIllustrations.size).toBe(11);
   });
 
   it("renders Manage Account only as a settings utility and keeps the ineligible status non-interactive", () => {
@@ -187,7 +187,7 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
             ].includes(action.intent))
             : menu.key.startsWith("OSM_")
               ? action.intent !== null && [
-                "OPEN_OSM_ASSIGNED_PATIENTS", "START_OSM_SCREENING", "START_OSM_FOLLOWUP", "OPEN_WORK_WORKSPACE",
+                "OPEN_OSM_ASSIGNED_PATIENTS", "START_OSM_FOLLOWUP", "OPEN_WORK_WORKSPACE",
               ].includes(action.intent)
               : menu.actions.length === 1 || index === 0;
 

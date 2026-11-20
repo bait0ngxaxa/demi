@@ -23,10 +23,16 @@ const workspaceId = "1000000001-Workspace";
 const destination = "/app/personal/medications";
 const secondary = `${destination}?liff.hback=2&lineAppVersion=14.19.1`;
 const login = `/login?returnTo=${encodeURIComponent(destination)}`;
-// Query-bearing destination: exercises router.refresh() with a search string.
+// Query-bearing destination: exercises router.refresh() with a search string. Since OSM-SCREENING-IN-ROUND1
+// (2026-11-20) it is the former รอคัดกรอง entry, kept for Rich Menus already on LINE: it signs in with its own
+// return and then redirects to จัดบริการ.
 const screening = "/app/patients/assigned?task=screening";
 const screeningSecondary = `${screening}&liff.hback=2&lineAppVersion=14.19.1`;
 const screeningLogin = `/login?returnTo=${encodeURIComponent(screening)}`;
+const services = "/app/services";
+// Protected destination for the RSC failure scenarios; its secondary URL still carries a search string.
+const assigned = "/app/patients/assigned";
+const assignedSecondary = `${assigned}?liff.hback=2&lineAppVersion=14.19.1`;
 const production = process.argv.includes("--production");
 const environment = { ...readCommittedIntegrationEnvironment(), NODE_ENV: "test" };
 assertDisposableIntegrationEnvironment(environment);
@@ -339,9 +345,11 @@ try {
     assert.equal(events.filter((event) => event.kind === "init:start" && event.id === workspaceId).length, count + 2);
   }, signedIn);
   const launchScreening = async (page) => page.goto(`${base}/?liff.state=${encodeURIComponent(screening)}`);
-  const screeningHeading = (page) => page.getByRole("heading", { name: "คัดกรองผู้ป่วย", exact: true });
+  const servicesHeading = (page) => page.getByRole("heading", { name: "จัดบริการ", exact: true });
+  const launchAssigned = async (page) => page.goto(`${base}/?liff.state=${encodeURIComponent(assigned)}`);
+  const assignedHeading = (page) => page.getByRole("heading", { name: "ผู้ป่วยที่รับผิดชอบ", exact: true });
   const protectedRsc = (event) => event.kind === "rsc" && event.path === "/app/patients/assigned";
-  await scenario("J query destination: init, protected RSC, real login and exact screening return", async ({ page, events }) => {
+  await scenario("J query destination: init, protected RSC, real login, exact return, then จัดบริการ", async ({ page, events }) => {
     await launchScreening(page);
     await page.waitForURL(`${base}${screeningLogin}`);
     const resolved = events.findIndex((event) => event.kind === "init:resolved" && event.path === screeningSecondary);
@@ -357,14 +365,14 @@ try {
     await page.locator("#nationalId").fill(identity);
     await page.locator("#password").fill(password);
     await page.locator('button[type="submit"]').click();
-    await page.waitForURL(`${base}${screening}`);
-    await screeningHeading(page).waitFor();
+    await page.waitForURL(`${base}${services}`);
+    await servicesHeading(page).waitFor();
     assert.equal(events.filter((event) => event.kind === "init:start" && event.id === workspaceId).length, 2);
   });
-  await scenario("J existing session: query destination renders after init without login", async ({ page, events }) => {
+  await scenario("J existing session: query destination redirects to จัดบริการ after init without login", async ({ page, events }) => {
     await launchScreening(page);
-    await page.waitForURL(`${base}${screeningSecondary}`);
-    await screeningHeading(page).waitFor();
+    await page.waitForURL(`${base}${services}`);
+    await servicesHeading(page).waitFor();
     assert(!events.some((event) => event.kind.startsWith("url:") && event.path.startsWith("/login")));
     assert(events.findIndex(protectedRsc) > events.findIndex((event) => event.kind === "init:resolved" && event.path === screeningSecondary));
   }, signedIn);
@@ -376,14 +384,14 @@ try {
         failed += 1;
         return failure === "network" ? route.abort("failed") : route.fulfill({ status: 503, contentType: "text/plain", body: "Synthetic upstream failure" });
       });
-      await launchScreening(page);
-      await screeningHeading(page).waitFor();
+      await launchAssigned(page);
+      await assignedHeading(page).waitFor();
       assert.equal(failed, 1);
       // Next 16 falls back to a same-URL document load. That new document goes through the gate again:
       // one init per document (root, secondary, recovery), never a second init inside one document.
-      assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, screeningSecondary);
+      assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, assignedSecondary);
       const documents = events.filter((event) => event.kind === "document");
-      assert.deepEqual(documents.map((event) => event.path), [`/?liff.state=${encodeURIComponent(screening)}`, screeningSecondary, screeningSecondary]);
+      assert.deepEqual(documents.map((event) => event.path), [`/?liff.state=${encodeURIComponent(assigned)}`, assignedSecondary, assignedSecondary]);
       const inits = events.filter((event) => event.kind === "init:start" && event.id === workspaceId);
       assert.equal(inits.length, documents.length);
       const ordered = (from, first, second) => {
@@ -403,8 +411,8 @@ try {
   for (const entry of ["LIFF", "ordinary"]) {
     await scenario(`L persistent protected RSC failure stops (${entry})`, async ({ page, events }) => {
       await page.route((url) => url.pathname === "/app/patients/assigned", (route) => route.request().headers().rsc === "1" ? route.abort("failed") : route.fallback());
-      if (entry === "LIFF") await launchScreening(page);
-      else await page.goto(`${base}${screening}`);
+      if (entry === "LIFF") await launchAssigned(page);
+      else await page.goto(`${base}${assigned}`);
       await page.getByRole("heading", { name: "เชื่อมต่อ DEMI ไม่สำเร็จ", exact: true }).waitFor();
       const settled = { documents: events.filter((event) => event.kind === "document").length, inits: events.filter((event) => event.kind === "init:start").length };
       await page.waitForTimeout(3000);
@@ -414,7 +422,7 @@ try {
       assert.equal(events.filter((event) => event.kind === "init:start").length, settled.inits);
       assert.equal(events.filter(protectedRsc).length, 3);
       assert.equal(await page.locator("main a,main button,meta[http-equiv=refresh]").count(), 0);
-      assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, entry === "LIFF" ? screeningSecondary : screening);
+      assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, entry === "LIFF" ? assignedSecondary : assigned);
     }, signedIn);
   }
   console.log("Workspace LIFF browser integration passed (mock providers; no Android/iOS UAT claimed).");

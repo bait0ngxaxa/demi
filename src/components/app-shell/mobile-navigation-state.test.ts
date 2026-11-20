@@ -36,13 +36,13 @@ const workTabs: MobileNavigationTab[] = [
     activeRoute: "assigned-patients",
   },
   {
-    id: "screening",
-    href: "/app/patients/assigned?task=screening",
-    label: "คัดกรอง",
-    accessibleLabel: "คัดกรองผู้ป่วย",
-    icon: "screening",
+    id: "service",
+    href: "/app/services",
+    label: "จัดบริการ",
+    accessibleLabel: "จัดบริการผู้ป่วย",
+    icon: "care",
     match: "exact",
-    activeRoute: "osm-screening",
+    activeRoute: "navigation-item",
   },
   {
     id: "admin-hospitals",
@@ -126,88 +126,63 @@ const hospitalPatientTabs: MobileNavigationTab[] = [
 
 describe("mobile navigation active route", () => {
   it("keeps Home exact and matches nested destinations on segment boundaries", () => {
-    expect(resolveActiveMobileTabId("/app", "", workTabs)).toBe("home");
-    expect(resolveActiveMobileTabId("/app/workforce", "", workTabs)).toBeNull();
-    expect(resolveActiveMobileTabId("/app/admin/hospitals/child-id", "", workTabs)).toBe(
+    expect(resolveActiveMobileTabId("/app", workTabs)).toBe("home");
+    expect(resolveActiveMobileTabId("/app/workforce", workTabs)).toBeNull();
+    expect(resolveActiveMobileTabId("/app/admin/hospitals/child-id", workTabs)).toBe(
       "admin-hospitals",
     );
-    expect(resolveActiveMobileTabId("/app/admin/hospitals-other", "", workTabs)).toBeNull();
-    expect(resolveActiveMobileTabId("/app/hospitals/reporting/export", "", workTabs)).toBe(
+    expect(resolveActiveMobileTabId("/app/admin/hospitals-other", workTabs)).toBeNull();
+    expect(resolveActiveMobileTabId("/app/hospitals/reporting/export", workTabs)).toBe(
       "hospital-reports",
     );
   });
 
-  it("distinguishes the assigned Patient list and its valid task query modes", () => {
-    expect(resolveActiveMobileTabId("/app/patients/assigned", "", workTabs)).toBe("patients");
-    expect(resolveActiveMobileTabId("/app/patients/assigned", "task=screening", workTabs)).toBe(
-      "screening",
-    );
-    // CT-3: the former follow-up task mode has no tab; the page redirects it to /app/services.
-    expect(resolveActiveMobileTabId("/app/patients/assigned", "?task=followup", workTabs)).toBe(
-      "patients",
-    );
-    expect(resolveActiveMobileTabId("/app/patients/assigned", "task=unknown", workTabs)).toBe(
-      "patients",
-    );
-    expect(
-      resolveActiveMobileTabId(
-        "/app/patients/assigned",
-        "task=screening&task=followup",
-        workTabs,
-      ),
-    ).toBe("patients");
-    expect(resolveActiveMobileTabId("/app/personal", "task=screening", personalTabs)).toBe("home");
+  it("keeps the assigned Patient list on ผู้ป่วย and จัดบริการ on its own tab", () => {
+    // CT-3 / OSM-SCREENING-IN-ROUND1: the former task modes have no tab; the page redirects them to /app/services.
+    expect(resolveActiveMobileTabId("/app/patients/assigned", workTabs)).toBe("patients");
+    expect(resolveActiveMobileTabId("/app/services", workTabs)).toBe("service");
+    expect(workTabs.some(({ id }) => id === "screening")).toBe(false);
   });
 
   it("associates Patient detail, screening, follow-up, and Program follow-up routes", () => {
     const relationshipId = "55555555-5555-4555-8555-555555555555";
 
-    expect(resolveActiveMobileTabId("/app/patients", "", hospitalPatientTabs)).toBe("patients");
-    expect(resolveActiveMobileTabId("/app/appointments", "tab=HISTORY", workTabs)).toBe("appointments");
-    expect(resolveActiveMobileTabId(`/app/patients/${relationshipId}/appointments/appointment-id`, "", workTabs)).toBe("appointments");
-    expect(resolveActiveMobileTabId(`/app/patients/${relationshipId}`, "", workTabs)).toBe(
+    expect(resolveActiveMobileTabId("/app/patients", hospitalPatientTabs)).toBe("patients");
+    expect(resolveActiveMobileTabId("/app/appointments", workTabs)).toBe("appointments");
+    expect(resolveActiveMobileTabId(`/app/patients/${relationshipId}/appointments/appointment-id`, workTabs)).toBe("appointments");
+    expect(resolveActiveMobileTabId(`/app/patients/${relationshipId}`, workTabs)).toBe(
       "patients",
     );
     expect(
-      resolveActiveMobileTabId(`/app/patients/${relationshipId}/screenings/history`, "", workTabs),
-    ).toBe("screening");
+      resolveActiveMobileTabId(`/app/patients/${relationshipId}/screenings/history`, workTabs),
+    ).toBe("service");
+    // Without a จัดบริการ tab a screening page stays under ผู้ป่วย.
     expect(
-      resolveActiveMobileTabId(`/app/patients/${relationshipId}/followups/followup-id`, "", workTabs),
+      resolveActiveMobileTabId(`/app/patients/${relationshipId}/screenings/new`, workTabs.filter(({ id }) => id !== "service")),
+    ).toBe("patients");
+    expect(
+      resolveActiveMobileTabId(`/app/patients/${relationshipId}/followups/followup-id`, workTabs),
     ).toBe("patients");
     expect(
       resolveActiveMobileTabId(
         `/app/patients/${relationshipId}/programs/program-id/followups/followup-id`,
-        "",
         workTabs,
       ),
     ).toBe("patients");
     expect(
-      resolveActiveMobileTabId(`/app/patients/${relationshipId}/programs/program-id`, "", workTabs),
+      resolveActiveMobileTabId(`/app/patients/${relationshipId}/programs/program-id`, workTabs),
     ).toBe("patients");
   });
 
-  it("marks only the More route active and falls back safely on invalid task modes", () => {
+  it("marks only the More route active", () => {
     for (const pathname of [
       "/app/more",
       "/app/more/secondary",
     ]) {
-      expect(resolveActiveMobileTabId(pathname, "", workTabs)).toBe("more");
+      expect(resolveActiveMobileTabId(pathname, workTabs)).toBe("more");
     }
-    expect(resolveActiveMobileTabId("/app/settings", "", workTabs)).toBeNull();
-    expect(resolveActiveMobileTabId("/app/patients/assigned/other", "task=screening", workTabs)).toBeNull();
-  });
-
-  it("updates active selection as route history moves between task modes and details", () => {
-    const historyRoutes = [
-      ["/app/patients/assigned", "task=screening", "screening"],
-      ["/app/patients/assigned", "task=followup", "patients"],
-      ["/app/patients/assigned", "task=screening", "screening"],
-      ["/app/patients/assigned", "", "patients"],
-    ] as const;
-
-    for (const [pathname, search, expectedTab] of historyRoutes) {
-      expect(resolveActiveMobileTabId(pathname, search, workTabs)).toBe(expectedTab);
-    }
+    expect(resolveActiveMobileTabId("/app/settings", workTabs)).toBeNull();
+    expect(resolveActiveMobileTabId("/app/patients/assigned/other", workTabs)).toBeNull();
   });
 
   it("switches route-derived workspace without persisting a preference", () => {
@@ -218,13 +193,13 @@ describe("mobile navigation active route", () => {
     );
     const workContext = resolveSelectedWorkspaceContext(
       available,
-      getWorkspaceContextForPathname("/app/patients/assigned?task=screening"),
+      getWorkspaceContextForPathname("/app/patients/assigned"),
     );
 
     expect(personalContext).toBe("personal");
     expect(workContext).toBe("work");
-    expect(resolveActiveMobileTabId("/app/personal", "", personalTabs)).toBe("home");
-    expect(resolveActiveMobileTabId("/app", "", workTabs)).toBe("home");
+    expect(resolveActiveMobileTabId("/app/personal", personalTabs)).toBe("home");
+    expect(resolveActiveMobileTabId("/app", workTabs)).toBe("home");
     expect(resolveSelectedWorkspaceContext(["work"], "personal")).toBe("work");
   });
 });

@@ -40,8 +40,7 @@ describe("LINE HELP reply", () => {
     expect(buildLineHelpReply(["OSM"]).text).toBe("เลือกเมนูที่ต้องการด้านล่าง");
     expect(actions(["OSM"])).toEqual([
       { type: "uri", label: "ผู้ป่วยที่ดูแล", uri: `${origin}/app/patients/assigned` },
-      { type: "uri", label: "คัดกรองผู้ป่วย", uri: `${origin}/app/patients/assigned?task=screening` },
-      { type: "uri", label: "บันทึกติดตาม", uri: `${origin}/app/services` },
+      { type: "uri", label: "จัดบริการ", uri: `${origin}/app/services` },
     ]);
     expect(buildLineHelpReply(["HOSPITAL"]).text).toBe("เลือกเมนูที่ต้องการด้านล่าง");
     expect(actions(["HOSPITAL"])).toEqual([
@@ -55,7 +54,7 @@ describe("LINE HELP reply", () => {
     expect(buildLineHelpReply(["PATIENT", "OSM", "HOSPITAL"]).text).toBe(LINE_HELP_REPLY_COPY.PATIENT);
     expect(combined.map(({ label }) => label)).toEqual([
       "ตรวจสอบนัดหมาย", "นัดหมายทั้งหมด", "บันทึกสุขภาพ", "ยาของฉัน", "บริการ",
-      "ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม",
+      "ผู้ป่วยที่ดูแล", "จัดบริการ",
       "งานโรงพยาบาล",
     ]);
     expect(combined.length).toBeLessThanOrEqual(13);
@@ -103,7 +102,6 @@ describe("LINE HELP reply", () => {
       `${workspace}/app/personal/medications`,
       `${workspace}/app/personal/care`,
       `${workspace}/app/patients/assigned`,
-      `${workspace}/app/patients/assigned?task=screening`,
       `${workspace}/app/services`,
       `${workspace}/app`,
     ]);

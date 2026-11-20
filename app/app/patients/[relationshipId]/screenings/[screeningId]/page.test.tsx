@@ -69,6 +69,7 @@ const detail = {
   questionSetKey: "unknown",
   questionSetVersion: "unknown",
   scoringVersion: "unknown",
+  patientProgramId: null,
   responses: { kind: "LEGACY", pam: {}, proms: {}, confidenceScore: 7, confidenceImprovementPlan: null },
   outcome: { kind: "LEGACY", level: "L2", zone: "GREEN", pamTotal: 30, promsTotal: 20 },
 } as unknown as ScreeningDetail;
@@ -101,12 +102,16 @@ describe("Screening detail fieldwork continuation", () => {
     mocks.getProgramContext.mockResolvedValue({ active: null, canManage: false });
   });
 
-  it("offers an assigned OSM the fixed screening task list after saving", async () => {
+  it("returns a round-1 screening to its round and has no next-patient picker (OSM-SCREENING-IN-ROUND1)", async () => {
+    const programId = "66666666-6666-4666-8666-666666666666";
     mocks.getActor.mockResolvedValue(osmActor);
+    mocks.getScreeningDetail.mockResolvedValue({ ...detail, patientProgramId: programId });
     const html = await render();
 
-    expect(html).toContain('href="/app/patients/assigned?task=screening"');
-    expect(html).toContain("เลือกผู้ป่วยรายถัดไปเพื่อคัดกรอง");
+    expect(html).toContain(`href="/app/patients/${relationshipId}/programs/${programId}/rounds/1"`);
+    expect(html).toContain("กลับไปครั้งที่ 1");
+    expect(html).not.toContain("/app/patients/assigned");
+    expect(html).not.toContain("เลือกผู้ป่วยรายถัดไปเพื่อคัดกรอง");
     expect(html).toContain(`href="/app/patients/${relationshipId}/screenings"`);
   });
 
@@ -123,16 +128,13 @@ describe("Screening detail fieldwork continuation", () => {
     expect(html).not.toContain("screeningId=");
   });
 
-  it("does not offer the OSM task list without a current OSM scope", async () => {
-    mocks.getActor.mockResolvedValue(hospitalActor);
-    expect(await render()).not.toContain("/app/patients/assigned");
+  it("offers no round link for a screening recorded outside a Program", async () => {
+    mocks.getActor.mockResolvedValue(osmActor);
+    mocks.getScreeningDetail.mockResolvedValue({ ...detail, patientProgramId: null });
+    const html = await render();
 
-    mocks.getActor.mockResolvedValue({
-      ...osmActor,
-      osmHospitalRelationships: [
-        { hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.SUSPENDED },
-      ],
-    });
-    expect(await render()).not.toContain("/app/patients/assigned");
+    expect(html).not.toContain("กลับไปครั้งที่ 1");
+    expect(html).not.toContain("/rounds/");
+    expect(html).not.toContain("/app/patients/assigned");
   });
 });

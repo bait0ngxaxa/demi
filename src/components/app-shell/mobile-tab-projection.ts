@@ -14,7 +14,6 @@ export type MobileNavigationIcon =
   | "wellness"
   | "care"
   | "patients"
-  | "screening"
   | "followup"
   | "hospital"
   | "workforce"
@@ -52,7 +51,6 @@ export type MobileNavigationTab = {
     | "navigation-item"
     | "personal-home"
     | "assigned-patients"
-    | "osm-screening"
     | "patient-detail"
     | "more";
   badgeCount?: number;
@@ -225,20 +223,6 @@ function projectWorkTabs(
         icon: "patients",
         match: "exact",
         activeRoute: assignedPatients ? "assigned-patients" : "patient-detail",
-      }),
-    );
-  }
-
-  if (assignedPatients) {
-    tabs.push(
-      tabFromItem({ ...assignedPatients, badgeCount: undefined, pendingAction: undefined }, {
-        id: "screening",
-        href: `${assignedPatients.href}?task=screening`,
-        label: "คัดกรอง",
-        accessibleLabel: "คัดกรองผู้ป่วย",
-        icon: "screening",
-        match: "exact",
-        activeRoute: "osm-screening",
       }),
     );
   }

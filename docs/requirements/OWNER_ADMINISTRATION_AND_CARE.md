@@ -51,3 +51,5 @@ CONFIRMED_OWNER_REQUIREMENT — 2026-10-21. ข้อกำหนดนี้แ
 คำขอใช้บัญชีผู้ป่วยสาธารณะและกล่อง OWNER review ถูกเลิกใช้ตาม [ADR-0020 addendum RA-1](../adr/0020-self-registration-by-national-id.md); ผู้ป่วยต้องมี roster record จาก OWNER ก่อน แล้วจึงลงทะเบียนด้วยเลขบัตรหรือใช้ invite/assisted activation.
 
 OSM ทุก variant มี 4 งานหลัก: ผู้ป่วยที่ดูแล, คัดกรองผู้ป่วย, บันทึกติดตาม, งานทั้งหมด ไม่มี “เพิ่มผู้ป่วย” ภาพและพื้นที่กดใช้ shared layout เดียวกัน PATIENT menu, chooser, alias, native switching และ ordinary web links คงเดิม ไม่แก้ LINE Provider จริงและไม่ deploy
+
+**ปรับ 2026-11-20 (OSM-SCREENING-IN-ROUND1):** OSM ทุก variant เหลือ 3 งานหลัก: ผู้ป่วยที่ดูแล, จัดบริการ (เดิม “บันทึกติดตาม”), งานทั้งหมด ถอด “คัดกรองผู้ป่วย” เพราะแบบประเมินของโปรแกรมบันทึกจากครั้งที่ 1 ใน “จัดบริการ” เท่านั้น

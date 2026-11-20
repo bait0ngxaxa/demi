@@ -260,9 +260,10 @@ describe("application home workspace routing", () => {
     expect(html).not.toContain("/app/patients/provision");
     expect(section(html, "work-home-heading")).toContain(`href="/app/appointments?hospitalId=${hospitalId}"`);
     const grid = section(html, "work-home-menu-heading");
-    expect(grid).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${hospitalId}"`);
     expect(grid).toContain(`href="/app/services?hospitalId=${hospitalId}"`);
+    // CT-3 / OSM-SCREENING-IN-ROUND1: no follow-up or screening task tile; screening is in round 1 of จัดบริการ.
     expect(grid).not.toContain("task=followup");
+    expect(grid).not.toContain("task=screening");
     expect(html).not.toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(html).not.toContain("นำเข้าผู้ป่วย");
     expect(html).not.toContain("/app/workforce");
@@ -491,7 +492,6 @@ describe("application home workspace routing", () => {
     it("scopes OSM task tiles to the selected Hospital for a multi-Hospital OSM", async () => {
       const grid = section(await renderHome(osmAt(hospitalId, secondId), HospitalStatus.ACTIVE, { hospitalId: secondId }), "work-home-menu-heading");
 
-      expect(grid).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${secondId}"`);
       expect(grid).toContain(`href="/app/services?hospitalId=${secondId}"`);
       expect(grid).not.toContain(hospitalId);
     });

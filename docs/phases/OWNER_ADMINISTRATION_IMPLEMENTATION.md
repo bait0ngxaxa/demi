@@ -47,6 +47,8 @@ node --env-file=.env.integration node_modules/vitest/vitest.mjs run --config vit
 
 4 OSM images ถูก regenerate: ผู้ป่วยที่ดูแล / คัดกรองผู้ป่วย / บันทึกติดตาม / งานทั้งหมด เป็น primary grid 2×2 Account management และ native role switching อยู่ footer เดิมตาม shared layout; aliases, PATIENT menu, authentication, account linking และ ordinary web links คงเดิม Generic HOSPITAL menu ไม่มี OWNER-only action
 
+> ปรับภายหลัง 2026-11-20 (OSM-SCREENING-IN-ROUND1): OSM images เหลือ 3 ปุ่ม ผู้ป่วยที่ดูแล / จัดบริการ / งานทั้งหมด (ดู `docs/CONTEXT.md`)
+
 | Asset | bytes | SHA-256 |
 | --- | ---: | --- |
 | osm_direct.png | 98541 | 6e2c14cc2eef125545b1bf257d992af6bf88f67d6cdcd2d8ffbe38a4aa258853 |

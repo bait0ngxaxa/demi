@@ -24,6 +24,7 @@ import { createPatientFinalAssessment } from "@/modules/patient-final-assessment
 import {
   getProgramRoundDetail,
   getProgramRoundsOverview,
+  getRoundOneScreeningGap,
 } from "@/modules/patient-program-rounds/services/round-query-service";
 import {
   completePatientProgramRound,
@@ -1054,6 +1055,25 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     expect(await prisma.screeningAssessment.count({ where: { patientHospitalRelationshipId: fixture.relationshipId } })).toBe(2);
     expect(await prisma.patientProgramRoundActivity.count({ where: { toolCode: "PAM" } })).toBe(1);
     expect(await prisma.patientProgramRoundActivity.count({ where: { toolCode: "PROMS" } })).toBe(0);
+  });
+
+  it("OSM-SCREENING-IN-ROUND1: reports the round-1 screening gap; an unlinked screening never fills it", async () => {
+    const fixture = await createFixture("round-one-gap");
+    const otherRelationshipId = await createPatient(fixture.owner.actor, fixture.hospitalId, "round-one-gap-none");
+
+    expect(await getRoundOneScreeningGap(fixture.osm.actor, fixture.relationshipId, null))
+      .toEqual({ patientProgramId: fixture.programId, missing: ["PAM", "PROMS"] });
+    // A screening recorded outside the Program does not answer round 1.
+    await submitScreening(fixture.osm.actor, screeningInput(fixture.relationshipId));
+    expect(await getRoundOneScreeningGap(fixture.osm.actor, fixture.relationshipId, "PAM"))
+      .toEqual({ patientProgramId: fixture.programId, missing: ["PAM"] });
+
+    await submitScreening(fixture.osm.actor, screeningInput(fixture.relationshipId, fixture.programId));
+    expect(await getRoundOneScreeningGap(fixture.osm.actor, fixture.relationshipId, "PAM")).toBeNull();
+    expect(await getRoundOneScreeningGap(fixture.owner.actor, fixture.relationshipId, null))
+      .toEqual({ patientProgramId: fixture.programId, missing: ["PROMS"] });
+    // No ACTIVE Program: no gap.
+    expect(await getRoundOneScreeningGap(fixture.owner.actor, otherRelationshipId, null)).toBeNull();
   });
 
   it("records and skips PAM and PROMs independently; a legacy combined screening answers both (R2-C)", async () => {

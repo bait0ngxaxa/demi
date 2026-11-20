@@ -330,7 +330,6 @@ describe("Phase LINE-QA.C3 conversational replies on PostgreSQL", () => {
     expect(replies[0]?.[0]?.text).toBe(LINE_HELP_REPLY_COPY.WORKFORCE);
     expect(replies[0]?.[0]?.quickReply?.items.map(({ action }) => action.type === "uri" ? action.uri : action.text)).toEqual([
       "https://demi.example.org/app/patients/assigned",
-      "https://demi.example.org/app/patients/assigned?task=screening",
       "https://demi.example.org/app/services",
       "https://demi.example.org/app",
     ]);
@@ -366,7 +365,7 @@ describe("Phase LINE-QA.C3 conversational replies on PostgreSQL", () => {
     const help = messageReplies.get(workforceLineUserId)?.[0];
     if (help?.type !== "text") throw new Error("Expected the HELP text reply");
     expect(help.text).toBe(LINE_HELP_REPLY_COPY.WORKFORCE);
-    expect(help?.quickReply?.items.map(({ action }) => action.label)).toEqual(["ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม", "งานโรงพยาบาล"]);
+    expect(help?.quickReply?.items.map(({ action }) => action.label)).toEqual(["ผู้ป่วยที่ดูแล", "จัดบริการ", "งานโรงพยาบาล"]);
     for (const ineligible of [suspendedLineUserId, unboundLineUserId]) {
       expect(outcomes.get(ineligible)).toBe("REFUSED_INELIGIBLE");
       // INELIGIBLE stays plain text without a Quick Reply, flag on or off.

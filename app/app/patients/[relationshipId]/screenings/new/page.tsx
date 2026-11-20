@@ -9,10 +9,16 @@ import { Panel } from "@/components/ui/panel";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { CURRENT_INSTRUMENT_QUESTION_SETS } from "@/modules/screening/domain/question-sets";
 import { screeningInstrumentSchema } from "@/modules/screening/schemas/screening-schemas";
-import { getProgramRoundsOverview } from "@/modules/patient-program-rounds/services/round-query-service";
+import {
+  getProgramRoundsOverview,
+  getRoundOneScreeningGap,
+  type RoundOneScreeningGap,
+} from "@/modules/patient-program-rounds/services/round-query-service";
 import { getScreeningPatientForSubmission } from "@/modules/screening/services/screening-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { reportUnexpectedError } from "@/shared/errors/unexpected-error-report";
 
+import { RoundOneScreeningAlert } from "./round-one-screening-alert";
 import { ScreeningForm } from "./screening-form";
 
 export const metadata: Metadata = {
@@ -29,17 +35,24 @@ function firstValue(value: string | string[] | undefined): string | undefined {
 }
 
 /** R2-C: PAM and PROMs are recorded separately; without a valid instrument the page offers both. */
+function newScreeningHref(relationshipId: string, instrument: "PAM" | "PROMS" | null, programId: string | undefined): string {
+  const params = new URLSearchParams();
+  if (instrument) params.set("instrument", instrument);
+  if (programId) params.set("programId", programId);
+  const query = params.toString();
+  return `/app/patients/${encodeURIComponent(relationshipId)}/screenings/new${query ? `?${query}` : ""}`;
+}
+
 function InstrumentChooser({
   relationshipId,
   programId,
+  roundOneHref,
 }: {
   relationshipId: string;
   programId: string | undefined;
+  roundOneHref: string | null;
 }): React.JSX.Element {
-  const href = (instrument: "PAM" | "PROMS") =>
-    `/app/patients/${encodeURIComponent(relationshipId)}/screenings/new?instrument=${instrument}${
-      programId ? `&programId=${encodeURIComponent(programId)}` : ""
-    }`;
+  const href = (instrument: "PAM" | "PROMS") => newScreeningHref(relationshipId, instrument, programId);
 
   return (
     <div className="max-w-5xl">
@@ -51,6 +64,7 @@ function InstrumentChooser({
         description="เลือกแบบประเมินที่จะบันทึก แต่ละแบบบันทึกแยกกัน"
         title="เริ่มแบบประเมินใหม่"
       />
+      {roundOneHref ? <div className="pt-8"><RoundOneScreeningAlert href={roundOneHref} /></div> : null}
       <div className="grid gap-4 pt-8 sm:grid-cols-2">
         {(["PAM", "PROMS"] as const).map((instrument) => (
           <Panel key={instrument}>
@@ -88,6 +102,26 @@ async function resolveActor() {
   }
 }
 
+/**
+ * The round-1 hint is optional: the form never depended on a Program read, so any failure (no Program read
+ * scope, an unknown Program, an infrastructure error) renders the form without it. Only a lost session stops.
+ */
+async function findRoundOneScreeningGap(
+  actor: Awaited<ReturnType<typeof resolveActor>>,
+  relationshipId: string,
+  instrument: "PAM" | "PROMS" | null,
+): Promise<RoundOneScreeningGap | null> {
+  try {
+    return await getRoundOneScreeningGap(actor, relationshipId, instrument);
+  } catch (error: unknown) {
+    if (error instanceof UnauthenticatedError) throw error;
+    if (!(error instanceof ForbiddenError) && !(error instanceof NotFoundError)) {
+      reportUnexpectedError("screening.newScreeningPage.roundOneHint", error);
+    }
+    return null;
+  }
+}
+
 export default async function NewScreeningPage({
   params,
   searchParams,
@@ -105,12 +139,15 @@ export default async function NewScreeningPage({
       : undefined;
   let patient;
   let programRoundNumber = 1;
+  let roundOneGap: RoundOneScreeningGap | null = null;
 
   try {
     patient = await getScreeningPatientForSubmission(actor, relationshipId);
     if (programId) {
       const overview = await getProgramRoundsOverview(actor, relationshipId, programId);
       programRoundNumber = overview.rounds.find((round) => round.state !== "COMPLETED" && round.state !== "LOCKED")?.roundNumber ?? 1;
+    } else {
+      roundOneGap = await findRoundOneScreeningGap(actor, relationshipId, instrument.success ? instrument.data : null);
     }
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
@@ -124,8 +161,12 @@ export default async function NewScreeningPage({
     throw error;
   }
 
+  const roundOneHref = roundOneGap
+    ? newScreeningHref(relationshipId, instrument.success ? instrument.data : null, roundOneGap.patientProgramId)
+    : null;
+
   if (!instrument.success) {
-    return <InstrumentChooser programId={programId} relationshipId={relationshipId} />;
+    return <InstrumentChooser programId={programId} relationshipId={relationshipId} roundOneHref={roundOneHref} />;
   }
 
   return (
@@ -135,6 +176,7 @@ export default async function NewScreeningPage({
       programRoundNumber={programRoundNumber}
       questionSet={CURRENT_INSTRUMENT_QUESTION_SETS[instrument.data]}
       relationshipId={relationshipId}
+      roundOneHref={roundOneHref}
       submissionNonce={randomUUID()}
     />
   );

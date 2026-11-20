@@ -115,8 +115,9 @@ const workAccount = ["account", "บัญชีและช่วยเหล�
 // WB-DF-14 (Product Owner 2026-10-26): an account holding ADMIN receives reports, so it has no submit entry.
 // Owner decision 2026-11-19: an account holding ADMIN has no Family entry either.
 const adminWorkAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/settings"]] as const;
-// CT-D2 (2026-10-29): จัดบริการ replaces the OSM "รอติดตาม" queue; "รอคัดกรอง" stays.
-const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/services"]] as const;
+// CT-D2 (2026-10-29): จัดบริการ replaces the OSM "รอติดตาม" queue. OSM-SCREENING-IN-ROUND1 (2026-11-20): "รอคัดกรอง"
+// is gone too; screening is recorded in Program round 1 inside จัดบริการ.
+const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/services"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
 const staffRegistration = ["registration", "นำเข้าผู้ป่วย", ["/app/patients/provision"]] as const;
 const ownerAdministration = ["/app/users", "/app/hospitals/settings", "/app/hospitals/knowledge"];
@@ -347,7 +348,6 @@ describe("UI-4 task-based navigation per actor", () => {
     expect(groups.find(({ id }) => id === "care")?.items.map(({ href }) => href)).toEqual([
       "/app/appointments",
       "/app/patients/assigned",
-      "/app/patients/assigned?task=screening",
       "/app/patients",
       "/app/patients/assign-osm",
       "/app/services",
@@ -355,17 +355,17 @@ describe("UI-4 task-based navigation per actor", () => {
     ]);
   });
 
-  it("gives an OSM จัดบริการ instead of รอติดตาม and keeps ผู้ป่วยที่ดูแล and รอคัดกรอง (CT-D2)", () => {
+  it("gives an OSM ผู้ป่วยที่ดูแล and จัดบริการ, with no รอติดตาม or รอคัดกรอง (CT-D2, OSM-SCREENING-IN-ROUND1)", () => {
     const care = project(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] }))
       .find(({ id }) => id === "care")?.items ?? [];
 
     expect(care.map(({ href, label }) => [href, label])).toEqual([
       ["/app/appointments", "รายการนัดหมาย"],
       ["/app/patients/assigned", "ผู้ป่วยที่ดูแล"],
-      ["/app/patients/assigned?task=screening", "รอคัดกรอง"],
       ["/app/services", "จัดบริการ"],
     ]);
-    expect(care.some(({ label }) => label === "รอติดตาม")).toBe(false);
+    expect(care.some(({ label }) => label === "รอติดตาม" || label === "รอคัดกรอง")).toBe(false);
+    expect(care.some(({ href }) => href.includes("task="))).toBe(false);
   });
 
   it.each(cases)("$name: exact section ids, headings, order and item hrefs", ({ subject, workspaces, expected }) => {
@@ -671,10 +671,10 @@ describe("application navigation active state", () => {
     expect([...resolveActiveNavigationHrefs("/app/patients", "hospitalId=x", care)]).toEqual(["/app/patients"]);
   });
 
-  it("marks only the OSM task item whose query matches, ignoring unrelated query params", () => {
+  it("keeps ผู้ป่วยที่ดูแล active on the assigned list whatever its query, and nothing on other pages", () => {
     const care = project(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] })).find(({ id }) => id === "care")?.items ?? [];
 
-    expect([...resolveActiveNavigationHrefs("/app/patients/assigned", "task=screening&hospitalId=x", care)]).toEqual(["/app/patients/assigned?task=screening"]);
+    expect([...resolveActiveNavigationHrefs("/app/patients/assigned", "hospitalId=x", care)]).toEqual(["/app/patients/assigned"]);
     expect([...resolveActiveNavigationHrefs("/app/patients/assigned", "page=2", care)]).toEqual(["/app/patients/assigned"]);
     expect([...resolveActiveNavigationHrefs("/app/patients/provision", "", care)]).toEqual([]);
   });

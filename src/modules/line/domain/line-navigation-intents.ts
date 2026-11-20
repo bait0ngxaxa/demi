@@ -2,7 +2,6 @@ export const LINE_WEB_NAVIGATION_PATHS = {
   OPEN_PATIENT_WORKSPACE: "/app/personal",
   OPEN_WORK_WORKSPACE: "/app",
   OPEN_OSM_ASSIGNED_PATIENTS: "/app/patients/assigned",
-  START_OSM_SCREENING: "/app/patients/assigned?task=screening",
   // CT-3: the OSM follow-up queue is the จัดบริการ workspace.
   START_OSM_FOLLOWUP: "/app/services",
   OPEN_PATIENT_PROVISIONING: "/app/patients/provision",
@@ -25,10 +24,16 @@ export type LineWebNavigationIntent = keyof typeof LINE_WEB_NAVIGATION_PATHS;
  */
 export const LEGACY_OSM_FOLLOWUP_PATH = "/app/patients/assigned?task=followup";
 
+/**
+ * The former START_OSM_SCREENING URL ("คัดกรองผู้ป่วย"). OSM-SCREENING-IN-ROUND1 (owner, 2026-11-20) records
+ * screening only in Program round 1, so the assigned list redirects it to /app/services; it keeps its login return.
+ */
+export const LEGACY_OSM_SCREENING_PATH = "/app/patients/assigned?task=screening";
+
 export const LINE_QUICK_ACTION_RETURN_PATHS = [
   LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WORKSPACE,
   LINE_WEB_NAVIGATION_PATHS.OPEN_OSM_ASSIGNED_PATIENTS,
-  LINE_WEB_NAVIGATION_PATHS.START_OSM_SCREENING,
+  LEGACY_OSM_SCREENING_PATH,
   LINE_WEB_NAVIGATION_PATHS.START_OSM_FOLLOWUP,
   LEGACY_OSM_FOLLOWUP_PATH,
   LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_PROVISIONING,

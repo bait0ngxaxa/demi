@@ -28,6 +28,7 @@ CSS ซ่อน footer ไม่ได้ footer ขึ้นกับว่า
 https://liff.line.me/<WORKSPACE_LIFF_ID>/app
 https://liff.line.me/<WORKSPACE_LIFF_ID>/app/personal
 https://liff.line.me/<WORKSPACE_LIFF_ID>/app/personal/wellness
+https://liff.line.me/<WORKSPACE_LIFF_ID>/app/services
 https://liff.line.me/<WORKSPACE_LIFF_ID>/app/patients/assigned?task=screening
 https://liff.line.me/<WORKSPACE_LIFF_ID>
 ```
@@ -43,7 +44,7 @@ https://liff.line.me/<WORKSPACE_LIFF_ID>
 | 3 | Patient → นัดหมายทั้งหมด | Rich Menu | `/app/personal/appointments` ใน LIFF | | |
 | 4 | Patient → บริการ / เพิ่มเติม | Rich Menu | `/app/personal/care`, `/app/personal` ใน LIFF | | |
 | 5 | OSM → ผู้ป่วยที่ดูแล | Rich Menu | `/app/patients/assigned` เฉพาะผู้ป่วยที่ได้รับมอบหมาย | | |
-| 6 | OSM → คัดกรอง / บันทึกติดตาม | Rich Menu | `?task=screening` และ `/app/services` ตาม scope เดิม | | |
+| 6 | OSM → จัดบริการ | Rich Menu (หลัง `npm run line:rich-menu:reconcile`) | `/app/services`; ลิงก์เดิม `?task=screening` เข้าสู่ระบบแล้วไป `/app/services` (OSM-SCREENING-IN-ROUND1) | | |
 | 7 | Hospital → งานทั้งหมด | Rich Menu | `/app` งานโรงพยาบาลใน LIFF | | |
 | 8 | Quick Reply | พิมพ์ข้อความอื่นให้ได้ HELP แล้วแตะปุ่มงาน | เปิดใน LIFF เหมือน Rich Menu | | |
 | 9 | ผู้ใช้หลายบทบาท | สลับพื้นที่ด้วยปุ่มสลับ แล้วแตะปุ่มงาน | richmenuswitch ทำงานเดิม ปลายทางเปิดใน LIFF | | |

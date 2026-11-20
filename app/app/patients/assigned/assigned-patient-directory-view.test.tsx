@@ -31,7 +31,6 @@ const result: PatientAssignedDirectoryPage = {
 function render(
   page: PatientAssignedDirectoryPage | null = result,
   errorMessage: string | null = null,
-  taskMode: "screening" | null = null,
 ): string {
   return renderToStaticMarkup(<AssignedPatientDirectoryView
     lookupType={page?.lookupType ?? "NAME"}
@@ -39,15 +38,14 @@ function render(
     classificationFilter={page?.classificationFilter ?? "ALL"}
     result={page}
     errorMessage={errorMessage}
-    taskMode={taskMode}
   />);
 }
 
 describe("assigned patient operational directory", () => {
-  it("preserves task, Hospital and filters when jumping to page 5", () => {
-    const html = render({ ...result, value: "HN-001", lookupType: "HOSPITAL_NUMBER", classificationFilter: "RISK", totalPages: 20, hospitalFilter: { hospitalId: "hospital-1", hospitalName: "โรงพยาบาล ก" } }, null, "screening");
+  it("preserves Hospital and filters when jumping to page 5", () => {
+    const html = render({ ...result, value: "HN-001", lookupType: "HOSPITAL_NUMBER", classificationFilter: "RISK", totalPages: 20, hospitalFilter: { hospitalId: "hospital-1", hospitalName: "โรงพยาบาล ก" } });
     expect(html).toContain('aria-label="ไปหน้าที่ 5"');
-    expect(html).toContain('href="/app/patients/assigned?lookupType=HOSPITAL_NUMBER&amp;task=screening&amp;hospitalId=hospital-1&amp;value=HN-001&amp;page=5&amp;classification=RISK"');
+    expect(html).toContain('href="/app/patients/assigned?lookupType=HOSPITAL_NUMBER&amp;hospitalId=hospital-1&amp;value=HN-001&amp;page=5&amp;classification=RISK"');
   });
   it("identifies the current assigned scope and offers one care entry per relationship", () => {
     const html = render();
@@ -131,17 +129,7 @@ describe("assigned patient operational directory", () => {
     expect(html).not.toContain("relationship-1");
   });
 
-  it("keeps screening selection inside the authorized directory and opens the existing screening workflow", () => {
-    const html = render(result, null, "screening");
-
-    expect(html).toContain("คัดกรองผู้ป่วย");
-    expect(html).toContain('name="task" value="screening"');
-    expect(html).toContain('href="/app/patients/relationship-1/screenings/new"');
-    expect(html).toContain("เริ่มคัดกรองผู้ป่วยรายนี้");
-    expect(html).not.toContain('href="/app/patients/relationship-1"');
-  });
-
-  it("has no follow-up task mode any more (CT-3: the จัดบริการ workspace)", () => {
+  it("has no follow-up or screening task mode any more (CT-3, OSM-SCREENING-IN-ROUND1: the จัดบริการ workspace)", () => {
     const first = result.items[0];
     if (!first) throw new Error("Missing fixture");
     const html = render({ ...result, hasPreviousPage: true, items: [{ ...first, activeProgramId: "program-1" }] });
@@ -150,10 +138,10 @@ describe("assigned patient operational directory", () => {
     expect(html).not.toContain("followups/new");
     expect(html).not.toContain("บันทึกติดตาม");
     expect(html).toContain('href="/app/patients/relationship-1"');
-
-    const screening = render({ ...result, items: [{ ...first, activeProgramId: "program-1" }] }, null, "screening");
-    expect(screening).toContain('href="/app/patients/relationship-1/screenings/new"');
-    expect(screening).not.toContain("programs/program-1");
+    expect(html).not.toContain("task=screening");
+    expect(html).not.toContain("screenings/new");
+    expect(html).not.toContain("คัดกรองผู้ป่วย");
+    expect(html).not.toContain('name="task"');
   });
 
   it("names the selected Hospital, keeps it through search and paging, and offers a way back to every Hospital", () => {
@@ -163,15 +151,15 @@ describe("assigned patient operational directory", () => {
       value: "สมชาย",
       classificationFilter: "RISK",
       hospitalFilter: { hospitalId, hospitalName: "โรงพยาบาล ก" },
-    }, null, "screening");
+    });
 
     expect(html).toContain("แสดงเฉพาะผู้ป่วยของ<span class=\"font-semibold\">โรงพยาบาล ก</span>");
     expect(html).toContain(`name="hospitalId" value="${hospitalId}"`);
     expect(html).toContain(`page=2&amp;classification=RISK`);
-    expect(html).toContain(`task=screening&amp;hospitalId=${hospitalId}&amp;value=`);
-    // Clearing the search keeps the Hospital; clearing the Hospital keeps the task and search.
-    expect(html).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${hospitalId}"`);
-    expect(html).toContain(`href="/app/patients/assigned?lookupType=NAME&amp;task=screening&amp;value=${encodeURIComponent("สมชาย")}&amp;classification=RISK"`);
+    expect(html).toContain(`hospitalId=${hospitalId}&amp;value=`);
+    // Clearing the search keeps the Hospital; clearing the Hospital keeps the search.
+    expect(html).toContain(`href="/app/patients/assigned?hospitalId=${hospitalId}"`);
+    expect(html).toContain(`href="/app/patients/assigned?lookupType=NAME&amp;value=${encodeURIComponent("สมชาย")}&amp;classification=RISK"`);
     expect(html).toContain("ดูผู้ป่วยจากทุกโรงพยาบาล");
   });
 

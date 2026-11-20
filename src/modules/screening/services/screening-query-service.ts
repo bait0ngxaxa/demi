@@ -75,6 +75,8 @@ export type ScreeningDetail = {
   scoringVersion: string;
   responses: ScreeningDetailResponses;
   outcome: ScreeningOutcome;
+  /** The Program whose round 1 this screening answers; null for a screening recorded outside a Program. */
+  patientProgramId: string | null;
 };
 
 const SCREENING_HISTORY_LIMIT = 50;
@@ -103,6 +105,7 @@ const screeningDetailSelect = {
   questionSetKey: true,
   questionSetVersion: true,
   responses: true,
+  patientProgramId: true,
 } satisfies Prisma.ScreeningAssessmentSelect;
 
 const screeningSummarySelect = {
@@ -210,6 +213,7 @@ function toDetail(
     scoringVersion: record.scoringVersion,
     responses: parsePersistedResponses(record.instrument, record.responses),
     outcome: parsePersistedOutcome(record),
+    patientProgramId: record.patientProgramId,
   };
 }
 

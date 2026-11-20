@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
+import { LEGACY_OSM_SCREENING_PATH } from "@/modules/line/domain/line-navigation-intents";
 
 import { buildLoginReturnHref } from "./login-return";
 
 describe("bounded login return href", () => {
+  // The former รอคัดกรอง entry keeps its login return; the assigned list then redirects it to /app/services.
   it("encodes only an approved quick-action destination", () => {
-    expect(buildLoginReturnHref(LINE_WEB_NAVIGATION_PATHS.START_OSM_SCREENING)).toBe(
+    expect(buildLoginReturnHref(LEGACY_OSM_SCREENING_PATH)).toBe(
       "/login?returnTo=%2Fapp%2Fpatients%2Fassigned%3Ftask%3Dscreening",
     );
   });

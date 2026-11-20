@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { z } from "zod";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
-import {
-  LINE_WEB_NAVIGATION_PATHS,
-  type LineQuickActionReturnPath,
-} from "@/modules/line/domain/line-navigation-intents";
+import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
 import {
   findAssignedPatientDirectory,
   type PatientAssignedDirectoryPage,
@@ -31,11 +27,13 @@ type AssignedPatientDirectoryPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const assignedPatientTaskModeSchema = z.enum(["screening"]);
-type AssignedPatientTaskMode = z.infer<typeof assignedPatientTaskModeSchema>;
-
 function firstSearchParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function servicesRedirect(params: Record<string, string | string[] | undefined>): string {
+  const hospitalId = firstSearchParam(params.hospitalId);
+  return hospitalId ? `/app/services?${new URLSearchParams({ hospitalId }).toString()}` : "/app/services";
 }
 
 /**
@@ -43,23 +41,23 @@ function firstSearchParam(value: string | string[] | undefined): string | undefi
  * open the old URL, so it redirects with the same Hospital locator (the workspace re-checks it against its scopes).
  */
 function legacyFollowupTaskRedirect(params: Record<string, string | string[] | undefined>): string | null {
-  if (firstSearchParam(params.task) !== "followup") return null;
-  const hospitalId = firstSearchParam(params.hospitalId);
-  return hospitalId ? `/app/services?${new URLSearchParams({ hospitalId }).toString()}` : "/app/services";
+  return firstSearchParam(params.task) === "followup" ? servicesRedirect(params) : null;
 }
 
-function parseTaskMode(value: string | string[] | undefined): AssignedPatientTaskMode | null {
-  if (typeof value !== "string") return null;
-  const parsed = assignedPatientTaskModeSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+/**
+ * OSM-SCREENING-IN-ROUND1 (owner, 2026-11-20): PAM/PROMs screening is recorded from Program round 1 in จัดบริการ.
+ * The former "รอคัดกรอง" picker URL is still on sent LINE menus, so it redirects the same way.
+ */
+function legacyScreeningTaskRedirect(params: Record<string, string | string[] | undefined>): string | null {
+  return firstSearchParam(params.task) === "screening" ? servicesRedirect(params) : null;
 }
 
-async function resolveActor(returnTo: LineQuickActionReturnPath) {
+async function resolveActor() {
   try {
     return await getProtectedApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
-      redirect(buildLoginReturnHref(returnTo));
+      redirect(buildLoginReturnHref(LINE_WEB_NAVIGATION_PATHS.OPEN_OSM_ASSIGNED_PATIENTS));
     }
 
     if (error instanceof ForbiddenError) {
@@ -81,17 +79,13 @@ export default async function AssignedPatientDirectoryPage({
 }: AssignedPatientDirectoryPageProps): Promise<React.JSX.Element> {
   await connection();
   const params = await searchParams;
-  const legacyRedirect = legacyFollowupTaskRedirect(params);
+  const legacyRedirect = legacyFollowupTaskRedirect(params) ?? legacyScreeningTaskRedirect(params);
 
   if (legacyRedirect) {
     redirect(legacyRedirect);
   }
 
-  const taskMode = parseTaskMode(params.task);
-  const returnTo = taskMode === "screening"
-    ? LINE_WEB_NAVIGATION_PATHS.START_OSM_SCREENING
-    : LINE_WEB_NAVIGATION_PATHS.OPEN_OSM_ASSIGNED_PATIENTS;
-  const actor = await resolveActor(returnTo);
+  const actor = await resolveActor();
   const requestedLookupType = firstSearchParam(params.lookupType);
   const lookupType: PatientDirectoryLookupType =
     requestedLookupType === "HOSPITAL_NUMBER" ? "HOSPITAL_NUMBER" : "NAME";
@@ -137,7 +131,6 @@ export default async function AssignedPatientDirectoryPage({
       lookupType={result?.lookupType ?? lookupType}
       result={result}
       classificationFilter={result?.classificationFilter ?? classificationFilter}
-      taskMode={taskMode}
       value={result?.value ?? displayValue}
     />
   );

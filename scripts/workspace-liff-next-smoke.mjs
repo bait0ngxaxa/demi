@@ -91,7 +91,8 @@ const cases = [
   { label: "login page initializes inside the Workspace LIFF", path: "/login?returnTo=%2Fapp%2Fpersonal%2Fmedications", expect: (r) => r.kind === "DOCUMENT" && r.status === 200 && r.bootstrapInDocument },
   { label: "secondary redirect, Patient medication after in-LINE login", path: "/app/personal/medications?liff.hback=2&lineAppVersion=14.19.1", returnTo: "/app/personal/medications" },
   { label: "secondary redirect, Patient wellness", path: "/app/personal/wellness", returnTo: "/app/personal/wellness" },
-  { label: "secondary redirect, OSM screening", path: "/app/patients/assigned?task=screening&liff.hback=2", returnTo: "/app/patients/assigned?task=screening" },
+  // OSM-SCREENING-IN-ROUND1: the former รอคัดกรอง entry keeps its exact login return; signed in, it opens /app/services.
+  { label: "secondary redirect, former OSM screening entry", path: "/app/patients/assigned?task=screening&liff.hback=2", returnTo: "/app/patients/assigned?task=screening" },
   { label: "secondary redirect, Hospital workspace", path: "/app?liff.hback=2", returnTo: null },
   { label: "unauthorized resource", path: "/app/patients/11111111-1111-4111-8111-111111111111?liff.hback=2", returnTo: null },
 ];

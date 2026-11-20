@@ -104,17 +104,16 @@ describe("server-projected mobile navigation", () => {
   });
 
   it.each([
-    ["/app/personal", "", "home"],
-    ["/app/personal/health", "", "health"],
-    ["/app/personal/health", "relationshipId=selected", "health"],
-    ["/app/personal/measurements", "", null],
-    ["/app/personal/appointments/rel-1/apt-1", "", "appointments"],
-    ["/app/personal/care/rel-1/programs/program-1/rounds", "", "followup"],
-    ["/app/more", "workspace=personal", "more"],
-    ["/app/personal/news", "", null],
-  ] as const)("marks the Patient customer tab for %s", (pathname, search, expected) => {
+    ["/app/personal", "home"],
+    ["/app/personal/health", "health"],
+    ["/app/personal/measurements", null],
+    ["/app/personal/appointments/rel-1/apt-1", "appointments"],
+    ["/app/personal/care/rel-1/programs/program-1/rounds", "followup"],
+    ["/app/more", "more"],
+    ["/app/personal/news", null],
+  ] as const)("marks the Patient customer tab for %s", (pathname, expected) => {
     const tabs = primaryTabs(projectApplicationNavigation(actor([Role.PATIENT])), "personal");
-    expect(resolveActiveMobileTabId(pathname, search, tabs)).toBe(expected);
+    expect(resolveActiveMobileTabId(pathname, tabs)).toBe(expected);
   });
 
   it("projects OSM task tabs only from the authorized assigned-Patient destination", () => {
@@ -125,19 +124,19 @@ describe("server-projected mobile navigation", () => {
       "home",
       "appointments",
       "patients",
-      "screening",
+      "service",
       "more",
     ]);
     expect(workTabs.map(({ href }) => href)).toEqual([
       "/app",
       "/app/appointments",
       "/app/patients/assigned",
-      "/app/patients/assigned?task=screening",
+      "/app/services",
       "/app/more",
     ]);
-    // CT-D2: no follow-up tab; จัดบริการ is in More, within the four-tab limit plus More.
-    expect(projectMobileNavigation(navigation).tabsByWorkspace.work.some(({ id }) => id === "followup")).toBe(false);
-    expect(projectMoreNavigation(navigation, workTabs).flatMap(({ items }) => items.map(({ href }) => href))).toContain("/app/services");
+    // CT-D2 / OSM-SCREENING-IN-ROUND1: no follow-up or screening tab; จัดบริการ takes the fourth slot.
+    expect(projectMobileNavigation(navigation).tabsByWorkspace.work.some(({ id }) => id === "followup" || id === "screening")).toBe(false);
+    expect(projectMoreNavigation(navigation, workTabs).flatMap(({ items }) => items.map(({ href }) => href))).not.toContain("/app/services");
   });
 
   it("keeps the OSM mobile label short and announces the assigned appointment count", () => {
@@ -199,7 +198,6 @@ describe("server-projected mobile navigation", () => {
     // A Hospital's system report page keeps the reports tab current.
     expect(resolveActiveMobileTabId(
       "/app/admin/reporting/hospitals/11111111-1111-4111-8111-111111111111",
-      "view=service",
       primaryTabs(adminNavigation, "work"),
     )).toBe("admin-reports");
     const adminMoreHrefs = hrefs(projectMoreNavigation(adminNavigation, primaryTabs(adminNavigation, "work")));
@@ -232,10 +230,9 @@ describe("server-projected mobile navigation", () => {
       "/app/more",
     ]);
     expect(memberTabs[3]?.icon).toBe("care");
-    expect(resolveActiveMobileTabId("/app/services", "", memberTabs)).toBe("service");
-    expect(resolveActiveMobileTabId("/app/services", "hospitalId=h&stage=IN_ROUND&page=2", memberTabs)).toBe("service");
+    expect(resolveActiveMobileTabId("/app/services", memberTabs)).toBe("service");
     // CT-2: the directory is the patients tab again; its former service task URL redirects to /app/services.
-    expect(resolveActiveMobileTabId("/app/patients", "", memberTabs)).toBe("patients");
+    expect(resolveActiveMobileTabId("/app/patients", memberTabs)).toBe("patients");
     // ADR-0026: a MEMBER opens the full Hospital report and the request inbox like the OWNER.
     expect(memberMoreHrefs).toContain("/app/hospitals/reporting");
     expect(memberMoreHrefs).toContain("/app/patients/service-requests");
@@ -289,7 +286,7 @@ describe("server-projected mobile navigation", () => {
       "home",
       "appointments",
       "patients",
-      "screening",
+      "service",
       "more",
     ]);
     expect(moreHrefs).toContain("/app/patients");
@@ -303,8 +300,8 @@ describe("server-projected mobile navigation", () => {
     expect(moreHrefs).not.toContain("/app/patients/assigned");
     expect(moreHrefs).not.toContain("/app/patients/assigned?task=screening");
     expect(moreHrefs).not.toContain("/app/patients/assigned?task=followup");
-    // CT-D2: จัดบริการ does not fit the four primary slots, so it stays reachable from More.
-    expect(moreHrefs).toContain("/app/services");
+    // จัดบริการ is a primary tab, so More omits it.
+    expect(moreHrefs).not.toContain("/app/services");
   });
 
   it("retains every authorized navigation entry in a primary slot or More", () => {

@@ -31,8 +31,7 @@ const QUICK_REPLIES_BY_ROLE: Readonly<Record<OperationalLineRole, readonly Quick
   ],
   OSM: [
     { type: "uri", label: "ผู้ป่วยที่ดูแล", intent: "OPEN_OSM_ASSIGNED_PATIENTS" },
-    { type: "uri", label: "คัดกรองผู้ป่วย", intent: "START_OSM_SCREENING" },
-    { type: "uri", label: "บันทึกติดตาม", intent: "START_OSM_FOLLOWUP" },
+    { type: "uri", label: "จัดบริการ", intent: "START_OSM_FOLLOWUP" },
   ],
   HOSPITAL: [
     { type: "uri", label: "งานโรงพยาบาล", intent: "OPEN_WORK_WORKSPACE" },
