@@ -218,7 +218,9 @@ describe("More menu page navigation", () => {
 
     expect(moreIds.length).toBeGreaterThan(0);
     expect(sidebarIds.filter((id) => moreIds.includes(id))).toEqual(moreIds);
-    expect(moreIds.at(-1)).toBe("account");
+    // Owner decision 2026-11-19: an ADMIN-only account has no Family, settings or support entry, so no account section.
+    if (roles.includes(Role.ADMIN)) expect(moreIds).not.toContain("account");
+    else expect(moreIds.at(-1)).toBe("account");
   });
 
   it("asks before leaving a guarded form from a More row and cancels when declined", () => {

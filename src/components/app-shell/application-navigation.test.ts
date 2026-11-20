@@ -113,7 +113,8 @@ const personalSections = [
 const patientAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/personal/profile", "/app/settings", "/app/support"]] as const;
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
 // WB-DF-14 (Product Owner 2026-10-26): an account holding ADMIN receives reports, so it has no submit entry.
-const adminWorkAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings"]] as const;
+// Owner decision 2026-11-19: an account holding ADMIN has no Family entry either.
+const adminWorkAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/settings"]] as const;
 // CT-D2 (2026-10-29): จัดบริการ replaces the OSM "รอติดตาม" queue; "รอคัดกรอง" stays.
 const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/services"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
@@ -146,8 +147,9 @@ const previousHrefs: Record<string, readonly string[]> = {
   member: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients", "/app/family", "/app/settings", "/app/support"],
   memberExport: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients", "/app/family", "/app/settings", "/app/support"],
   owner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/patients/service-requests", "/app/patients/service-catalog", "/app/family", "/app/settings", "/app/support"],
-  admin: ["/app", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding", "/app/family"],
-  adminOwner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding", "/app/family", "/app/settings", "/app/support"],
+  // Owner decision 2026-11-19: Family was removed on purpose for every account holding ADMIN.
+  admin: ["/app", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding"],
+  adminOwner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding", "/app/settings", "/app/support"],
   osmPatient: ["/app/personal", "/app", "/app/personal/care", "/app/personal/services", "/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements", "/app/personal/news", "/app/personal/knowledge", "/app/personal/appointments", "/app/personal/profile", "/app/personal/password", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/family", "/app/settings", "/app/support"],
 };
 
@@ -204,7 +206,6 @@ const cases: Case[] = [
       // WB-DF-14 (Product Owner 2026-10-26): the platform ADMIN receives usage-problem reports.
       ["review-queue", "คำขอรอตรวจ", ["/app/admin/hospital-onboarding", "/app/admin/support"]],
       ["administration", "กำกับดูแล", ["/app/admin/hospitals", "/app/admin/reporting", "/app/admin/recovery"]],
-      ["account", "บัญชีและช่วยเหลือ", ["/app/family"]],
     ] },
   },
   {
@@ -553,8 +554,8 @@ describe("application navigation visibility (unchanged policies)", () => {
     }
   });
 
-  it("offers the shared Family route in every workspace to every active actor type, including non-Patient caregivers", () => {
-    for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.PATIENT], [Role.ADMIN], [Role.PATIENT, Role.OSM], [Role.CAREGIVER, Role.PATIENT]] as const) {
+  it("offers the shared Family route in every workspace to every non-ADMIN actor type, including non-Patient caregivers", () => {
+    for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.PATIENT], [Role.PATIENT, Role.OSM], [Role.CAREGIVER, Role.PATIENT]] as const) {
       const groups = project(actor({ roles }));
       const workspaces = [...new Set(groups.flatMap(({ workspace: groupWorkspace }) => groupWorkspace === "personal" || groupWorkspace === "work" ? [groupWorkspace] : []))];
 
@@ -566,6 +567,15 @@ describe("application navigation visibility (unchanged policies)", () => {
         const familySection = context === "personal" ? sections.find(([id]) => id === "top-menu") : sections.at(-1);
         expect(familySection?.[2]).toContain("/app/family");
       }
+    }
+  });
+
+  it("never shows Family to an account holding ADMIN, whatever its other roles (owner decision 2026-11-19)", () => {
+    for (const roles of [[Role.ADMIN], [Role.ADMIN, Role.HOSPITAL], [Role.ADMIN, Role.OSM], [Role.ADMIN, Role.PATIENT], [Role.ADMIN, Role.CAREGIVER]] as const) {
+      const groups = project(actor({ roles, osmHospitalRelationships: [osm(hospitalId)], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }));
+      expect(allHrefs(groups)).not.toContain("/app/family");
+      expect(groups.flatMap(({ items }) => items.map(({ label }) => label))).not.toEqual(expect.arrayContaining(["ครอบครัวและผู้ดูแล"]));
+      expect(groups.flatMap(({ items }) => items.map(({ label }) => label))).not.toEqual(expect.arrayContaining(["ครอบครัวของฉัน"]));
     }
   });
 
@@ -589,7 +599,8 @@ describe("application navigation visibility (unchanged policies)", () => {
         groups.filter((group) => group.id === id && group.workspace === context).flatMap(({ items }) => items.map(({ label }) => label));
 
       expect(labels("primary", "personal")).toEqual(bottom);
-      expect(labels("top-menu", "personal")).toEqual(top);
+      // Owner decision 2026-11-19: an account that also holds ADMIN loses only ครอบครัวของฉัน.
+      expect(labels("top-menu", "personal")).toEqual((roles as readonly Role[]).includes(Role.ADMIN) ? top.filter((label) => label !== "ครอบครัวของฉัน") : top);
       expect(labels("primary", "work")).toEqual([]);
       expect(labels("top-menu", "work")).toEqual([]);
     }

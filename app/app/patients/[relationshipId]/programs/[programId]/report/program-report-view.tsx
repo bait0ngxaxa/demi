@@ -875,7 +875,7 @@ export function ProgramReportView({
       />
 
       <div className="space-y-8 pt-8">
-        <Panel><RoundReportTable rounds={report.rounds} extraRoundsCompleted={report.extraRoundsCompleted} /></Panel>
+        <Panel><RoundReportTable headingLevel={2} rounds={report.rounds} extraRoundsCompleted={report.extraRoundsCompleted} /></Panel>
         <Panel>
           <h2 className="text-2xl font-semibold tracking-[-0.03em] text-text">ข้อมูลผู้ป่วยและโรงพยาบาล</h2>
           <MetadataGrid

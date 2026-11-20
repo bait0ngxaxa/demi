@@ -1,3 +1,4 @@
+import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 const mocks = vi.hoisted(() => ({ actor: vi.fn(), detail: vi.fn(), management: vi.fn(), relationships: vi.fn(), resources: vi.fn(), summary: vi.fn(), notFound: vi.fn(), redirect: vi.fn() }));
@@ -8,9 +9,9 @@ vi.mock("../services/appointment-grant-management-query-service", () => ({ getAp
 vi.mock("../services/caregiver-relationship-query-service", () => ({ getFamilyManagementOverview: mocks.relationships }));
 vi.mock("../services/caregiver-resource-grant-service", () => ({ getResourceGrantManagement: mocks.resources }));
 vi.mock("../services/family-health-summary-query-service", () => ({ getFamilyHealthSummary: mocks.summary }));
-import { getFamilyAppointmentWorkspacePageContext, getDelegatedAppointmentPageContext, getFamilyHealthSummaryPageContext } from "./appointment-grant-page-context";
+import { assertFamilyWorkspacePageAccess, getFamilyAppointmentWorkspacePageContext, getDelegatedAppointmentPageContext, getFamilyHealthSummaryPageContext, isSignedInPlatformAdminViewer } from "./appointment-grant-page-context";
 beforeEach(() => {
-  vi.resetAllMocks(); mocks.actor.mockResolvedValue({ userId: "current" });
+  vi.resetAllMocks(); mocks.actor.mockResolvedValue({ userId: "current", roles: [Role.PATIENT] });
   mocks.notFound.mockImplementation(() => { throw new Error("safe-not-found"); });
   mocks.redirect.mockImplementation(() => { throw new Error("safe-redirect"); });
 });
@@ -37,6 +38,32 @@ describe("delegated page transport", () => {
   it("AF-5: an unauthorized or foreign family summary is the same plain 404", async () => {
     mocks.summary.mockRejectedValue(new NotFoundError());
     await expect(getFamilyHealthSummaryPageContext("foreign")).rejects.toThrow("safe-not-found");
-    expect(mocks.summary).toHaveBeenCalledWith({ userId: "current" }, "foreign");
+    expect(mocks.summary).toHaveBeenCalledWith({ userId: "current", roles: [Role.PATIENT] }, "foreign");
+  });
+  describe("owner decision 2026-11-19: platform ADMIN has no Family pages", () => {
+    it.each([[[Role.ADMIN]], [[Role.ADMIN, Role.PATIENT]], [[Role.ADMIN, Role.HOSPITAL]]])("redirects %j home before any Family data is read", async (roles) => {
+      mocks.actor.mockResolvedValue({ userId: "current", roles });
+      await expect(getFamilyAppointmentWorkspacePageContext({}, {})).rejects.toThrow("safe-redirect");
+      await expect(getFamilyHealthSummaryPageContext("member")).rejects.toThrow("safe-redirect");
+      await expect(getDelegatedAppointmentPageContext("grant", "appointment")).rejects.toThrow("safe-redirect");
+      await expect(assertFamilyWorkspacePageAccess()).rejects.toThrow("safe-redirect");
+      expect(mocks.redirect.mock.calls).toEqual([["/app"], ["/app"], ["/app"], ["/app"]]);
+      for (const read of [mocks.relationships, mocks.management, mocks.resources, mocks.summary, mocks.detail]) expect(read).not.toHaveBeenCalled();
+    });
+    it("lets non-ADMIN actors through and sends signed-out visitors to login", async () => {
+      await expect(assertFamilyWorkspacePageAccess()).resolves.toBeUndefined();
+      mocks.actor.mockRejectedValue(new UnauthenticatedError());
+      await expect(assertFamilyWorkspacePageAccess()).rejects.toThrow("safe-redirect");
+      expect(mocks.redirect).toHaveBeenCalledWith("/login");
+    });
+    it("singles out only a signed-in ADMIN on the invitation page", async () => {
+      expect(await isSignedInPlatformAdminViewer()).toBe(false);
+      mocks.actor.mockResolvedValue({ userId: "current", roles: [Role.ADMIN, Role.PATIENT] });
+      expect(await isSignedInPlatformAdminViewer()).toBe(true);
+      mocks.actor.mockRejectedValue(new UnauthenticatedError());
+      expect(await isSignedInPlatformAdminViewer()).toBe(false);
+      mocks.actor.mockRejectedValue(new Error("unexpected"));
+      await expect(isSignedInPlatformAdminViewer()).rejects.toThrow("unexpected");
+    });
   });
 });

@@ -9,7 +9,7 @@ import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, N
 import { FAMILY_APPOINTMENT_LATEST_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACTS, isFamilyAppointmentReadContract, olderFamilyAppointmentReadContracts } from "../domain/appointment-grant-contract";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { appointmentGrantCaregiverWhere, appointmentGrantOwnerWhere } from "../policies/appointment-grant-policy";
-import { assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
+import { assertCaregiverAcceptorIsNotPlatformAdmin, assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
 import { appointmentGrantIdSchema, proposeAppointmentGrantSchema } from "../schemas/appointment-grant-schemas";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
@@ -88,6 +88,7 @@ export async function acceptAppointmentGrant(
   actor: ActorContext | null | undefined, grantId: unknown, dependencies: AppointmentGrantDependencies = {},
 ): Promise<void> {
   assertFamilyAuthenticatedActor(actor);
+  assertCaregiverAcceptorIsNotPlatformAdmin(actor.roles);
   const parsed = appointmentGrantIdSchema.safeParse(grantId);
   if (!parsed.success) throw new NotFoundError();
   const now = appointmentGrantNow(dependencies);

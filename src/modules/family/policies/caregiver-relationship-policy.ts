@@ -5,6 +5,18 @@ import { Role } from "@prisma/client";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError } from "@/shared/errors/application-error";
 
+import { canUseFamilyWorkspace } from "../domain/family-access";
+
+/**
+ * Refused on the recipient's side only: invitation creation never reveals what kind of account a national ID has.
+ * Call after `assertFamilyAuthenticatedActor`.
+ */
+export function assertCaregiverAcceptorIsNotPlatformAdmin(roles: readonly Role[]): void {
+  if (!canUseFamilyWorkspace(roles)) {
+    throw new ForbiddenError();
+  }
+}
+
 export type FamilyPatientSelfDecision = {
   allowed: boolean;
   reason: "missing_actor" | "patient_role_required" | "authenticated_identity_required" | "patient_self";

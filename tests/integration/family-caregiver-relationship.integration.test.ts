@@ -479,6 +479,28 @@ describe("Phase 17F.1 Family caregiver relationship PostgreSQL workflow", () => 
     })).toEqual({ caregiverUserId: caregiver.userId, patientProfileId: patient.patientProfileId });
   });
 
+  it.each([
+    { label: "ADMIN-only", roles: [Role.ADMIN], sessionRoles: [Role.ADMIN] },
+    { label: "ADMIN with PATIENT", roles: [Role.ADMIN, Role.PATIENT], sessionRoles: [Role.ADMIN, Role.PATIENT] },
+    // A session resolved before the ADMIN grant still meets the persisted role inside the transaction.
+    { label: "ADMIN granted after the session", roles: [Role.ADMIN], sessionRoles: [] },
+  ])("refuses caregiver acceptance by a $label account matching the invitation (owner decision 2026-11-19)", async ({ roles, sessionRoles }) => {
+    const patient = await createPatient();
+    const admin = await createActor({ roles, nationalId: validNationalId });
+    // Creation is unchanged: the Patient learns nothing about the kind of account behind the national ID.
+    const invitation = await createCaregiverInvitation(patient.actor, { nationalId: validNationalId });
+    const auditCountBefore = await prisma.auditEvent.count({ where: { actorUserId: admin.userId } });
+
+    await expect(acceptCaregiverInvitation({ ...admin.actor, roles: sessionRoles }, invitation.plaintextToken))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    expect(await prisma.caregiverInvitation.findUniqueOrThrow({
+      where: { id: invitation.invitationId }, select: { status: true },
+    })).toEqual({ status: CaregiverInvitationStatus.PENDING });
+    expect(await prisma.caregiverRelationship.count({ where: { caregiverUserId: admin.userId } })).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { actorUserId: admin.userId } })).toBe(auditCountBefore);
+  });
+
   it("audits an ID mismatch without creating a Person, User, or relationship", async () => {
     const patient = await createPatient();
     const invitation = await createCaregiverInvitation(patient.actor, { nationalId: validNationalId });
