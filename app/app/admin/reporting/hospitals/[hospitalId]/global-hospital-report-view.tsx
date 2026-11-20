@@ -10,7 +10,8 @@ import { HospitalReportSwitcher } from "./hospital-report-switcher";
 
 function networkText(hierarchy: HospitalHierarchyContext): string {
   switch (hierarchy.classification) {
-    case "MAIN": return `แม่ข่าย · ลูกข่าย ${hierarchy.directChildCount.toLocaleString("th-TH")} แห่ง`;
+    // The report counts this Hospital only, never its Children.
+    case "MAIN": return `แม่ข่าย · ลูกข่าย ${hierarchy.directChildCount.toLocaleString("th-TH")} แห่ง · ตัวเลขเฉพาะโรงพยาบาลนี้`;
     case "SUBORDINATE": return hierarchy.parentHospital ? `ลูกข่าย · ${hierarchy.parentHospital.name}` : "ลูกข่าย";
     case "UNASSIGNED": return "ยังไม่อยู่ในเครือข่าย";
   }
@@ -38,7 +39,7 @@ export function GlobalHospitalReportView({
         actions={
           <div className="flex min-w-0 flex-wrap items-start gap-3 sm:justify-end">
             {page ? <ExportButton cohort={page.cohort} endpoint="/api/v1/admin/reporting/export" hospitalId={hospital.id} /> : null}
-            <HospitalReportSwitcher currentHospitalId={hospital.id} view={initialView} />
+            <HospitalReportSwitcher currentHospitalId={hospital.id} />
           </div>
         }
         breadcrumbs={[

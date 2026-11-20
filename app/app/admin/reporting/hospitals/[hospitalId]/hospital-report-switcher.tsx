@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { useServerSearch } from "@/components/search/use-server-search";
@@ -16,16 +16,15 @@ const SEARCH_ERROR = "ไม่สามารถค้นหาโรงพย�
 
 /**
  * Opens another Hospital's system report without going back to the directory: a name search on the server (at most
- * ten), then Enter or a click opens that Hospital's report in the same view.
+ * ten), then Enter or a click opens that Hospital's report in the view on screen (the report keeps it in `?view=`).
  */
 export function HospitalReportSwitcher({
   currentHospitalId,
-  view,
 }: {
   currentHospitalId: string;
-  view: "overview" | "service";
 }): React.JSX.Element {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -63,6 +62,7 @@ export function HospitalReportSwitcher({
 
   function openHospital(option: GlobalReportingHospitalOption): void {
     setOpen(false);
+    const view = searchParams.get("view") === "service" ? "service" : "overview";
     router.push(`${globalHospitalReportHref(option.id)}?view=${view}`);
   }
 

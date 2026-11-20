@@ -548,6 +548,16 @@ export function HospitalReportWorkspace({
   const allowProgramDetail = !isGlobalAdmin;
   const targetSelection = selection ?? { kind: "DIRECT_OWNER", hospitalId: selectedHospitalId };
 
+  // Embedded, the page around the workspace reads the view from `?view=` (the Hospital switcher keeps it). The
+  // native History API updates the URL without fetching the page again, so no report is re-read or re-audited.
+  function changeView(next: ReportView): void {
+    setView(next);
+    if (!embedded) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", next);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }
+
   return (
     <div className="content-workspace">
       {embedded ? null : (
@@ -685,7 +695,7 @@ export function HospitalReportWorkspace({
       </Form>
 
       <div className="mt-6 max-w-full overflow-x-auto pb-1">
-        <LocalNavigation ariaLabel="มุมมองรายงานโรงพยาบาล" items={REPORT_VIEWS} onChange={setView} value={view} />
+        <LocalNavigation ariaLabel="มุมมองรายงานโรงพยาบาล" items={REPORT_VIEWS} onChange={changeView} value={view} />
       </div>
 
       <section aria-labelledby={view === "overview" ? "overview-heading" : "service-heading"} className="mt-5">

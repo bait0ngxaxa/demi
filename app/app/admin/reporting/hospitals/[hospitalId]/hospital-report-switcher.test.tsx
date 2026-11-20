@@ -11,7 +11,10 @@ const mocks = vi.hoisted(() => ({
   router: { push: vi.fn<(href: string) => void>() },
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => mocks.router }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => mocks.router,
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
 vi.mock("@/modules/reporting/transport/global-reporting-search-actions", () => ({
   searchGlobalReportingHospitalsAction: mocks.search,
 }));
@@ -62,6 +65,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  window.history.replaceState(null, "", "/app/admin/reporting/hospitals/11111111-1111-4111-8111-111111111111?view=service");
   mocks.router.push.mockReset();
   mocks.search.mockReset().mockResolvedValue({
     status: "OK",
@@ -78,7 +82,7 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  act(() => root.render(createElement(HospitalReportSwitcher, { currentHospitalId: currentId, view: "service" })));
+  act(() => root.render(createElement(HospitalReportSwitcher, { currentHospitalId: currentId })));
 });
 
 afterEach(() => {
@@ -116,7 +120,7 @@ describe("Hospital report switcher", () => {
     expect(container.querySelector('[role="status"]')?.textContent).toBe("พบ 2 แห่ง");
   });
 
-  it("moves through results with the arrow keys and opens the active one with Enter in the same view", async () => {
+  it("moves through results with the arrow keys and opens the active one with Enter in the view from the URL", async () => {
     act(() => toggle().click());
     await type("บ้านนา");
 

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 import type { HospitalReportingPageProjection } from "@/modules/reporting/projections/hospital-report-projection";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/modules/reporting/transport/global-reporting-search-actions", () => ({
   searchGlobalReportingHospitalsAction: vi.fn(),
 }));
@@ -69,8 +69,10 @@ describe("Global ADMIN Hospital report page view", () => {
     expect(markup).toContain(`action="/app/admin/reporting/hospitals/${hospitalId}"`);
   });
 
-  it("names a Parent with its Child count and a Hospital outside any network", () => {
-    expect(render(hierarchy(HospitalStatus.ACTIVE, "MAIN"), page)).toContain("แม่ข่าย · ลูกข่าย 4 แห่ง");
+  it("names a Parent with its Child count, says the numbers are this Hospital's only, and names a Hospital outside any network", () => {
+    // The Parent's report never includes its Children, so the Child count must not read as part of the totals.
+    expect(render(hierarchy(HospitalStatus.ACTIVE, "MAIN"), page)).toContain("แม่ข่าย · ลูกข่าย 4 แห่ง · ตัวเลขเฉพาะโรงพยาบาลนี้");
+    expect(render(hierarchy(HospitalStatus.ACTIVE, "SUBORDINATE"), page)).not.toContain("ตัวเลขเฉพาะ");
     expect(render(hierarchy(HospitalStatus.ACTIVE, "UNASSIGNED"), page)).toContain("ยังไม่อยู่ในเครือข่าย");
   });
 
