@@ -176,7 +176,7 @@ export default async function HospitalNetworkPage({
               </ul>
             )}
             {selected.hasMoreCandidates ? (
-              <p className="mt-3 text-sm text-text-muted">แสดงบางส่วน พิมพ์ชื่อหรือรหัสเพื่อค้นหาให้แคบลง</p>
+              <p className="mt-3 text-sm text-text-muted">แสดงบางส่วน พิมพ์ชื่อเพื่อค้นหาให้แคบลง</p>
             ) : null}
           </section>
         </>

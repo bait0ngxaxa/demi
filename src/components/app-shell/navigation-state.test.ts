@@ -12,6 +12,9 @@ describe("workspace context presentation", () => {
     const item = { href: "/app/admin/hospitals", label: "โรงพยาบาล", match: "prefix" as const };
     expect(isNavigationItemActive("/app/admin/hospitals/H", item)).toBe(true);
     expect(isNavigationItemActive("/app/admin/hospitals-other", item)).toBe(false);
+    // A Hospital's system report page keeps "รายงานระบบ" current.
+    const reporting = { href: "/app/admin/reporting", label: "รายงานระบบ", match: "prefix" as const };
+    expect(isNavigationItemActive("/app/admin/reporting/hospitals/11111111-1111-4111-8111-111111111111", reporting)).toBe(true);
     expect(isNavigationItemActive("/app/personal", { href: "/app", label: "งาน", match: "exact" })).toBe(false);
     expect(getWorkspaceContextForPathname("/app/personal-other")).toBeNull();
   });
@@ -21,6 +24,7 @@ describe("workspace context presentation", () => {
     expect(getWorkspaceContextForPathname("/app")).toBe("work");
     expect(getWorkspaceContextForPathname("/app/patients/assigned")).toBe("work");
     expect(getWorkspaceContextForPathname("/app/admin/reporting")).toBe("work");
+    expect(getWorkspaceContextForPathname("/app/admin/reporting/hospitals/H")).toBe("work");
     expect(getWorkspaceContextForPathname("/app/hospitals/reporting")).toBe("work");
     expect(getWorkspaceContextForPathname("/app/workforce")).toBe("work");
     expect(getWorkspaceContextForPathname("/app/family")).toBeNull();

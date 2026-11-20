@@ -1,5 +1,6 @@
 import "server-only";
 
+import { HospitalStatus } from "@prisma/client";
 import { notFound, redirect } from "next/navigation";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
@@ -7,7 +8,6 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   getHospitalHierarchyContext,
   type HospitalHierarchyContext,
-  type HospitalHierarchyUnit,
 } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 import {
   ForbiddenError,
@@ -27,18 +27,18 @@ import {
   recordGlobalReportingAudit,
   resolveGlobalReportingAccessContext,
 } from "../services/global-reporting-access-service";
-import {
-  getGlobalReportingDirectory,
-  getGlobalReportingHospitalById,
-} from "../services/global-reporting-service";
+import { getGlobalReportingDirectory } from "../services/global-reporting-service";
 import { getGlobalAdminHospitalReportingPage } from "../services/hospital-report-query-service";
 
-export type GlobalReportingPageContext = {
+/** The system report directory: the organisation summary and every Hospital to choose from. */
+export type GlobalReportingDirectoryPageContext = {
   directory: GlobalReportingDirectory;
-  selectedHospital: HospitalHierarchyUnit | null;
-  hierarchy: HospitalHierarchyContext | null;
+};
+
+/** One Hospital's system report page; `page` is null unless the Hospital is ACTIVE. */
+export type GlobalHospitalReportPageContext = {
+  hierarchy: HospitalHierarchyContext;
   page: HospitalReportingPageProjection | null;
-  selectedHospitalId: string | null;
 };
 
 async function resolveActor(): Promise<ActorContext> {
@@ -77,83 +77,84 @@ async function denyAndHide(
   throw error;
 }
 
-export async function getGlobalReportingPageContext(input: {
-  hospitalId?: string;
-  search?: string;
-  progress?: string;
-  status?: string;
-  cursor?: string;
-  pageSize?: number;
-}): Promise<GlobalReportingPageContext> {
-  const actor = await resolveActor();
+async function assertWorkspaceAccess(actor: ActorContext): Promise<void> {
   try {
     await resolveGlobalReportingAccessContext(actor, GLOBAL_REPORTING_CAPABILITIES.workspaceRead);
   } catch (error: unknown) {
     await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.workspaceRead, error);
   }
+}
+
+/** The directory page reads the directory only; a Hospital's report has its own page. */
+export async function getGlobalReportingDirectoryPageContext(): Promise<GlobalReportingDirectoryPageContext> {
+  const actor = await resolveActor();
+  await assertWorkspaceAccess(actor);
 
   const directory = await getGlobalReportingDirectory(actor);
-  if (input.hospitalId === undefined) {
-    if (input.cursor !== undefined || input.pageSize !== undefined) {
-      await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.workspaceRead, new NotFoundError());
-    }
-    await recordGlobalReportingAudit({
-      actorUserId: actor.userId,
-      capability: GLOBAL_REPORTING_CAPABILITIES.workspaceRead,
-      outcome: "read",
-    });
-    return {
-      directory,
-      selectedHospital: null,
-      hierarchy: null,
-      page: null,
-      selectedHospitalId: null,
-    };
-  }
+  await recordGlobalReportingAudit({
+    actorUserId: actor.userId,
+    capability: GLOBAL_REPORTING_CAPABILITIES.workspaceRead,
+    outcome: "read",
+  });
+  return { directory };
+}
+
+/**
+ * One Hospital's report without the directory: no directory read and no directoryRead audit. A RETIRED Hospital is
+ * hidden as before (the directory never listed it); a Hospital that is not ACTIVE shows its status only, and that view
+ * is audited as a workspace read of the Hospital.
+ */
+export async function getGlobalHospitalReportPageContext(input: {
+  hospitalId: string;
+  search?: string;
+  progress?: string;
+  status?: string;
+  cursor?: string;
+  pageSize?: number;
+}): Promise<GlobalHospitalReportPageContext> {
+  const actor = await resolveActor();
+  await assertWorkspaceAccess(actor);
 
   const parsedHospitalId = hospitalReportHospitalIdSchema.safeParse(input.hospitalId);
   if (!parsedHospitalId.success) {
     await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.workspaceRead, new NotFoundError());
     throw new NotFoundError();
   }
-  const selectedHospitalId = parsedHospitalId.data;
-  const selectedHospital = getGlobalReportingHospitalById(directory, selectedHospitalId);
-  if (!selectedHospital) {
-    await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.workspaceRead, new NotFoundError(), selectedHospitalId);
-    throw new NotFoundError();
-  }
+  const hospitalId = parsedHospitalId.data;
 
   let hierarchy: HospitalHierarchyContext;
   try {
-    hierarchy = await getHospitalHierarchyContext(actor, selectedHospitalId);
+    hierarchy = await getHospitalHierarchyContext(actor, hospitalId);
   } catch (error: unknown) {
-    await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.workspaceRead, error, selectedHospitalId);
+    await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.workspaceRead, error, hospitalId);
     throw error;
   }
+  // Phase N1: a RETIRED Hospital was withdrawn before it was ever used; reports leave it out.
+  if (hierarchy.hospital.status === HospitalStatus.RETIRED) {
+    await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.workspaceRead, new NotFoundError(), hospitalId);
+    throw new NotFoundError();
+  }
 
-  if (selectedHospital.status !== "ACTIVE") {
+  if (hierarchy.hospital.status !== HospitalStatus.ACTIVE) {
     if (input.cursor !== undefined || input.pageSize !== undefined) {
-      await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.hospitalRead, new NotFoundError(), selectedHospitalId);
+      await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.hospitalRead, new NotFoundError(), hospitalId);
     }
     try {
-      await resolveGlobalReportingAccessContext(
-        actor,
-        GLOBAL_REPORTING_CAPABILITIES.directoryRead,
-      );
+      await resolveGlobalReportingAccessContext(actor, GLOBAL_REPORTING_CAPABILITIES.directoryRead);
     } catch (error: unknown) {
-      await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.directoryRead, error, selectedHospitalId);
+      await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.directoryRead, error, hospitalId);
     }
-    return {
-      directory,
-      selectedHospital,
-      hierarchy,
-      page: null,
-      selectedHospitalId,
-    };
+    await recordGlobalReportingAudit({
+      actorUserId: actor.userId,
+      capability: GLOBAL_REPORTING_CAPABILITIES.workspaceRead,
+      hospitalId,
+      outcome: "read",
+    });
+    return { hierarchy, page: null };
   }
 
   const parsedRequest = hospitalReportPageRequestSchema.safeParse({
-    hospitalId: selectedHospitalId,
+    hospitalId,
     search: input.search,
     progress: input.progress,
     status: input.status,
@@ -161,7 +162,7 @@ export async function getGlobalReportingPageContext(input: {
     pageSize: input.pageSize,
   });
   if (!parsedRequest.success) {
-    await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.hospitalRead, new NotFoundError(), selectedHospitalId);
+    await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.hospitalRead, new NotFoundError(), hospitalId);
     throw new NotFoundError();
   }
 
@@ -171,25 +172,19 @@ export async function getGlobalReportingPageContext(input: {
     await resolveGlobalReportingAccessContext(
       actor,
       GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
-      selectedHospitalId,
+      hospitalId,
     );
   } catch (error: unknown) {
-    await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.hospitalRead, error, selectedHospitalId);
+    await denyAndHide(actor, GLOBAL_REPORTING_CAPABILITIES.hospitalRead, error, hospitalId);
     throw error;
   }
 
   await recordGlobalReportingAudit({
     actorUserId: actor.userId,
     capability: GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
-    hospitalId: selectedHospitalId,
+    hospitalId,
     outcome: "read",
   });
 
-  return {
-    directory,
-    selectedHospital,
-    hierarchy,
-    page,
-    selectedHospitalId,
-  };
+  return { hierarchy, page };
 }

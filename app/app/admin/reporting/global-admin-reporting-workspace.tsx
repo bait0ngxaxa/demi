@@ -1,48 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
-import { Alert } from "@/components/ui/alert";
+import { ChevronGlyph } from "@/components/ui/glyphs";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
-import type {
-  HospitalHierarchyUnit,
-  HospitalHierarchyContext,
-} from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
-import type { HospitalReportingPageProjection } from "@/modules/reporting/projections/hospital-report-projection";
+import { StatusBadge } from "@/components/ui/status-badge";
+import type { HospitalHierarchyUnit } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 import type { GlobalReportingDirectory } from "@/modules/reporting/projections/global-reporting-projection";
+import { HOSPITAL_SEARCH_MAX_LENGTH } from "@/shared/search/hospital-search";
 
-import { HospitalReportWorkspace } from "../../hospitals/reporting/hospital-report-workspace";
+import {
+  globalHospitalReportHref,
+  hospitalStatusLabel,
+  hospitalStatusVariant,
+  parseHospitalStatusFilter,
+  type HospitalStatusFilter,
+} from "./hospital-status";
 
-type StatusFilter = "ALL" | HospitalHierarchyUnit["status"];
-
-function statusLabel(status: HospitalHierarchyUnit["status"]): string {
-  switch (status) {
-    case "ACTIVE": return "ใช้งานอยู่";
-    case "SUSPENDED": return "ระงับการใช้งาน";
-    case "PENDING_VERIFICATION": return "รอยืนยันการขึ้นทะเบียน";
-    case "RETIRED": return "ถอนออกจากรายชื่อ";
-  }
-}
-
-function statusVariant(status: HospitalHierarchyUnit["status"]): StatusVariant {
-  switch (status) {
-    case "ACTIVE": return "success";
-    case "SUSPENDED": return "danger";
-    case "PENDING_VERIFICATION": return "warning";
-    case "RETIRED": return "neutral";
-  }
-}
-
-function classificationLabel(classification: HospitalHierarchyContext["classification"]): string {
-  switch (classification) {
-    case "MAIN": return "โรงพยาบาลแม่ข่าย";
-    case "SUBORDINATE": return "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ";
-    case "UNASSIGNED": return "ยังไม่อยู่ในเครือข่าย";
-  }
-}
+const URL_SYNC_DELAY_MS = 300;
 
 function normalizeSearch(value: string): string {
   return value.normalize("NFC").toLocaleLowerCase("th-TH");
@@ -51,72 +29,66 @@ function normalizeSearch(value: string): string {
 function matchesHospital(
   hospital: HospitalHierarchyUnit,
   query: string,
-  statusFilter: StatusFilter,
+  statusFilter: HospitalStatusFilter,
 ): boolean {
   if (statusFilter !== "ALL" && hospital.status !== statusFilter) return false;
   if (!query) return true;
   return normalizeSearch(hospital.name).includes(query);
 }
 
-function HospitalAction({
-  hospital,
-  selectedHospitalId,
-}: {
-  hospital: HospitalHierarchyUnit;
-  selectedHospitalId: string | null;
-}): React.JSX.Element {
-  const isCurrent = selectedHospitalId === hospital.id;
-  return (
-    <Link
-      aria-current={isCurrent ? "page" : undefined}
-      className="min-h-11 rounded-control px-3 py-2 text-sm font-semibold text-brand-strong underline-offset-4 hover:bg-brand-soft hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-      href={`/app/admin/reporting?hospitalId=${encodeURIComponent(hospital.id)}`}
-      prefetch={false}
-    >
-      {hospital.status === "ACTIVE" ? "เปิดรายงานเฉพาะแห่ง" : "ดูสถานะและเหตุผลที่รายงานยังไม่พร้อม"}
-    </Link>
-  );
+/**
+ * Keeps `?q=` and `?hospitalStatus=` in step with the filters without a navigation: the native History API keeps the
+ * Next.js router in sync, so returning from a Hospital report restores the filters while the directory is not read
+ * again on every keystroke.
+ */
+function useDirectoryUrlSync(search: string, statusFilter: HospitalStatusFilter): void {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const query = search.trim();
+      if (query) params.set("q", query);
+      else params.delete("q");
+      if (statusFilter === "ALL") params.delete("hospitalStatus");
+      else params.set("hospitalStatus", statusFilter);
+      const nextSearch = params.toString();
+      const next = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`;
+      if (next !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(null, "", next);
+    }, URL_SYNC_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [search, statusFilter]);
 }
 
-function HospitalIdentity({
+/** The Hospital name is the row's link; the link's area covers the whole row. */
+function HospitalRow({
   hospital,
   label,
+  detail,
 }: {
   hospital: HospitalHierarchyUnit;
   label: string;
+  detail?: string;
 }): React.JSX.Element {
   return (
-    <div className="min-w-0">
-      <p className="text-xs font-medium text-text-muted">{label}</p>
-      <p className="mt-1 break-words font-semibold text-text">{hospital.name}</p>
-    </div>
-  );
-}
-
-function DirectoryUnitRow({
-  hospital,
-  parentHospital,
-  selectedHospitalId,
-}: {
-  hospital: HospitalHierarchyUnit;
-  parentHospital: HospitalHierarchyUnit | null;
-  selectedHospitalId: string | null;
-}): React.JSX.Element {
-  return (
-    <li className="flex min-w-0 flex-col gap-2 border-t border-border py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between">
+    <div className="relative flex min-w-0 flex-col gap-2 -mx-2 rounded-control px-2 py-3 sm:flex-row sm:items-center sm:justify-between has-[a:hover]:bg-brand-soft">
       <div className="min-w-0">
-        <HospitalIdentity hospital={hospital} label="โรงพยาบาลลูกข่าย / รพ.สต. / หน่วยบริการในเครือ" />
-        {parentHospital ? (
-          <p className="mt-1 break-words text-sm text-text-muted">
-            แม่ข่าย {parentHospital.name}
-          </p>
-        ) : null}
+        <p className="text-xs font-medium text-text-muted">{label}</p>
+        <Link
+          className="mt-0.5 inline-flex min-h-11 items-center break-words font-semibold text-text underline-offset-4 after:absolute after:inset-0 after:rounded-control after:content-[''] hover:text-brand-strong hover:underline focus-visible:outline-none focus-visible:after:ring-4 focus-visible:after:ring-focus-ring"
+          href={globalHospitalReportHref(hospital.id)}
+          prefetch={false}
+        >
+          {hospital.name}
+        </Link>
+        {detail ? <p className="break-words text-sm text-text-muted">{detail}</p> : null}
       </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0">
-        <StatusBadge variant={statusVariant(hospital.status)}>{statusLabel(hospital.status)}</StatusBadge>
-        <HospitalAction hospital={hospital} selectedHospitalId={selectedHospitalId} />
+      <div className="flex min-w-0 flex-wrap items-center gap-3 sm:shrink-0">
+        <StatusBadge variant={hospitalStatusVariant(hospital.status)}>{hospitalStatusLabel(hospital.status)}</StatusBadge>
+        <span aria-hidden="true" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-strong">
+          {hospital.status === "ACTIVE" ? "เปิดรายงาน" : "ดูสถานะ"}
+          <ChevronGlyph direction="right" className="size-4" />
+        </span>
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -137,13 +109,16 @@ function SummaryValue({
 
 function GlobalHospitalDirectory({
   directory,
-  selectedHospitalId,
 }: {
   directory: GlobalReportingDirectory;
-  selectedHospitalId: string | null;
 }): React.JSX.Element {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  // The URL is the source of the initial filters, including after Back restores this page from the router cache.
+  const searchParams = useSearchParams();
+  const [search, setSearch] = useState(() => (searchParams.get("q") ?? "").slice(0, HOSPITAL_SEARCH_MAX_LENGTH));
+  const [statusFilter, setStatusFilter] = useState<HospitalStatusFilter>(
+    () => parseHospitalStatusFilter(searchParams.get("hospitalStatus")) ?? "ALL",
+  );
+  useDirectoryUrlSync(search, statusFilter);
   const query = normalizeSearch(search.trim());
 
   const visibleGroups = useMemo(() => directory.hierarchy.groups.flatMap((group) => {
@@ -188,8 +163,9 @@ function GlobalHospitalDirectory({
             autoComplete="off"
             className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             id="global-hospital-search"
+            maxLength={HOSPITAL_SEARCH_MAX_LENGTH}
             onChange={(event) => setSearch(event.currentTarget.value)}
-            placeholder="พิมพ์ชื่อหรือรหัส"
+            placeholder="พิมพ์ชื่อโรงพยาบาล"
             type="search"
             value={search}
           />
@@ -199,7 +175,7 @@ function GlobalHospitalDirectory({
           <select
             className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             id="global-hospital-status"
-            onChange={(event) => setStatusFilter(event.currentTarget.value as StatusFilter)}
+            onChange={(event) => setStatusFilter(parseHospitalStatusFilter(event.currentTarget.value) ?? "ALL")}
             value={statusFilter}
           >
             <option value="ALL">ทุกสถานะ</option>
@@ -218,49 +194,45 @@ function GlobalHospitalDirectory({
       ) : visibleCount === 0 ? (
         <Panel className="mt-5 border-dashed text-center">
           <p className="font-semibold text-text">ไม่พบโรงพยาบาลตามเงื่อนไขนี้</p>
-          <p className="mt-2 text-sm leading-6 text-text-muted">ลองค้นหาด้วยชื่อหรือรหัสอื่น หรือเลือกทุกสถานะ</p>
+          <p className="mt-2 text-sm leading-6 text-text-muted">ลองค้นหาด้วยชื่ออื่น หรือเลือกทุกสถานะ</p>
         </Panel>
       ) : (
         <ul className="mt-5 grid min-w-0 gap-4">
           {visibleGroups.map(({ mainHospital, directChildren, visibleChildren, showMainAsResult }) => (
             <li className="min-w-0" key={mainHospital.id}>
-              <section className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
-                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <HospitalIdentity
-                      hospital={mainHospital}
-                      label={showMainAsResult ? "โรงพยาบาลแม่ข่าย" : "แม่ข่ายของหน่วยที่ตรงกับคำค้น"}
-                    />
-                    <p className="mt-2 text-sm text-text-muted">
-                      โรงพยาบาลลูกข่ายโดยตรง {directChildren.length.toLocaleString("th-TH")} แห่ง
-                    </p>
+              <section className="min-w-0 rounded-panel border border-border bg-surface px-4 py-2 sm:px-5 sm:py-3">
+                {showMainAsResult ? (
+                  <HospitalRow
+                    detail={`โรงพยาบาลลูกข่ายโดยตรง ${directChildren.length.toLocaleString("th-TH")} แห่ง`}
+                    hospital={mainHospital}
+                    label="โรงพยาบาลแม่ข่าย"
+                  />
+                ) : (
+                  <div className="min-w-0 py-3">
+                    <p className="text-xs font-medium text-text-muted">แม่ข่ายของหน่วยที่ตรงกับคำค้น</p>
+                    <p className="mt-1 break-words font-semibold text-text">{mainHospital.name}</p>
                   </div>
-                  {showMainAsResult ? (
-                    <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-                      <StatusBadge variant={statusVariant(mainHospital.status)}>{statusLabel(mainHospital.status)}</StatusBadge>
-                      <HospitalAction hospital={mainHospital} selectedHospitalId={selectedHospitalId} />
-                    </div>
-                  ) : null}
-                </div>
+                )}
 
                 {visibleChildren.length > 0 ? (
-                  <details className="mt-4 border-t border-border pt-3" open={Boolean(query)}>
+                  <details className="mb-1 border-t border-border pt-2" open={Boolean(query)}>
                     <summary className="flex min-h-11 cursor-pointer items-center rounded-control text-sm font-semibold text-brand-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
                       ดูรายชื่อโรงพยาบาลลูกข่าย {visibleChildren.length.toLocaleString("th-TH")} แห่ง
                     </summary>
-                    <ul className="mt-2 divide-y divide-border">
+                    <ul className="mt-1 divide-y divide-border">
                       {visibleChildren.map((hospital) => (
-                        <DirectoryUnitRow
-                          hospital={hospital}
-                          key={hospital.id}
-                          parentHospital={mainHospital}
-                          selectedHospitalId={selectedHospitalId}
-                        />
+                        <li className="min-w-0" key={hospital.id}>
+                          <HospitalRow
+                            detail={`แม่ข่าย ${mainHospital.name}`}
+                            hospital={hospital}
+                            label="โรงพยาบาลลูกข่าย / รพ.สต. / หน่วยบริการในเครือ"
+                          />
+                        </li>
                       ))}
                     </ul>
                   </details>
                 ) : showMainAsResult ? (
-                  <p className="mt-3 border-t border-border pt-3 text-sm text-text-muted">ไม่มีโรงพยาบาลลูกข่ายตรงตามตัวกรองนี้</p>
+                  <p className="mb-2 border-t border-border pt-3 text-sm text-text-muted">ไม่มีโรงพยาบาลลูกข่ายตรงตามตัวกรองนี้</p>
                 ) : null}
               </section>
             </li>
@@ -278,14 +250,8 @@ function GlobalHospitalDirectory({
           </p>
           <ul className="mt-3 divide-y divide-border rounded-panel border border-border bg-surface px-4 sm:px-5">
             {visibleOutsideNetwork.map((hospital) => (
-              <li className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between" key={hospital.id}>
-                <div className="min-w-0">
-                  <HospitalIdentity hospital={hospital} label="ยังไม่อยู่ในเครือข่าย" />
-                </div>
-                <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0">
-                  <StatusBadge variant={statusVariant(hospital.status)}>{statusLabel(hospital.status)}</StatusBadge>
-                  <HospitalAction hospital={hospital} selectedHospitalId={selectedHospitalId} />
-                </div>
+              <li className="min-w-0" key={hospital.id}>
+                <HospitalRow hospital={hospital} label="ยังไม่อยู่ในเครือข่าย" />
               </li>
             ))}
           </ul>
@@ -295,29 +261,19 @@ function GlobalHospitalDirectory({
   );
 }
 
+/** The system report directory: the organisation summary, then every Hospital; each opens its own report page. */
 export function GlobalAdminReportingWorkspace({
   directory,
-  selectedHospital,
-  hierarchy,
-  page,
-  selectedHospitalId,
-  initialView,
 }: {
   directory: GlobalReportingDirectory;
-  selectedHospital: HospitalHierarchyUnit | null;
-  hierarchy: HospitalHierarchyContext | null;
-  page: HospitalReportingPageProjection | null;
-  selectedHospitalId: string | null;
-  initialView: "overview" | "service";
 }): React.JSX.Element {
   const summary = directory.hierarchy;
 
   return (
     <div className="min-w-0">
       <PageHeader
-        breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ผู้ดูแลระบบ DEMI" }, { label: "รายงานระบบ" }]}
-        description="รายงานของโรงพยาบาลที่เลือก ไม่รวมแม่ข่ายหรือลูกข่าย"
-        title="รายงานสำหรับผู้ดูแลระบบ DEMI"
+        breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ" }]}
+        title="รายงานระบบ"
       />
 
       <section aria-labelledby="global-reporting-organization-heading" className="mt-7">
@@ -339,41 +295,7 @@ export function GlobalAdminReportingWorkspace({
         </Panel>
       </section>
 
-      <GlobalHospitalDirectory directory={directory} selectedHospitalId={selectedHospitalId} />
-
-      {selectedHospital && hierarchy ? (
-        <section aria-labelledby="selected-global-hospital-heading" className="mt-9 border-t border-border pt-7">
-          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="selected-global-hospital-heading">
-            {selectedHospital.name}
-          </h2>
-          <p className="mt-1 break-words text-sm text-text-muted">
-            {classificationLabel(hierarchy.classification)}
-          </p>
-          {selectedHospital.status !== "ACTIVE" ? (
-            <Alert className="mt-4" variant={selectedHospital.status === "SUSPENDED" ? "warning" : "info"}>
-              <p className="font-semibold">รายงานผู้ป่วยและโปรแกรมยังไม่พร้อมใช้งาน</p>
-              <p className="mt-1 text-sm leading-6">
-                สถานะปัจจุบัน: {statusLabel(selectedHospital.status)} ไม่มีการโหลดหรือแสดงค่ารายงานเป็นศูนย์
-              </p>
-            </Alert>
-          ) : page ? (
-            <HospitalReportWorkspace
-              audience="GLOBAL_ADMIN"
-            key={`${selectedHospital.id}:${initialView}`}
-              hospitals={[{
-                id: selectedHospital.id,
-                hospitalCode: selectedHospital.hospitalCode,
-                name: selectedHospital.name,
-                status: selectedHospital.status,
-              }]}
-              hierarchy={hierarchy}
-              initialView={initialView}
-              page={page}
-              selectedHospitalId={selectedHospital.id}
-            />
-          ) : null}
-        </section>
-      ) : null}
+      <GlobalHospitalDirectory directory={directory} />
     </div>
   );
 }

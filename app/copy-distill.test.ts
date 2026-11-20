@@ -85,6 +85,8 @@ function violations(source: string, filename: string, banned: readonly BannedPhr
 const HOSPITAL_CODE_PHRASES: readonly BannedPhrase[] = [
   { phrase: "รหัสโรงพยาบาล", rule: "Hospital codes are internal", pattern: /รหัสโรงพยาบาล/u, thaiOnly: false },
   { phrase: "รหัสหน่วยบริการ", rule: "Hospital codes are internal", pattern: /รหัสหน่วยบริการ/u, thaiOnly: false },
+  // A name search never matches a Hospital code, so "ชื่อหรือรหัส" placeholders and hints must not return.
+  { phrase: "ชื่อหรือรหัส", rule: "Hospital codes are internal", pattern: /ชื่อหรือรหัส/u, thaiOnly: true },
 ];
 
 /** `.hospitalCode` read inside a JSX child expression (rendered), not inside an attribute value. */
@@ -163,7 +165,7 @@ describe("COPY-DISTILL copy guard", () => {
       const filename = relative(process.cwd(), path).replaceAll("\\", "/");
       const source = readFileSync(path, "utf8");
       // Only a file containing one of these strings can violate the rule, so the rest are not parsed.
-      if (!/hospitalCode|รหัสโรงพยาบาล|รหัสหน่วยบริการ/u.test(source)) return [];
+      if (!/hospitalCode|รหัสโรงพยาบาล|รหัสหน่วยบริการ|ชื่อหรือรหัส/u.test(source)) return [];
       return [...violations(source, filename, HOSPITAL_CODE_PHRASES), ...renderedHospitalCodes(source, filename)];
     });
     expect(found).toEqual([]);
