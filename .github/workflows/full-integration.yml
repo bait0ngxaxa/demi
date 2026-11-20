@@ -148,6 +148,11 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
+      # Before the container is removed: lock waits and slow statements logged by PostgreSQL explain a stall.
+      - name: PostgreSQL server log on failure
+        if: ${{ failure() && steps.tests.outcome == 'failure' }}
+        run: npm run test:db:logs
+
       - name: Stop disposable PostgreSQL
         if: ${{ always() }}
         run: npm run test:db:down
