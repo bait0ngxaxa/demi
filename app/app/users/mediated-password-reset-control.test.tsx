@@ -15,6 +15,14 @@ let root: Root;
 let originalLocationDescriptor: PropertyDescriptor | undefined;
 const copy = vi.fn();
 const share = vi.fn();
+const canShare = vi.fn();
+const qrDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=";
+const onlineResult = {
+  status: "ISSUED",
+  mode: "ONLINE",
+  handoffUrl: "https://demi.example/recover#synthetic-token",
+  expiresAt: "2026-10-23T03:00:00.000Z",
+} as const;
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -30,10 +38,11 @@ beforeAll(() => {
 
 beforeEach(() => {
   mocks.issue.mockReset();
-  mocks.qr.mockReset().mockResolvedValue("data:image/png;base64,rec1-test");
+  mocks.qr.mockReset().mockResolvedValue(qrDataUrl);
   mocks.locationReplace.mockReset();
   copy.mockReset().mockResolvedValue(undefined);
   share.mockReset().mockResolvedValue(undefined);
+  canShare.mockReset().mockReturnValue(false);
   vi.stubGlobal("navigator", Object.assign(Object.create(navigator), {
     clipboard: { writeText: copy },
     share,
@@ -50,6 +59,7 @@ afterEach(() => {
   container.remove();
   if (originalLocationDescriptor) Object.defineProperty(window, "location", originalLocationDescriptor);
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 async function renderControl(
@@ -80,6 +90,26 @@ async function submitForm(): Promise<void> {
     if (!button) throw new Error("Missing issue button");
     button.click();
   });
+}
+
+function findButton(label: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === label);
+}
+
+function getButton(label: string): HTMLButtonElement {
+  const button = findButton(label);
+  if (!button) throw new Error(`Missing button: ${label}`);
+  return button;
+}
+
+async function issueOnline(): Promise<void> {
+  click('input[name="mode"][value="ONLINE"]');
+  await submitForm();
+}
+
+function enableFileShare(): void {
+  Object.defineProperty(navigator, "canShare", { value: canShare });
+  canShare.mockReturnValue(true);
 }
 
 describe("OWNER/ADMIN-mediated password reset handoff", () => {
@@ -178,12 +208,11 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     expect(container.querySelector("footer")?.textContent).toBe("เสร็จสิ้น");
     expect(container.querySelector("form")).toBeNull();
     expect(document.activeElement).toBe(container.querySelector("header h2"));
-    const handoffButtons = container.querySelectorAll<HTMLButtonElement>('dialog [role="status"] button');
     expect(copy).not.toHaveBeenCalled();
     expect(share).not.toHaveBeenCalled();
-    await act(async () => handoffButtons[0]?.click());
+    await act(async () => getButton("คัดลอกลิงก์").click());
     expect(copy).toHaveBeenCalledWith(handoffUrl);
-    await act(async () => handoffButtons[1]?.click());
+    await act(async () => getButton("แชร์ลิงก์").click());
     expect(share).toHaveBeenCalledWith(expect.objectContaining({ url: handoffUrl }));
 
     click("footer button");
@@ -233,6 +262,8 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     expect(mocks.locationReplace).toHaveBeenCalledOnce();
     expect(mocks.locationReplace).toHaveBeenCalledWith(`https://demi.example/recover#${"y".repeat(43)}`);
     expect(mocks.qr).not.toHaveBeenCalled();
+    expect(findButton("บันทึกรูป QR Code")).toBeUndefined();
+    expect(findButton("แชร์รูป QR Code")).toBeUndefined();
     expect(container.querySelector('a[href*="/recover#"]')).toBeNull();
     expect(container.querySelector("input[readonly]")).toBeNull();
     expect(container.textContent).not.toContain("คัดลอกลิงก์");
@@ -248,5 +279,107 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     })));
     expect(container.textContent).toContain("ต้องให้ผู้ดูแลระบบ DEMI ดำเนินการ");
     expect(container.querySelector("button")).toBeNull();
+  });
+});
+
+describe("ONLINE password recovery QR actions", () => {
+  beforeEach(async () => {
+    mocks.issue.mockResolvedValue(onlineResult);
+    await renderControl();
+    click("button");
+  });
+
+  it("downloads the generated PNG exactly once per click with a fixed filename after the QR is ready", async () => {
+    const pending = Promise.withResolvers<string>();
+    mocks.qr.mockReturnValue(pending.promise);
+    const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.isConnected).toBe(true);
+      expect(this.download).toBe("demi-password-reset-qr.png");
+      expect(this.href).toBe(qrDataUrl);
+    });
+    expect(findButton("บันทึกรูป QR Code")).toBeUndefined();
+    await issueOnline();
+
+    const save = getButton("บันทึกรูป QR Code");
+    expect(save.disabled).toBe(true);
+    save.focus();
+    expect(document.activeElement).not.toBe(save);
+    act(() => save.click());
+    expect(download).not.toHaveBeenCalled();
+
+    await act(async () => pending.resolve(qrDataUrl));
+    expect(save.disabled).toBe(false);
+    save.focus();
+    expect(document.activeElement).toBe(save);
+    act(() => save.click());
+    expect(download).toHaveBeenCalledOnce();
+    expect(container.querySelector("a[download]")).toBeNull();
+    expect(mocks.issue).toHaveBeenCalledOnce();
+    expect(mocks.qr).toHaveBeenCalledExactlyOnceWith(onlineResult.handoffUrl, { width: 240, margin: 2, errorCorrectionLevel: "M" });
+  });
+
+  it.each(["rejected", "invalid"] as const)("keeps link actions usable when the PNG is %s", async (outcome) => {
+    if (outcome === "rejected") mocks.qr.mockRejectedValue(new Error("QR generation failed"));
+    else mocks.qr.mockResolvedValue("data:image/png;base64,AA==");
+    await issueOnline();
+
+    expect(getButton("บันทึกรูป QR Code").disabled).toBe(true);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("ไม่สามารถสร้างรูป QR Code ได้ กรุณาใช้ปุ่มคัดลอกลิงก์แทน");
+    await act(async () => getButton("คัดลอกลิงก์").click());
+    expect(copy).toHaveBeenCalledExactlyOnceWith(onlineResult.handoffUrl);
+  });
+
+  it("shares only the PNG file with its safe name, and treats cancellation as a neutral outcome", async () => {
+    enableFileShare();
+    share.mockRejectedValueOnce(new DOMException("Share cancelled", "AbortError"));
+    await issueOnline();
+    expect(share).not.toHaveBeenCalled();
+    const shareImage = getButton("แชร์รูป QR Code");
+    await act(async () => shareImage.click());
+    const file: unknown = share.mock.calls[0]?.[0].files[0];
+    expect(file).toBeInstanceOf(File);
+    expect(file).toMatchObject({ type: "image/png", name: "demi-password-reset-qr.png" });
+    expect(canShare).toHaveBeenCalledExactlyOnceWith({ files: [file] });
+    expect(share).toHaveBeenCalledExactlyOnceWith({ title: "QR Code สำหรับรีเซ็ตรหัสผ่าน DEMI", files: [file] });
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(shareImage.disabled).toBe(false);
+    expect(mocks.issue).toHaveBeenCalledOnce();
+
+    share.mockRejectedValueOnce(new DOMException("Share unavailable", "NotAllowedError"));
+    await act(async () => shareImage.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("แชร์รูป QR Code ไม่สำเร็จ");
+    expect(getButton("บันทึกรูป QR Code").disabled).toBe(false);
+  });
+
+  it("keeps download and existing link sharing when canShare rejects files", async () => {
+    Object.defineProperty(navigator, "canShare", { value: canShare });
+    await issueOnline();
+    expect(findButton("แชร์รูป QR Code")).toBeUndefined();
+    expect(getButton("บันทึกรูป QR Code").disabled).toBe(false);
+    await act(async () => getButton("แชร์ลิงก์").click());
+    expect(share).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: onlineResult.handoffUrl }));
+  });
+
+  it("ignores an old QR promise after close and reissuance, with link share still falling back to copy", async () => {
+    const oldQr = Promise.withResolvers<string>();
+    const currentQr = Promise.withResolvers<string>();
+    mocks.qr.mockReturnValueOnce(oldQr.promise).mockReturnValueOnce(currentQr.promise);
+    Object.defineProperty(navigator, "share", { value: undefined });
+    await issueOnline();
+    click("footer button");
+    click("button");
+    expect(findButton("บันทึกรูป QR Code")).toBeUndefined();
+
+    mocks.issue.mockResolvedValue({ ...onlineResult, handoffUrl: "https://demi.example/recover#synthetic-new-token" });
+    await submitForm();
+    await act(async () => oldQr.resolve(qrDataUrl));
+    expect(getButton("บันทึกรูป QR Code").disabled).toBe(true);
+    expect(container.querySelector("img")).toBeNull();
+    await act(async () => currentQr.resolve(qrDataUrl));
+    expect(getButton("บันทึกรูป QR Code").disabled).toBe(false);
+    expect(findButton("แชร์รูป QR Code")).toBeUndefined();
+    await act(async () => getButton("แชร์ลิงก์").click());
+    expect(copy).toHaveBeenCalledExactlyOnceWith("https://demi.example/recover#synthetic-new-token");
   });
 });
