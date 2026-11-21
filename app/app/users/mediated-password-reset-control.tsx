@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import QRCode from "qrcode";
 
-import { buttonClassName } from "@/components/ui/button";
+import { Button, buttonClassName } from "@/components/ui/button";
+import { ModalDialog } from "@/components/ui/modal-dialog";
 import type {
   MediatedPasswordResetIssueInput,
   MediatedPasswordResetMode,
@@ -30,7 +31,10 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
   const targetConfirmationLabel = props.targetKind === "platform_admin"
     ? "รหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้"
     : "เลขบัตรประชาชนของเจ้าของบัญชี";
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const title = props.locked ? "กู้คืนบัญชีและตั้งรหัสผ่านใหม่" : "รีเซ็ตรหัสผ่าน";
+  const formId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<MediatedPasswordResetMode>("IN_PERSON");
   const [result, setResult] = useState<MediatedPasswordResetIssueActionResult | null>(null);
   const [handoffUrl, setHandoffUrl] = useState("");
@@ -38,20 +42,29 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
   const [copyState, setCopyState] = useState("");
   const [busy, setBusy] = useState(false);
   const navigatedHandoffUrls = useRef(new Set<string>());
+  const issuedMode = result?.status === "ISSUED" ? result.mode : null;
 
   useEffect(() => {
-    if (!result || result.status !== "ISSUED" || result.mode !== "ONLINE" || !handoffUrl) return;
+    if (!open || issuedMode !== "ONLINE" || !handoffUrl) return;
+    let active = true;
     void QRCode.toDataURL(handoffUrl, { width: 240, margin: 2, errorCorrectionLevel: "M" })
-      .then(setQrDataUrl)
-      .catch(() => setQrDataUrl(""));
-  }, [handoffUrl, result]);
+      .then((url) => { if (active) setQrDataUrl(url); })
+      .catch(() => { if (active) setQrDataUrl(""); });
+    return () => { active = false; };
+  }, [handoffUrl, issuedMode, open]);
 
-  function openDialog(): void {
+  function openDialog(event: React.MouseEvent<HTMLButtonElement>): void {
+    event.currentTarget.focus({ preventScroll: true });
+    setOpen(true);
+  }
+
+  function closeDialog(): void {
+    if (busy) return;
+    setOpen(false);
     setResult(null);
     setHandoffUrl("");
     setQrDataUrl("");
     setCopyState("");
-    dialogRef.current?.showModal();
   }
 
   async function issueReset(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -111,20 +124,32 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
   return (
     <>
       <button className={buttonClassName({ variant: "primary", size: "compact" })} onClick={openDialog} type="button">
-        {props.locked ? "กู้คืนบัญชีและตั้งรหัสผ่านใหม่" : "รีเซ็ตรหัสผ่าน"}
+        {title}
       </button>
-      <dialog
-        aria-labelledby="mediated-reset-title"
-        className="w-[min(40rem,calc(100%-2rem))] rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-black/50"
-        onClose={() => setResult(null)}
-        ref={dialogRef}
-      >
-        <div className="space-y-5 p-6">
-          <div>
-            <h3 className="text-xl font-semibold" id="mediated-reset-title">{props.locked ? "กู้คืนบัญชีและตั้งรหัสผ่านใหม่" : "รีเซ็ตรหัสผ่าน"}</h3>
-            <p className="mt-1 text-sm text-text-muted">{props.targetName}{props.hospitalName ? ` · ${props.hospitalName}` : ""}</p>
-          </div>
-
+      {open ? (
+        <ModalDialog
+          className="[max-height:calc(100svh-2*max(1rem,env(safe-area-inset-top,0px),env(safe-area-inset-bottom,0px)))]! [max-width:calc(100dvw-2*max(1rem,env(safe-area-inset-left,0px),env(safe-area-inset-right,0px)))]!"
+          description={<p className="wrap-anywhere">{props.targetName}{props.hospitalName ? ` · ${props.hospitalName}` : ""}</p>}
+          dismissible={!busy}
+          focusOnStepChange
+          footer={issuedMode === "IN_PERSON" ? null : (
+            <div className="flex flex-wrap justify-end gap-2">
+              {issuedMode === "ONLINE" ? (
+                <Button onClick={closeDialog} size="compact" variant="secondary">เสร็จสิ้น</Button>
+              ) : (
+                <>
+                  <Button disabled={busy} onClick={closeDialog} ref={closeButtonRef} size="compact" variant="secondary">ปิด</Button>
+                  <Button disabled={busy} form={formId} size="compact" type="submit">{busy ? "กำลังออกลิงก์…" : "ออกลิงก์รีเซ็ต"}</Button>
+                </>
+              )}
+            </div>
+          )}
+          initialFocusRef={closeButtonRef}
+          onRequestClose={closeDialog}
+          size="compact"
+          stepKey={issuedMode ?? "confirm"}
+          title={title}
+        >
           {result?.status === "ISSUED" && result.mode === "IN_PERSON" ? (
             <div className="space-y-2" role="status">
               <p className="font-semibold">ออกจากระบบบัญชีของคุณแล้ว กำลังเปิดหน้าตั้งรหัสผ่าน…</p>
@@ -135,10 +160,10 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
               <p className="font-semibold">ออกลิงก์แล้ว หมดอายุ {formatThaiDate(result.expiresAt)}</p>
               <p className="text-sm leading-6 text-text-muted">ลิงก์ใช้ได้ครั้งเดียว ให้ส่งตรงถึงเจ้าของบัญชีเพื่อยืนยันด้วย{targetConfirmationLabel}และตั้งรหัสผ่านใหม่ ห้ามส่งต่อให้ผู้อื่น</p>
               <div className="space-y-3 rounded-lg border border-border p-4">
-                {qrDataUrl ? <Image alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน" className="mx-auto h-60 w-60" height={240} src={qrDataUrl} unoptimized width={240} /> : null}
-                <label className="grid gap-1 text-sm font-medium">
+                {qrDataUrl ? <Image alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน" className="mx-auto h-auto w-60 max-w-full" height={240} src={qrDataUrl} unoptimized width={240} /> : null}
+                <label className="grid grid-cols-1 gap-1 text-sm font-medium">
                   ลิงก์สำหรับส่งให้เจ้าของบัญชี
-                  <input className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm" readOnly value={handoffUrl} />
+                  <input className="min-h-11 w-full min-w-0 rounded-md border border-border bg-surface px-3 text-sm" readOnly value={handoffUrl} />
                 </label>
                 <div className="flex flex-wrap gap-2">
                   <button className={buttonClassName({ variant: "secondary", size: "compact" })} onClick={() => void copyLink()} type="button">คัดลอกลิงก์</button>
@@ -148,14 +173,14 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
               </div>
             </div>
           ) : (
-            <form className="space-y-5" onSubmit={(event) => void issueReset(event)}>
+            <form className="space-y-5" id={formId} onSubmit={(event) => void issueReset(event)}>
               {props.targetKind === "platform_admin" ? (
                 <p className="text-sm leading-6 text-text-muted">ผู้ดูแลระบบ DEMI ที่ออกลิงก์ต้องตรวจสอบตัวตนของผู้ดูแลระบบ DEMI ผู้รับอย่างเป็นอิสระก่อน การกรอกรหัสเข้าสู่ระบบและการได้รับลิงก์ไม่ใช้แทนการตรวจสอบดังกล่าว</p>
               ) : (
                 <p className="text-sm leading-6 text-text-muted">ตรวจสอบตัวตนเจ้าของบัญชีก่อนออกลิงก์ หากโทรยืนยัน ให้โทรเบอร์ในเวชระเบียนของโรงพยาบาลเท่านั้น</p>
               )}
 
-              <fieldset className="space-y-2">
+              <fieldset className="min-w-0 space-y-2" disabled={busy}>
                 <legend className="text-sm font-semibold">เลือกรูปแบบส่งมอบ</legend>
                 <label className="flex min-h-11 items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
                   <input checked={mode === "IN_PERSON"} name="mode" onChange={() => setMode("IN_PERSON")} type="radio" value="IN_PERSON" />
@@ -168,20 +193,10 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
               </fieldset>
 
               {result?.status === "ERROR" ? <p className="text-sm text-danger" role="alert">{result.message}</p> : null}
-              <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-                <button className={buttonClassName({ variant: "secondary", size: "compact" })} onClick={() => dialogRef.current?.close()} type="button">ปิด</button>
-                <button className={buttonClassName({ variant: "primary", size: "compact" })} disabled={busy} type="submit">{busy ? "กำลังออกลิงก์…" : "ออกลิงก์รีเซ็ต"}</button>
-              </div>
             </form>
           )}
-
-          {result?.status === "ISSUED" && result.mode === "ONLINE" ? (
-            <div className="flex justify-end border-t border-border pt-4">
-              <button className={buttonClassName({ variant: "secondary", size: "compact" })} onClick={() => dialogRef.current?.close()} type="button">เสร็จสิ้น</button>
-            </div>
-          ) : null}
-        </div>
-      </dialog>
+        </ModalDialog>
+      ) : null}
     </>
   );
 }

@@ -13,6 +13,8 @@ import { MediatedPasswordResetControl } from "./mediated-password-reset-control"
 let container: HTMLDivElement;
 let root: Root;
 let originalLocationDescriptor: PropertyDescriptor | undefined;
+const copy = vi.fn();
+const share = vi.fn();
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -20,12 +22,22 @@ beforeAll(() => {
     configurable: true,
     value(this: HTMLDialogElement): void { this.setAttribute("open", ""); },
   });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value(this: HTMLDialogElement): void { this.removeAttribute("open"); },
+  });
 });
 
 beforeEach(() => {
   mocks.issue.mockReset();
   mocks.qr.mockReset().mockResolvedValue("data:image/png;base64,rec1-test");
   mocks.locationReplace.mockReset();
+  copy.mockReset().mockResolvedValue(undefined);
+  share.mockReset().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", Object.assign(Object.create(navigator), {
+    clipboard: { writeText: copy },
+    share,
+  }));
   originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, "location");
   Object.defineProperty(window, "location", { configurable: true, value: { origin: "https://demi.example", replace: mocks.locationReplace } });
   container = document.createElement("div");
@@ -37,6 +49,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   if (originalLocationDescriptor) Object.defineProperty(window, "location", originalLocationDescriptor);
+  vi.unstubAllGlobals();
 });
 
 async function renderControl(
@@ -62,17 +75,78 @@ function click(selector: string): void {
 }
 
 async function submitForm(): Promise<void> {
-  const form = container.querySelector("form");
-  if (!form) throw new Error("Missing reset form");
   await act(async () => {
-    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const button = container.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (!button) throw new Error("Missing issue button");
+    button.click();
   });
 }
 
 describe("OWNER/ADMIN-mediated password reset handoff", () => {
+  it("opens a compact shared modal with separate header, scrolling content, and form-linked footer", async () => {
+    await renderControl();
+    const trigger = container.querySelector("button");
+    expect(container.querySelector("dialog")).toBeNull();
+    trigger?.focus();
+    click("button");
+
+    const dialog = container.querySelector("dialog[open]");
+    const header = dialog?.querySelector("header");
+    const form = dialog?.querySelector("form");
+    const footer = dialog?.querySelector("footer");
+    expect(dialog?.classList).toContain("m-auto");
+    expect(dialog?.classList).toContain("max-h-[calc(100svh-2rem)]");
+    expect(dialog?.classList).toContain("w-[min(32rem,calc(100vw-2rem))]");
+    expect(header?.textContent).toContain("ผู้ใช้ตัวอย่าง · โรงพยาบาลตัวอย่าง");
+    expect(header?.querySelector("h2")?.textContent).toBe("รีเซ็ตรหัสผ่าน");
+    expect(form?.parentElement?.classList).toContain("overflow-y-auto");
+    expect(dialog?.querySelector("form form")).toBeNull();
+    expect(footer?.querySelector<HTMLButtonElement>('button[type="submit"]')?.form).toBe(form);
+    expect(footer?.textContent).toContain("ปิด");
+    expect(document.body.style.overflow).toBe("hidden");
+
+    click('footer button[type="button"]');
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(document.body.style.overflow).toBe("");
+
+    click("button");
+    act(() => container.querySelector("dialog")?.dispatchEvent(new Event("cancel", { cancelable: true })));
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    click("button");
+    click('header button[aria-label="ปิดหน้าต่าง"]');
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("keeps the modal open and blocks duplicate submissions while issuance is pending", async () => {
+    const response = Promise.withResolvers<{ status: "ERROR"; message: string }>();
+    mocks.issue.mockReturnValue(response.promise);
+    await renderControl();
+    click("button");
+    await submitForm();
+    await submitForm();
+
+    const dialog = container.querySelector("dialog[open]");
+    const cancel = new Event("cancel", { cancelable: true });
+    act(() => dialog?.dispatchEvent(cancel));
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(dialog?.querySelectorAll("button:disabled")).toHaveLength(3);
+    click("header button");
+    click('footer button[type="button"]');
+    expect(container.querySelector("dialog[open]")).toBe(dialog);
+    expect(mocks.issue).toHaveBeenCalledOnce();
+
+    await act(async () => response.resolve({ status: "ERROR", message: "ออกลิงก์ไม่สำเร็จ" }));
+    expect(dialog?.querySelector('[role="alert"]')?.textContent).toBe("ออกลิงก์ไม่สำเร็จ");
+    expect(dialog?.querySelector("button:disabled")).toBeNull();
+  });
+
   it("issues without choosing a verification method, reminds the issuer to verify identity, and shows the online single-use QR and link", async () => {
-    mocks.issue.mockResolvedValue({ status: "ISSUED", mode: "ONLINE", handoffUrl: `https://demi.example/recover#${"x".repeat(43)}`, expiresAt: "2026-10-23T03:00:00.000Z" });
+    const handoffUrl = `https://demi.example/recover#${"x".repeat(43)}`;
+    mocks.issue.mockResolvedValue({ status: "ISSUED", mode: "ONLINE", handoffUrl, expiresAt: "2026-10-23T03:00:00.000Z" });
     await renderControl();
 
     click("button");
@@ -94,7 +168,6 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
       mode: "ONLINE",
     });
     expect(mocks.issue.mock.calls[0]?.[0]).not.toHaveProperty("verificationMethod");
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(mocks.qr).toHaveBeenCalledWith(expect.stringContaining("/recover#"), expect.any(Object));
     expect(container.textContent).toContain("ลิงก์ใช้ได้ครั้งเดียว");
     expect(container.querySelector('img[alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน"]')).not.toBeNull();
@@ -102,6 +175,24 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     expect(container.textContent).toContain("คัดลอกลิงก์");
     expect(container.textContent).toContain("แชร์ลิงก์");
     expect(mocks.locationReplace).not.toHaveBeenCalled();
+    expect(container.querySelector("footer")?.textContent).toBe("เสร็จสิ้น");
+    expect(container.querySelector("form")).toBeNull();
+    expect(document.activeElement).toBe(container.querySelector("header h2"));
+    const handoffButtons = container.querySelectorAll<HTMLButtonElement>('dialog [role="status"] button');
+    expect(copy).not.toHaveBeenCalled();
+    expect(share).not.toHaveBeenCalled();
+    await act(async () => handoffButtons[0]?.click());
+    expect(copy).toHaveBeenCalledWith(handoffUrl);
+    await act(async () => handoffButtons[1]?.click());
+    expect(share).toHaveBeenCalledWith(expect.objectContaining({ url: handoffUrl }));
+
+    click("footer button");
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(container.querySelector("button"));
+    click("button");
+    expect(container.querySelector("img, input[readonly]")).toBeNull();
+    expect(container.textContent).not.toContain("ส่งลิงก์แล้ว");
+    expect(container.querySelector<HTMLInputElement>('input[value="ONLINE"]')?.checked).toBe(true);
   });
 
   it("keeps the ADMIN identifier as account confirmation and requires an independent identity check", async () => {
