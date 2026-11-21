@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -243,8 +243,9 @@ async function openReviewDialog(): Promise<HTMLDivElement> {
     throw new Error("Workspace is not mounted");
   }
 
-  await act(async () => {
-  });
+  if (mounted.querySelector("[inert]")) {
+    acknowledgePolicy(mounted);
+  }
 
   const fileInput = mounted.querySelector<HTMLInputElement>("#patient-import-file");
   if (!fileInput) {
@@ -363,18 +364,133 @@ const otherHospitalId = "55555555-5555-4555-8555-555555555555";
 const otherScope = { ...scope, hospitalId: otherHospitalId, hospitalName: "โรงพยาบาลอื่น" };
 
 /** Keyed by Hospital like `page.tsx`, so a Hospital change remounts the Workspace. */
-function renderWorkspace(selectedHospitalId: string): void {
+function renderWorkspace(selectedHospitalId: string, canBulkImport = true): void {
   act(() => {
     root?.render(
-      createElement(PatientProvisioningWorkspace, {
+      createElement(StrictMode, null, createElement(PatientProvisioningWorkspace, {
         key: selectedHospitalId,
         scopes: [scope, otherScope],
         selectedHospitalId,
-        selectedScope: selectedHospitalId === hospitalId ? scope : otherScope,
-      }),
+        selectedScope: { ...(selectedHospitalId === hospitalId ? scope : otherScope), canBulkImport },
+      })),
     );
   });
 }
+
+function policyCheckbox(dialog: HTMLDialogElement): HTMLInputElement {
+  const checkbox = dialog.querySelector('input[type="checkbox"]');
+  if (!(checkbox instanceof HTMLInputElement)) {
+    throw new Error("Expected the policy acknowledgement checkbox");
+  }
+  return checkbox;
+}
+
+function acknowledgePolicy(mounted: HTMLElement): void {
+  const dialog = currentDialog(mounted);
+  act(() => policyCheckbox(dialog).click());
+  act(() => button(dialog, "รับทราบและเริ่มนำเข้า").click());
+}
+
+function templateLink(mounted: HTMLElement): HTMLAnchorElement | null {
+  return mounted.querySelector<HTMLAnchorElement>("a[download]");
+}
+
+describe("Patient import policy acknowledgement", () => {
+  it("opens one mandatory dialog under Strict Mode and requires a checked box and explicit confirmation", async () => {
+    renderWorkspace(hospitalId);
+    const mounted = container as HTMLDivElement;
+    const dialog = currentDialog(mounted);
+    const title = dialog.querySelector("h2");
+    const checkbox = policyCheckbox(dialog);
+    const proceed = button(dialog, "รับทราบและเริ่มนำเข้า");
+
+    expect(title?.textContent).toBe("ข้อควรรู้ก่อนนำเข้าผู้ป่วย");
+    expect(dialog.getAttribute("aria-labelledby")).toBe(title?.id);
+    expect(document.activeElement).toBe(title);
+    expect(mounted.querySelectorAll("dialog[open]")).toHaveLength(1);
+    expect(templateLink(mounted)?.closest("[inert]")).not.toBeNull();
+    expect(checkbox.labels?.[0].textContent).toBe("ฉันอ่านและเข้าใจข้อกำหนดการนำเข้าไฟล์ของระบบแล้ว");
+    expect(checkbox.checked).toBe(false);
+    expect(proceed.disabled).toBe(true);
+
+    const cancel = new Event("cancel", { cancelable: true });
+    act(() => {
+      dialog.dispatchEvent(cancel);
+      dialog.click(); // jsdom has no native backdrop or hit testing.
+      dialog.querySelector<HTMLButtonElement>('button[aria-label="ปิดหน้าต่าง"]')?.click();
+    });
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(currentDialog(mounted)).toBe(dialog);
+    expect(dialog.querySelector("footer a")?.getAttribute("href")).toBe(`/app?hospitalId=${hospitalId}`);
+
+    act(() => checkbox.click());
+    expect(proceed.disabled).toBe(false);
+    expect(currentDialog(mounted)).toBe(dialog);
+    act(() => checkbox.click());
+    expect(proceed.disabled).toBe(true);
+
+    await act(async () => acknowledgePolicy(mounted));
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(templateLink(mounted)?.closest("[inert]")).toBeNull();
+    expect(document.activeElement).toBe(templateLink(mounted));
+    expect(mocks.previewImport).not.toHaveBeenCalled();
+    expect(mocks.confirmImport).not.toHaveBeenCalled();
+
+    renderWorkspace(hospitalId);
+    expect(mounted.querySelector("dialog")).toBeNull();
+  });
+
+  it("omits the policy and download when the current scope cannot bulk import", () => {
+    renderWorkspace(otherHospitalId, false);
+    const mounted = container as HTMLDivElement;
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(templateLink(mounted)).toBeNull();
+  });
+
+  it("asks again on return and when the keyed Hospital workspace changes", () => {
+    renderWorkspace(hospitalId);
+    const mounted = container as HTMLDivElement;
+    acknowledgePolicy(mounted);
+    expect(templateLink(mounted)?.getAttribute("href")).toBe(`/api/v1/hospital/patient-import/template?hospitalId=${hospitalId}`);
+
+    act(() => root?.render(null));
+    renderWorkspace(hospitalId);
+    expect(policyCheckbox(currentDialog(mounted)).checked).toBe(false);
+    acknowledgePolicy(mounted);
+    renderWorkspace(otherHospitalId);
+    expect(policyCheckbox(currentDialog(mounted)).checked).toBe(false);
+    expect(templateLink(mounted)?.getAttribute("href")).toBe(`/api/v1/hospital/patient-import/template?hospitalId=${otherHospitalId}`);
+  });
+
+  it("opens help without acknowledgement and returns to the same file, effective date and review", async () => {
+    const mounted = await openReviewDialog();
+    expect(mounted.querySelectorAll("dialog[open]")).toHaveLength(1);
+    act(() => button(currentDialog(mounted), "ยกเลิก").click());
+    act(() => setInputValue(effectiveDateInput(mounted), "2026-11-12"));
+    mocks.previewImport.mockResolvedValue({
+      status: "SUCCESS",
+      preview: { ...preview, effectiveDate: "2026-11-12" },
+    });
+    await submitPreview(mounted);
+    act(() => button(currentDialog(mounted), "ยกเลิก").click());
+
+    const help = button(mounted, "วิธีเตรียมไฟล์และข้อกำหนด");
+    help.focus();
+    act(() => help.click());
+    const dialog = currentDialog(mounted);
+    expect(mounted.querySelectorAll("dialog[open]")).toHaveLength(1);
+    expect(dialog.querySelector('input[type="checkbox"]')).toBeNull();
+    act(() => dialog.dispatchEvent(new Event("cancel", { cancelable: true })));
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(help);
+    expect(effectiveDateInput(mounted).value).toBe("2026-11-12");
+    expect(mounted.textContent).toContain("patients.xlsx");
+    expect(mocks.previewImport).toHaveBeenCalledTimes(2);
+    act(() => button(mounted, "เปิดหน้าตรวจสอบ").click());
+    expect(mounted.querySelectorAll("dialog[open]")).toHaveLength(1);
+    expect(confirmButton(mounted).disabled).toBe(false);
+  });
+});
 
 function allNotifications(): number {
   return (
@@ -569,7 +685,7 @@ describe("Excel Patient import preview feedback", () => {
     });
 
     expect(allNotifications()).toBe(0);
-    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(policyCheckbox(currentDialog(mounted)).checked).toBe(false);
     expect(mounted.textContent).not.toContain("บัญชีนี้ไม่มีสิทธิ์");
   });
 });
@@ -902,9 +1018,9 @@ describe("Excel Patient import concurrency and context", () => {
     });
 
     expect(allNotifications()).toBe(0);
-    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(policyCheckbox(currentDialog(mounted)).checked).toBe(false);
     renderWorkspace(hospitalId);
-    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(policyCheckbox(currentDialog(mounted)).checked).toBe(false);
     expect(mounted.textContent).not.toContain("นำเข้าผู้ป่วยใหม่แล้ว");
     expect(allNotifications()).toBe(0);
   });

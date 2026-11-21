@@ -60,6 +60,8 @@ import {
 } from "@/modules/patient-provisioning/transport/action-state";
 import { downloadPatientImportFailedRows } from "@/modules/patient-provisioning/transport/patient-import-failed-rows-client";
 
+import { PatientImportPolicyDialog } from "./patient-import-policy-dialog";
+
 type PatientProvisioningWorkspaceProps = {
   scopes: PatientProvisioningScope[];
   selectedHospitalId: string;
@@ -983,9 +985,12 @@ export function PatientProvisioningWorkspace({
   const [importPending, startImportTransition] = useTransition();
   const [hospitalSwitching, startHospitalSwitch] = useTransition();
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [acknowledgedHospitalId, setAcknowledgedHospitalId] = useState<string | null>(null);
+  const [policyHelpOpen, setPolicyHelpOpen] = useState(false);
   const importContextVersion = useRef(0);
   const previousHospitalId = useRef(selectedHospitalId);
   const previewSubmitRef = useRef<HTMLButtonElement>(null);
+  const templateDownloadRef = useRef<HTMLAnchorElement>(null);
   const dialogReturnFocus = useRef<ImportDialogReturnFocus>("PREVIEW_SUBMIT");
 
   useEffect(() => {
@@ -1036,6 +1041,9 @@ export function PatientProvisioningWorkspace({
     ? getPatientImportResultPresentation(importSummary)
     : null;
   const showReviewDialog = reviewDialogOpen && reviewPreview !== null;
+  const policyRequired = selectedScope.canBulkImport && acknowledgedHospitalId !== selectedHospitalId;
+  const showPolicyHelp = selectedScope.canBulkImport && policyHelpOpen && !showReviewDialog;
+  const hospitalWorkspaceHref = `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
 
   const importConfirmRefused = importState.status === "ERROR" && importState.code === "FORBIDDEN";
   /**
@@ -1284,12 +1292,13 @@ export function PatientProvisioningWorkspace({
     <div>
       <PageHeader
         actions={<StatusBadge variant="info">นำเข้าผู้ป่วย</StatusBadge>}
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "นำเข้าผู้ป่วย" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: hospitalWorkspaceHref }, { label: "นำเข้าผู้ป่วย" }]}
         description="นำเข้ารายชื่อผู้ป่วยจาก Excel ตั้งแต่ 1 รายการ"
         title="นำเข้าผู้ป่วย"
       />
 
-      <div className="pt-8">
+      {/* Keep import controls inert before hydration opens the native modal. */}
+      <div className="pt-8" inert={policyRequired}>
         <Panel>
           {scopes.length > 1 ? (
             <>
@@ -1330,13 +1339,21 @@ export function PatientProvisioningWorkspace({
               <p className="font-semibold text-ink">
                 ใช้ไฟล์ตัวอย่าง Excel
               </p>
-              <a
-                className={buttonClassName({ size: "compact", variant: "secondary" })}
-                download={createPatientImportTemplateFilename(selectedScope.hospitalName)}
-                href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
-              >
-                ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ {selectedScope.hospitalName}
-              </a>
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  className={buttonClassName({ size: "compact", variant: "secondary" })}
+                  download={createPatientImportTemplateFilename(selectedScope.hospitalName)}
+                  href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
+                  ref={templateDownloadRef}
+                >
+                  ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ {selectedScope.hospitalName}
+                </a>
+                {!policyRequired ? (
+                  <Button disabled={previewPending} onClick={() => setPolicyHelpOpen(true)} size="compact" variant="ghost">
+                    วิธีเตรียมไฟล์และข้อกำหนด
+                  </Button>
+                ) : null}
+              </div>
               <p className="text-xs text-muted">รองรับสูงสุด 500 รายการต่อไฟล์</p>
             </div>
           </div>
@@ -1484,7 +1501,18 @@ export function PatientProvisioningWorkspace({
         </div>
       </div>
 
-      {showReviewDialog && reviewPreview ? (
+      {policyRequired ? (
+        <PatientImportPolicyDialog
+          acknowledgement={{
+            exitHref: hospitalWorkspaceHref,
+            restoreFocus: () => templateDownloadRef.current?.focus(),
+          }}
+          key="acknowledgement"
+          onClose={() => setAcknowledgedHospitalId(selectedHospitalId)}
+        />
+      ) : showPolicyHelp ? (
+        <PatientImportPolicyDialog key="help" onClose={() => setPolicyHelpOpen(false)} />
+      ) : showReviewDialog && reviewPreview ? (
         <ModalDialog
           description={
             <PatientImportDialogContext
