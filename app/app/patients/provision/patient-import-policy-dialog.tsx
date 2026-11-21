@@ -52,7 +52,12 @@ export function PatientImportPolicyDialog({
       size="fullscreen"
       title="ข้อควรรู้ก่อนนำเข้าผู้ป่วย"
     >
-      <div className="space-y-4 text-base leading-6">
+      {/* Give native dialog focus a target at the start of the scrollable content. */}
+      <section
+        aria-label="ข้อกำหนดและวิธีนำเข้า"
+        className="space-y-4 text-base leading-6 focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+        tabIndex={0}
+      >
         <Alert className="flex items-start gap-2 font-semibold" role="note" variant="warning">
           <svg
             aria-hidden="true"
@@ -105,7 +110,7 @@ export function PatientImportPolicyDialog({
             <span>ฉันอ่านและเข้าใจข้อกำหนดการนำเข้าไฟล์ของระบบแล้ว</span>
           </label>
         ) : null}
-      </div>
+      </section>
     </ModalDialog>
   );
 }
