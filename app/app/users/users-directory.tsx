@@ -104,7 +104,7 @@ export function UsersDirectory({ hospitals, page, filters }: {
             <input name="tab" type="hidden" value={filters.kind} />
             <label className="block space-y-2 text-sm font-semibold" htmlFor="users-search">
               <span>{filters.kind === "patient" ? "ค้นหาชื่อหรือ HN" : "ค้นหาชื่อ"}</span>
-              <SearchInput defaultValue={filters.search} id="users-search" maxLength={120} name="search" />
+              <SearchInput defaultValue={filters.search} id="users-search" key={filters.search} maxLength={120} name="search" />
             </label>
             <label className="block space-y-2 text-sm font-semibold" htmlFor="users-status">
               <span>สถานะ</span>

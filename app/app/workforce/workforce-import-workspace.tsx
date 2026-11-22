@@ -379,7 +379,7 @@ export function WorkforceImportWorkspace({
             <input name="hospitalId" type="hidden" value={selectedHospitalId} />
             <label className="block space-y-2 text-sm font-semibold" htmlFor="import-search">
               <span>ค้นหาชื่อ</span>
-              <SearchInput defaultValue={pageInfo.search} id="import-search" maxLength={120} name="search" />
+              <SearchInput defaultValue={pageInfo.search} id="import-search" key={pageInfo.search} maxLength={120} name="search" />
             </label>
             <label className="block space-y-2 text-sm font-semibold" htmlFor="import-status">
               <span>สถานะการทำงานกับโรงพยาบาล</span>

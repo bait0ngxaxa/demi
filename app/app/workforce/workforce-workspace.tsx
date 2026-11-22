@@ -161,7 +161,7 @@ export function WorkforceWorkspace({
             <input name="tab" type="hidden" value={tab} />
             <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-search">
               <span>ค้นหาชื่อ</span>
-              <SearchInput defaultValue={pageInfo.search} id="workforce-search" maxLength={120} name="search" />
+              <SearchInput defaultValue={pageInfo.search} id="workforce-search" key={pageInfo.search} maxLength={120} name="search" />
             </label>
             <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-status">
               <span>สถานะการทำงานกับโรงพยาบาล</span>

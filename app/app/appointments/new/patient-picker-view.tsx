@@ -82,6 +82,7 @@ export function AppointmentPatientPicker({
                 <SearchInput
                   autoComplete="off"
                   defaultValue={value}
+                  key={value}
                   maxLength={120}
                   name="value"
                 />

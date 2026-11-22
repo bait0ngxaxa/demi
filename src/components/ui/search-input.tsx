@@ -13,7 +13,7 @@ export type SearchInputProps = Omit<ComponentProps<"input">, "type"> & {
   onClear?: () => void;
   /**
    * Whether clearing submits the field's form. `"auto"` submits only an uncontrolled field that rendered with a
-   * value (a GET form whose results are already filtered by it), so clearing shows every result again.
+   * value (a GET form whose results are currently filtered by it), so clearing shows every result again.
    */
   submitOnClear?: "auto" | boolean;
   /** Escape clears a non-empty field, like the native search field. Turn off where Escape closes a list. */
@@ -55,7 +55,6 @@ export function SearchInput({
 }: SearchInputProps): React.JSX.Element {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const controlled = value !== undefined;
-  const startedWithValue = useRef(hasText(defaultValue));
   const [uncontrolledHasValue, setUncontrolledHasValue] = useState(() => hasText(defaultValue));
   const showClear = (controlled ? hasText(value) : uncontrolledHasValue) && !disabled && !readOnly;
 
@@ -81,7 +80,8 @@ export function SearchInput({
     setUncontrolledHasValue(false);
     onClear?.();
     input.focus();
-    const submit = submitOnClear === "auto" ? !controlled && startedWithValue.current : submitOnClear;
+    // The server renders defaultValue from the URL on every navigation, so it is the filter the results show.
+    const submit = submitOnClear === "auto" ? !controlled && hasText(defaultValue) : submitOnClear;
     if (submit) input.form?.requestSubmit();
   }
 

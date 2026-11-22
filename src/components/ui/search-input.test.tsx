@@ -157,8 +157,8 @@ describe("SearchInput", () => {
     expect(submits()).toBe(1);
   });
 
-  it("does not auto-submit a field that started empty or is controlled", () => {
-    const { submits } = mountInForm({ name: "search" });
+  it("does not auto-submit an unsubmitted draft or a controlled field", () => {
+    const { submits } = mountInForm({ defaultValue: "", name: "search" });
     type("สมชาย");
     act(() => clearButton()?.click());
     expect(input().value).toBe("");
@@ -167,6 +167,24 @@ describe("SearchInput", () => {
     act(() => root.render(inForm(createElement(Controlled, {}))));
     act(() => clearButton()?.click());
     expect(submits()).toBe(0);
+  });
+
+  it("decides auto-submit from the current filter when client navigation re-renders without a remount", () => {
+    // next/form navigation: the server re-renders the same field with the URL's search as defaultValue.
+    const { submits } = mountInForm({ defaultValue: "", name: "search" });
+    const field = input();
+    type("สม");
+    act(() => root.render(inForm(createElement(SearchInput, { defaultValue: "สม", name: "search" }))));
+    expect(input()).toBe(field);
+    act(() => clearButton()?.click());
+    expect(input().value).toBe("");
+    expect(submits()).toBe(1);
+
+    // Back to an unfiltered URL: a new draft cleared there must not submit again.
+    act(() => root.render(inForm(createElement(SearchInput, { defaultValue: "", name: "search" }))));
+    type("ก");
+    act(() => clearButton()?.click());
+    expect(submits()).toBe(1);
   });
 
   it("follows an explicit submitOnClear", () => {
