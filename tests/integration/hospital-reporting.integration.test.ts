@@ -7,6 +7,8 @@ import {
   HospitalStatus,
   MembershipStatus,
   MembershipType,
+  PatientProgramRoundPlanItemOrigin,
+  PatientProgramRoundStepCode,
   PatientProgramStatus,
   Prisma,
   Role,
@@ -1409,6 +1411,34 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     await prisma.patientProgramServiceOneConfidence.create({
       data: { patientProgramId: active.id, roundNumber: 1, recordedByUserId, score: 4 },
     });
+    // Decoys outside the reported rounds (routine/confidence round 2, dream card round 1) on two programs: they must not
+    // count, and a wrong round constant would count both, turning each total of 1 into 2. Their rounds must list the
+    // tool, so plan items are ADDED where the guideline plan lacks them, as a staff plan change would.
+    for (const program of [active, completed]) {
+      await prisma.patientProgramRoundPlanItem.createMany({
+        data: [
+          { roundNumber: 2, stepCode: PatientProgramRoundStepCode.ROUTINE, position: 90 },
+          { roundNumber: 2, stepCode: PatientProgramRoundStepCode.CONFIDENCE_RULER, position: 91 },
+          { roundNumber: 1, stepCode: PatientProgramRoundStepCode.DREAM_CARD, position: 92 },
+        ].map((item) => ({
+          ...item,
+          patientProgramId: program.id,
+          patientHospitalRelationshipId: program.relationshipId,
+          origin: PatientProgramRoundPlanItemOrigin.ADDED,
+          addedByUserId: recordedByUserId,
+        })),
+        skipDuplicates: true,
+      });
+      await prisma.patientProgramServiceOneRoutine.create({
+        data: { patientProgramId: program.id, roundNumber: 2, recordedByUserId },
+      });
+      await prisma.patientProgramServiceOneConfidence.create({
+        data: { patientProgramId: program.id, roundNumber: 2, recordedByUserId, score: 3 },
+      });
+      await prisma.patientProgramServiceOneDreamCard.create({
+        data: { patientProgramId: program.id, roundNumber: 1, recordedByUserId },
+      });
+    }
 
     const childIds = [richChild.id, emptyChild.id, completedChild.id, endedAreaChild.id, suspendedChild.id, unrelated.id];
     const auditWhere = (actorUserId: string): Prisma.AuditEventWhereInput => ({

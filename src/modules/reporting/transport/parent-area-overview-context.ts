@@ -11,6 +11,7 @@ import {
 } from "@/shared/errors/application-error";
 
 import type { ParentChildHospitalReportingProjection } from "../projections/hospital-report-projection";
+import { PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN } from "../schemas/hospital-report-schemas";
 import { listHospitalReportingHospitals } from "../services/hospital-report-access-service";
 import { getParentChildHospitalReportingPages } from "../services/hospital-report-query-service";
 import { listParentChildHospitalReportTargetGroups, type ParentChildHospitalReportTargetGroup } from "../services/parent-child-hospital-report-access-service";
@@ -54,17 +55,21 @@ async function readChildAreas(
   actor: ActorContext,
   group: ParentChildHospitalReportTargetGroup,
 ): Promise<ParentChildHospitalReportingProjection[]> {
-  if (group.children.length === 0) return [];
-  let reports: Map<string, ParentChildHospitalReportingProjection | null>;
-  try {
-    reports = await getParentChildHospitalReportingPages(actor, {
-      parentHospitalId: group.parent.id,
-      hospitalIds: group.children.map(({ id }) => id),
-    });
-  } catch (error: unknown) {
-    // The Parent link or status changed after listing: none of its Children is an area any more.
-    if (error instanceof ForbiddenError || error instanceof NotFoundError) return [];
-    throw error;
+  const reports = new Map<string, ParentChildHospitalReportingProjection | null>();
+  // Batches run one after another, so the overview still holds at most one connection.
+  for (let offset = 0; offset < group.children.length; offset += PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN) {
+    const batch = group.children.slice(offset, offset + PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN);
+    try {
+      const batchReports = await getParentChildHospitalReportingPages(actor, {
+        parentHospitalId: group.parent.id,
+        hospitalIds: batch.map(({ id }) => id),
+      });
+      for (const [hospitalId, report] of batchReports) reports.set(hospitalId, report);
+    } catch (error: unknown) {
+      // The Parent link or status changed after listing: none of its Children is an area any more.
+      if (error instanceof ForbiddenError || error instanceof NotFoundError) return [];
+      throw error;
+    }
   }
   // A Child whose link or status changed after listing is no longer an area of this Parent.
   return group.children.flatMap(({ id }) => {

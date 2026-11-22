@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
+import { PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN } from "../schemas/hospital-report-schemas";
+
 const { mockedGetActor, mockedListHospitals, mockedListParentGroups, mockedGetParentChildPages, mockedRedirect } = vi.hoisted(() => ({
   mockedGetActor: vi.fn(),
   mockedListHospitals: vi.fn(),
@@ -80,6 +82,30 @@ describe("Parent area overview context (ADR-0013)", () => {
     expect(groups.flatMap(({ areas }) => areas.map(({ hospital }) => hospital.id))).toEqual(
       children.map(({ id }) => id),
     );
+  });
+
+  it("reads a network larger than one batch in consecutive bounded batches, in listed order", async () => {
+    const children = Array.from({ length: PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN + 1 }, (_, index) => ({
+      id: `child-${index}`,
+      name: `ลูกข่าย ${index}`,
+    }));
+    mockedListParentGroups.mockResolvedValue([{ parent, children }]);
+    let inFlight = 0;
+    let peakInFlight = 0;
+    mockedGetParentChildPages.mockImplementation(async (_actor, input: { hospitalIds: string[] }) => {
+      inFlight += 1;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return new Map(input.hospitalIds.map((id) => [id, { hospital: { id } }]));
+    });
+
+    const groups = await getParentAreaOverviewContext();
+
+    expect(mockedGetParentChildPages.mock.calls.map(([, input]) => input.hospitalIds.length))
+      .toEqual([PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN, 1]);
+    expect(peakInFlight).toBe(1);
+    expect(groups[0]?.areas.map(({ hospital }) => hospital.id)).toEqual(children.map(({ id }) => id));
   });
 
   it("drops every Child of a Parent the actor lost after listing, keeping the other Parents", async () => {

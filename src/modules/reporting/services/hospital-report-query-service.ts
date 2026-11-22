@@ -988,7 +988,9 @@ async function loadParentChildHospitalReportingSourceSnapshots(
       _count: { _all: true },
     }),
     // `reportHospitalProgramWhere(hospitalIds, "ACTIVE")` grouped by Hospital: Prisma cannot group programs by their
-    // relationship's Hospital. The parity integration test pins this statement to the per-Child loaders.
+    // relationship's Hospital. The parity integration test pins this statement to the per-Child loaders, and
+    // hospital-report-active-cohort.test.ts fails when `activePatientHospitalRelationshipWhere` (here
+    // `r."endedAt" IS NULL`) changes.
     database.$queryRaw<ParentChildProgramCountRow[]>(Prisma.sql`
       SELECT r."hospitalId"::text AS "hospitalId",
         (count(*) FILTER (WHERE p."status"::text = ${PatientProgramStatus.ACTIVE}))::int AS "active",
