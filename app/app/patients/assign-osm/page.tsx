@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH } from "@/modules/patient-assignment/schemas/patient-osm-assignment-schemas";
 import {
   getPatientOsmBulkAssignmentView,
@@ -41,7 +41,7 @@ function parsePageParam(value: string | undefined): number {
 
 async function resolveActor() {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect("/login");

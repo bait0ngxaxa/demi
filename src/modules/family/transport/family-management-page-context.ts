@@ -2,7 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { getFamilyManagementOverview } from "../services/caregiver-relationship-query-service";
@@ -12,7 +12,7 @@ export async function getFamilyManagementPageContext(
   cursor: FamilyManagementCursor,
 ): Promise<Awaited<ReturnType<typeof getFamilyManagementOverview>>> {
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     return await getFamilyManagementOverview(actor, cursor);
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {

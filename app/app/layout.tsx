@@ -14,7 +14,7 @@ import { LineAccountNavigationProvider } from "@/components/line/line-account-na
 import { ProtectedApplicationShellSkeleton } from "@/components/app-shell/app-shell-skeleton";
 import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
 import { consumePasswordResetNotice } from "@/modules/account-security/services/password-reset-notice-service";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { getPendingActions, type PendingActionsResult } from "@/modules/pending-actions/services/pending-action-service";
 import { withNavigationPendingActions } from "@/components/app-shell/navigation-pending-actions";
 import { isLineQuickActionLoginReturnTo } from "@/modules/auth/schemas/login-schema";
@@ -45,7 +45,7 @@ function redirectDeniedAccess(error: unknown, lineQuickActionReturnTo: string | 
 
 async function resolveProtectedActor(lineQuickActionReturnTo: string | null): Promise<ActorContext> {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     redirectDeniedAccess(error, lineQuickActionReturnTo);
     throw error;

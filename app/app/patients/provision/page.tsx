@@ -7,7 +7,7 @@ import { Role } from "@prisma/client";
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
 import {
@@ -29,7 +29,7 @@ type PatientProvisioningPageProps = {
 
 async function resolveActor() {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect(buildLoginReturnHref(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_PROVISIONING));

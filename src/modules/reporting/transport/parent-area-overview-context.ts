@@ -2,7 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   ForbiddenError,
@@ -23,7 +23,7 @@ const MAX_CONCURRENT_CHILD_REPORTS = 4;
 
 async function resolveActor(): Promise<ActorContext> {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");

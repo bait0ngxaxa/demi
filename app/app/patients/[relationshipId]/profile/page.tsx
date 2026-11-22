@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { isActiveHospitalAdministrator, isActiveHospitalOperator } from "@/modules/identity/services/hospital-authority";
 import { getStaffPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import { staffPatientHospitalProfileUpdateSchema } from "@/modules/patient-hospital-profile/schemas/patient-hospital-profile-schemas";
@@ -17,7 +17,7 @@ import { HospitalPatientEditForm } from "../hospital-patient-edit-form";
 
 export default async function HospitalPatientProfilePage({ params }: { params: Promise<{ relationshipId: string }> }): Promise<React.JSX.Element> {
   await connection();
-  const actor = await getProtectedApplicationActor();
+  const actor = await getRequestApplicationActor();
   const { relationshipId } = await params;
   let record;
   let health;

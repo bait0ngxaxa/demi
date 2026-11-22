@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { hospitalServiceRequestListSchema } from "@/modules/patient-service-requests/schemas/patient-service-request-schemas";
 import { listHospitalPatientServiceRequests } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
@@ -31,7 +31,7 @@ export default async function HospitalPatientServiceRequestsPage({
 
   let requests: Awaited<ReturnType<typeof listHospitalPatientServiceRequests>>;
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     requests = await listHospitalPatientServiceRequests(actor, {}, parsed.success ? parsed.data : {});
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {

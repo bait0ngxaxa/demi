@@ -11,7 +11,7 @@ import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import {
   assertHospitalGovernanceCapability,
   HOSPITAL_GOVERNANCE_CAPABILITIES,
@@ -157,7 +157,7 @@ function formatDate(value: Date): string {
 
 async function requirePlatformAdmin() {
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     assertHospitalGovernanceCapability(
       actor,
       HOSPITAL_GOVERNANCE_CAPABILITIES.readGovernance,

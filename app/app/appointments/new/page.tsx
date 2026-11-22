@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import {
   findAssignedPatientDirectory,
   findPatientDirectory,
@@ -35,7 +35,7 @@ function firstSearchParam(value: string | string[] | undefined): string | undefi
 
 async function resolveActor() {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");

@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getLineLiffId, getLineLoginEnv } from "@/lib/env/server";
 import { isLinePasswordRecoveryRequestConfigured } from "@/modules/line/services/line-password-recovery-configuration";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { getOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
 import { getLineAccountSummary } from "@/modules/line/services/line-account-service";
 import { getLineDisconnectionStatus, getLineRecoveryHandoffScope, hasLineLifecycleHistoryForCurrentOwner, type LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
@@ -41,7 +41,7 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
     (initial.status !== "INELIGIBLE" || initial.canUnlink);
   if (initial.status !== "UNAUTHENTICATED" && initial.status !== "UNAVAILABLE") {
     try {
-      const actor = await getProtectedApplicationActor();
+      const actor = await getRequestApplicationActor();
       notificationPreference = await getOwnAppointmentLineNotificationPreference(actor);
     } catch {
       // The LINE Account screen remains available if preference lookup cannot be completed.

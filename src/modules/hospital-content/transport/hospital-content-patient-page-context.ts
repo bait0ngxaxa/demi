@@ -3,7 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { HospitalStatus } from "@prisma/client";
 import { resolveOwnPatientContext } from "@/modules/patient-self/services/patient-self-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
@@ -28,7 +28,7 @@ export async function getHospitalContentPatientFeedContext(input: unknown): Prom
     const request = patientFeedRouteRequestSchema.safeParse(input);
     if (!request.success) throw new ValidationError("Patient Content feed request is invalid");
 
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     let hospitalId: string | undefined;
     let hospitalRelationshipId: string | null = null;
     if (request.data.hospital !== undefined) {
@@ -66,7 +66,7 @@ export async function getHospitalContentPatientFeedContext(input: unknown): Prom
 
 export async function getHospitalContentPatientDetailContext(contentId: string): Promise<{ requestId: string; content: HospitalContentPatientDetail }> {
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     const content = await getPatientHospitalContent(actor, contentId);
     return { requestId: randomUUID(), content };
   } catch (error: unknown) {

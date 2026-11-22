@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import {
   decidePatientOsmAssignmentPolicy,
   PATIENT_ASSIGN_OSM_CAPABILITY,
@@ -51,7 +51,7 @@ function legacyServiceTaskRedirect(params: Record<string, string | string[] | un
 
 async function resolveActor(): Promise<ActorContext> {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect("/login");

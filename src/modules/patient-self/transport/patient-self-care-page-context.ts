@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import type { LoginReturnTo } from "@/modules/auth/schemas/login-schema";
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import {
   listDelegatedAppointments,
   listDelegatedAppointmentSubjects,
@@ -53,7 +53,7 @@ export async function getPatientServiceProgressPageContext(
 
 async function resolveActor(returnTo?: LoginReturnTo): Promise<ActorContext> {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect(buildLoginReturnHref(returnTo));

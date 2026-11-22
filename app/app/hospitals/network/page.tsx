@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getOwnerNetworkPageContext } from "@/modules/hospital-service-areas/transport/network-page-context";
 import { attachServiceAreaAction, createChildFacilityAction } from "@/modules/hospital-service-areas/transport/server-actions";
@@ -30,7 +30,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 
 async function resolveActor(): Promise<ActorContext> {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");

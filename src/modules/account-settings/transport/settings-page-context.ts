@@ -1,7 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { Role } from "@prisma/client";
 import { getOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
@@ -19,7 +19,7 @@ export type SettingsPageContext = {
 
 export async function getSettingsPageContext(): Promise<SettingsPageContext> {
   let actor;
-  try { actor = await getProtectedApplicationActor(); }
+  try { actor = await getRequestApplicationActor(); }
   catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");

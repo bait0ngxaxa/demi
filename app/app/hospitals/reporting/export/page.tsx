@@ -4,7 +4,7 @@ import { connection } from "next/server";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { listHospitalReportingHospitals } from "@/modules/reporting/services/hospital-report-access-service";
 import {
   getHospitalReportExportPreview,
@@ -40,7 +40,7 @@ export default async function HospitalReportExportPage({
   let previews: HospitalReportExportPreview[];
   let networks: NetworkPreviews[];
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     const parents = await listNetworkReportExportParents(actor);
     const parentIds = new Set(parents.map(({ parent }) => parent.id));
     hospitals = (await listHospitalReportingHospitals(actor)).filter(({ id }) => !parentIds.has(id));

@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { nextRoundStep, roundStepKey, ROUND_SUMMARY_STEP } from "@/modules/patient-program-rounds/domain/round-steps";
 import { buildRoundStepPath } from "@/modules/patient-program-rounds/presentation/round-labels";
 import { getProgramRoundDetail } from "@/modules/patient-program-rounds/services/round-query-service";
@@ -25,7 +25,7 @@ type ProgramRoundPageProps = {
 
 async function resolveActor() {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect("/login");

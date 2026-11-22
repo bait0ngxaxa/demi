@@ -8,7 +8,7 @@ import { buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { getHospitalUserDetail, type UserDetail } from "@/modules/user-management/services/user-directory-service";
 import { getMediatedPasswordResetEligibility } from "@/modules/account-security/services/mediated-password-reset-service";
 import { DELETION_BLOCKER_LABELS } from "@/modules/user-management/transport/action-state";
@@ -54,7 +54,7 @@ const TAKEOVER_BLOCK_TEXT: Record<NonNullable<UserDetail["takeoverBlock"]>, stri
 
 async function resolveActor() {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");

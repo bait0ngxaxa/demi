@@ -4,7 +4,7 @@ import { connection } from "next/server";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 
 import { PasswordChangeForm } from "./password-change-form";
 
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default async function AccountPasswordPage(): Promise<React.JSX.Element> {
   await connection();
-  await getProtectedApplicationActor();
+  await getRequestApplicationActor();
 
   return (
     <div className="max-w-2xl">

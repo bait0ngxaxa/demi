@@ -3,7 +3,7 @@ import { InPlaceRefreshBoundary } from "@/components/ui/in-place-refresh";
 import { createHash, randomUUID } from "node:crypto";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { listOwnPersonalMeals } from "@/modules/meals/services/personal-meal-query-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { PersonalWellnessWorkspace } from "./personal-wellness-workspace";
@@ -20,7 +20,7 @@ export default async function PersonalWellnessPage(): Promise<React.JSX.Element>
   await connection();
   let actor: ActorContext;
   try {
-    actor = await getProtectedApplicationActor();
+    actor = await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect(buildLoginReturnHref(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WELLNESS));
     if (error instanceof ForbiddenError) redirect("/app");

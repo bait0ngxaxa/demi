@@ -1,13 +1,13 @@
 import "server-only";
 
 import { notFound, redirect } from "next/navigation";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { ForbiddenError, NotFoundError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
 import { getHospitalWorkContent, listHospitalWorkContent } from "../services/hospital-content-work-query-service";
 
 export async function getHospitalWorkContentPageContext(cursor?: string, hospitalId?: string) {
   let actor;
-  try { actor = await getProtectedApplicationActor(); }
+  try { actor = await getRequestApplicationActor(); }
   catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");
@@ -28,7 +28,7 @@ export async function getHospitalWorkContentPageContext(cursor?: string, hospita
 
 export async function getHospitalWorkContentDetailContext(contentId: string) {
   let actor;
-  try { actor = await getProtectedApplicationActor(); }
+  try { actor = await getRequestApplicationActor(); }
   catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");
