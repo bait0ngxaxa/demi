@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
-const { mockedGetActor, mockedListHospitals, mockedListParentGroups, mockedGetParentChildPage, mockedRedirect } = vi.hoisted(() => ({
+import { PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN } from "../schemas/hospital-report-schemas";
+
+const { mockedGetActor, mockedListHospitals, mockedListParentGroups, mockedGetParentChildPages, mockedRedirect } = vi.hoisted(() => ({
   mockedGetActor: vi.fn(),
   mockedListHospitals: vi.fn(),
   mockedListParentGroups: vi.fn(),
-  mockedGetParentChildPage: vi.fn(),
+  mockedGetParentChildPages: vi.fn(),
   mockedRedirect: vi.fn(),
 }));
 
@@ -17,7 +19,7 @@ vi.mock("../services/parent-child-hospital-report-access-service", () => ({
   listParentChildHospitalReportTargetGroups: mockedListParentGroups,
 }));
 vi.mock("../services/hospital-report-query-service", () => ({
-  getParentChildHospitalReportingPage: mockedGetParentChildPage,
+  getParentChildHospitalReportingPages: mockedGetParentChildPages,
 }));
 
 import { getParentAreaOverviewContext } from "./parent-area-overview-context";
@@ -39,67 +41,106 @@ describe("Parent area overview context (ADR-0013)", () => {
     });
   });
 
-  it("reads each listed Child through the exact-Child path and drops revoked or ineligible Children", async () => {
-    mockedGetParentChildPage.mockImplementation(async (_actor, input: { hospitalId: string }) => {
-      if (input.hospitalId === childB.id) throw new NotFoundError();
-      if (input.hospitalId === childC.id) throw new ForbiddenError();
-      return { hospital: childA, parent };
-    });
+  it("reads a Parent's listed Children in one batch and drops revoked or ineligible Children", async () => {
+    mockedGetParentChildPages.mockResolvedValue(new Map([
+      [childA.id, { hospital: childA, parent }],
+      [childB.id, null],
+      [childC.id, null],
+    ]));
 
     const groups = await getParentAreaOverviewContext();
 
     expect(mockedListParentGroups).toHaveBeenCalledWith(actor, [parent.id]);
-    expect(mockedGetParentChildPage).toHaveBeenCalledWith(actor, { parentHospitalId: parent.id, hospitalId: childA.id });
-    expect(mockedGetParentChildPage).toHaveBeenCalledWith(actor, { parentHospitalId: parent.id, hospitalId: childB.id });
-    expect(mockedGetParentChildPage).toHaveBeenCalledWith(actor, { parentHospitalId: parent.id, hospitalId: childC.id });
+    expect(mockedGetParentChildPages).toHaveBeenCalledTimes(1);
+    expect(mockedGetParentChildPages).toHaveBeenCalledWith(actor, {
+      parentHospitalId: parent.id,
+      hospitalIds: [childA.id, childB.id, childC.id],
+    });
     expect(groups).toEqual([{ parent, children: [childA, childB, childC], areas: [{ hospital: childA, parent }] }]);
   });
 
-  it("bounds Child report concurrency and preserves the listed Parent/Child order", async () => {
+  it("reads each Parent separately and preserves the listed Parent/Child order", async () => {
     const children = Array.from({ length: 9 }, (_, index) => ({
       id: `child-${index}`,
       name: `ลูกข่าย ${index}`,
     }));
+    const secondParent = { id: "parent-2", name: "แม่ข่าย 2" };
     mockedListParentGroups.mockResolvedValue([
       { parent, children: children.slice(0, 5) },
-      { parent: { id: "parent-2", name: "แม่ข่าย 2" }, children: children.slice(5) },
+      { parent: secondParent, children: children.slice(5) },
     ]);
+    mockedGetParentChildPages.mockImplementation(async (_actor, input: { hospitalIds: string[] }) =>
+      new Map([...input.hospitalIds].reverse().map((id) => [id, { hospital: { id } }])));
+
+    const groups = await getParentAreaOverviewContext();
+
+    expect(mockedGetParentChildPages.mock.calls.map(([, input]) => input)).toEqual([
+      { parentHospitalId: parent.id, hospitalIds: children.slice(0, 5).map(({ id }) => id) },
+      { parentHospitalId: secondParent.id, hospitalIds: children.slice(5).map(({ id }) => id) },
+    ]);
+    expect(groups.map(({ parent: groupParent }) => groupParent.id)).toEqual([parent.id, secondParent.id]);
+    expect(groups.flatMap(({ areas }) => areas.map(({ hospital }) => hospital.id))).toEqual(
+      children.map(({ id }) => id),
+    );
+  });
+
+  it("reads a network larger than one batch in consecutive bounded batches, in listed order", async () => {
+    const children = Array.from({ length: PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN + 1 }, (_, index) => ({
+      id: `child-${index}`,
+      name: `ลูกข่าย ${index}`,
+    }));
+    mockedListParentGroups.mockResolvedValue([{ parent, children }]);
     let inFlight = 0;
     let peakInFlight = 0;
-    mockedGetParentChildPage.mockImplementation(async (_actor, input: { hospitalId: string }) => {
+    mockedGetParentChildPages.mockImplementation(async (_actor, input: { hospitalIds: string[] }) => {
       inFlight += 1;
       peakInFlight = Math.max(peakInFlight, inFlight);
       await new Promise((resolve) => setTimeout(resolve, 1));
       inFlight -= 1;
-      return { hospital: { id: input.hospitalId } };
+      return new Map(input.hospitalIds.map((id) => [id, { hospital: { id } }]));
     });
 
     const groups = await getParentAreaOverviewContext();
 
-    expect(peakInFlight).toBeGreaterThan(1);
-    expect(peakInFlight).toBeLessThanOrEqual(4);
-    expect(groups.map(({ parent: groupParent }) => groupParent.id)).toEqual([parent.id, "parent-2"]);
-    expect(groups.flatMap(({ areas }) => areas.map(({ hospital }) => hospital.id))).toEqual(
-      children.map(({ id }) => id),
-    );
+    expect(mockedGetParentChildPages.mock.calls.map(([, input]) => input.hospitalIds.length))
+      .toEqual([PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN, 1]);
+    expect(peakInFlight).toBe(1);
+    expect(groups[0]?.areas.map(({ hospital }) => hospital.id)).toEqual(children.map(({ id }) => id));
+  });
+
+  it("drops every Child of a Parent the actor lost after listing, keeping the other Parents", async () => {
+    const secondParent = { id: "parent-2", name: "แม่ข่าย 2" };
+    mockedListParentGroups.mockResolvedValue([
+      { parent, children: [childA] },
+      { parent: secondParent, children: [childB] },
+    ]);
+    mockedGetParentChildPages.mockImplementation(async (_actor, input: { parentHospitalId: string }) => {
+      if (input.parentHospitalId === parent.id) throw new ForbiddenError();
+      return new Map([[childB.id, { hospital: childB, parent: secondParent }]]);
+    });
+
+    await expect(getParentAreaOverviewContext()).resolves.toEqual([
+      { parent, children: [childA], areas: [] },
+      { parent: secondParent, children: [childB], areas: [{ hospital: childB, parent: secondParent }] },
+    ]);
   });
 
   it("returns an empty active network without issuing Child report queries", async () => {
     mockedListParentGroups.mockResolvedValue([{ parent, children: [] }]);
 
     await expect(getParentAreaOverviewContext()).resolves.toEqual([{ parent, children: [], areas: [] }]);
-    expect(mockedGetParentChildPage).not.toHaveBeenCalled();
+    expect(mockedGetParentChildPages).not.toHaveBeenCalled();
   });
 
   it("sends a user who directly owns no Parent back to the work home", async () => {
     mockedListParentGroups.mockResolvedValue([]);
 
     await expect(getParentAreaOverviewContext()).rejects.toThrow("NEXT_REDIRECT:/app");
-    expect(mockedGetParentChildPage).not.toHaveBeenCalled();
+    expect(mockedGetParentChildPages).not.toHaveBeenCalled();
   });
 
   it("does not hide infrastructure failures as missing areas", async () => {
-    mockedGetParentChildPage.mockRejectedValue(new InfrastructureError("down"));
+    mockedGetParentChildPages.mockRejectedValue(new InfrastructureError("down"));
 
     await expect(getParentAreaOverviewContext()).rejects.toBeInstanceOf(InfrastructureError);
   });

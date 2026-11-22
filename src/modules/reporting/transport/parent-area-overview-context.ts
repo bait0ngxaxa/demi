@@ -11,15 +11,14 @@ import {
 } from "@/shared/errors/application-error";
 
 import type { ParentChildHospitalReportingProjection } from "../projections/hospital-report-projection";
+import { PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN } from "../schemas/hospital-report-schemas";
 import { listHospitalReportingHospitals } from "../services/hospital-report-access-service";
-import { getParentChildHospitalReportingPage } from "../services/hospital-report-query-service";
+import { getParentChildHospitalReportingPages } from "../services/hospital-report-query-service";
 import { listParentChildHospitalReportTargetGroups, type ParentChildHospitalReportTargetGroup } from "../services/parent-child-hospital-report-access-service";
 
 export type ParentAreaOverviewGroup = ParentChildHospitalReportTargetGroup & {
   areas: readonly ParentChildHospitalReportingProjection[];
 };
-
-const MAX_CONCURRENT_CHILD_REPORTS = 4;
 
 async function resolveActor(): Promise<ActorContext> {
   try {
@@ -32,8 +31,9 @@ async function resolveActor(): Promise<ActorContext> {
 }
 
 /**
- * ADR-0016: an area is an active network Child of a Parent the actor directly OWNS. Each Child's nine values come
- * from the existing exact-Child read path, which re-authorizes and audits per Child; no other Child data is loaded.
+ * ADR-0016: an area is an active network Child of a Parent the actor directly OWNS. Each Parent's Children are read
+ * together: every Child is still authorized and audited individually and keeps only its own nine values, but in one
+ * snapshot and one connection per Parent instead of one transaction per Child (audit P2: pool pressure).
  */
 export async function getParentAreaOverviewContext(): Promise<ParentAreaOverviewGroup[]> {
   const actor = await resolveActor();
@@ -44,35 +44,36 @@ export async function getParentAreaOverviewContext(): Promise<ParentAreaOverview
   );
   if (parentGroups.length === 0) redirect("/app");
 
-  const childJobs = parentGroups.flatMap((group) =>
-    group.children.map((child) => ({ parentHospitalId: group.parent.id, child })),
-  );
-  const childReports: (ParentChildHospitalReportingProjection | null)[] = [];
-
-  for (let offset = 0; offset < childJobs.length; offset += MAX_CONCURRENT_CHILD_REPORTS) {
-    const batch = childJobs.slice(offset, offset + MAX_CONCURRENT_CHILD_REPORTS);
-    const batchReports = await Promise.all(batch.map(async ({ parentHospitalId, child }) => {
-      try {
-        return await getParentChildHospitalReportingPage(actor, {
-          parentHospitalId,
-          hospitalId: child.id,
-        });
-      } catch (error: unknown) {
-        // The link or status changed after listing: the Child is no longer an area of this Parent.
-        if (error instanceof ForbiddenError || error instanceof NotFoundError) return null;
-        throw error;
-      }
-    }));
-    childReports.push(...batchReports);
+  const groups: ParentAreaOverviewGroup[] = [];
+  for (const group of parentGroups) {
+    groups.push({ ...group, areas: await readChildAreas(actor, group) });
   }
+  return groups;
+}
 
-  let childOffset = 0;
-  return parentGroups.map((group) => {
-    const areas = childReports.slice(childOffset, childOffset + group.children.length);
-    childOffset += group.children.length;
-    return {
-      ...group,
-      areas: areas.filter((area): area is ParentChildHospitalReportingProjection => area !== null),
-    };
+async function readChildAreas(
+  actor: ActorContext,
+  group: ParentChildHospitalReportTargetGroup,
+): Promise<ParentChildHospitalReportingProjection[]> {
+  const reports = new Map<string, ParentChildHospitalReportingProjection | null>();
+  // Batches run one after another, so the overview still holds at most one connection.
+  for (let offset = 0; offset < group.children.length; offset += PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN) {
+    const batch = group.children.slice(offset, offset + PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN);
+    try {
+      const batchReports = await getParentChildHospitalReportingPages(actor, {
+        parentHospitalId: group.parent.id,
+        hospitalIds: batch.map(({ id }) => id),
+      });
+      for (const [hospitalId, report] of batchReports) reports.set(hospitalId, report);
+    } catch (error: unknown) {
+      // The Parent link or status changed after listing: none of its Children is an area any more.
+      if (error instanceof ForbiddenError || error instanceof NotFoundError) return [];
+      throw error;
+    }
+  }
+  // A Child whose link or status changed after listing is no longer an area of this Parent.
+  return group.children.flatMap(({ id }) => {
+    const report = reports.get(id);
+    return report ? [report] : [];
   });
 }

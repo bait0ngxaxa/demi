@@ -67,16 +67,22 @@ import {
   hospitalReportPageRequestSchema,
   networkReportExportPreviewRequestSchema,
   networkReportExportRequestSchema,
+  parentChildHospitalReportBatchRequestSchema,
   parentChildHospitalReportRequestSchema,
   type HospitalReportCohort,
   type HospitalReportFilters,
   type NetworkReportExportRequest,
 } from "../schemas/hospital-report-schemas";
 import { resolveNetworkReportExportContext } from "./network-report-access-service";
-import { resolveParentChildHospitalReportAccessContext } from "./parent-child-hospital-report-access-service";
+import {
+  resolveParentChildHospitalReportAccessContext,
+  resolveParentChildHospitalReportAccessContexts,
+  type ParentChildHospitalReportAccessContext,
+} from "./parent-child-hospital-report-access-service";
 import {
   parentChildHospitalReportingAuditReasonForError,
   recordParentChildHospitalReportingAudit,
+  recordParentChildHospitalReportingAudits,
 } from "./parent-child-hospital-report-audit-service";
 import { resolveHospitalReportingAccessContext } from "./hospital-report-access-service";
 import { resolveGlobalReportingAccessContext } from "./global-reporting-access-service";
@@ -949,6 +955,90 @@ async function loadParentChildHospitalReportingSourceSnapshot(
   return { dashboard, serviceProcess };
 }
 
+type ParentChildProgramCountRow = {
+  hospitalId: string;
+  active: number;
+  completed: number;
+  withRoutine: number;
+  withFloatingChart: number;
+  withDreamCard: number;
+  withConfidence: number;
+};
+
+/**
+ * The same nine exact-Child values as `loadParentChildHospitalReportingSourceSnapshot`, for several Children in three
+ * grouped statements instead of seven per Child. Each Child's values come only from its own rows (grouped by
+ * `hospitalId`); nothing is summed across Children. Every requested Child gets a snapshot, zero when it has no rows.
+ */
+async function loadParentChildHospitalReportingSourceSnapshots(
+  database: HospitalReportQueryDatabase,
+  hospitalIds: readonly string[],
+): Promise<Map<string, ParentChildHospitalReportingSourceSnapshot>> {
+  if (hospitalIds.length === 0) return new Map();
+  const relationshipWhere = reportRelationshipWhere(hospitalIds, "ACTIVE");
+  const [relationshipGroups, withoutProgramGroups, programRows] = await Promise.all([
+    database.patientHospitalRelationship.groupBy({
+      by: ["hospitalId"],
+      where: relationshipWhere,
+      _count: { _all: true },
+    }),
+    database.patientHospitalRelationship.groupBy({
+      by: ["hospitalId"],
+      where: { ...relationshipWhere, programs: { none: {} } },
+      _count: { _all: true },
+    }),
+    // `reportHospitalProgramWhere(hospitalIds, "ACTIVE")` grouped by Hospital: Prisma cannot group programs by their
+    // relationship's Hospital. The parity integration test pins this statement to the per-Child loaders, and
+    // hospital-report-active-cohort.test.ts fails when `activePatientHospitalRelationshipWhere` (here
+    // `r."endedAt" IS NULL`) changes.
+    database.$queryRaw<ParentChildProgramCountRow[]>(Prisma.sql`
+      SELECT r."hospitalId"::text AS "hospitalId",
+        (count(*) FILTER (WHERE p."status"::text = ${PatientProgramStatus.ACTIVE}))::int AS "active",
+        (count(*) FILTER (WHERE p."status"::text = ${PatientProgramStatus.COMPLETED}))::int AS "completed",
+        (count(*) FILTER (WHERE EXISTS (
+          SELECT 1 FROM "PatientProgramServiceOneRoutine" s
+          WHERE s."patientProgramId" = p."id" AND s."roundNumber" = ${SERVICE_ONE_HOME_ROUND})))::int AS "withRoutine",
+        (count(*) FILTER (WHERE EXISTS (
+          SELECT 1 FROM "PatientProgramServiceOneFloatingChart" s
+          WHERE s."patientProgramId" = p."id" AND s."roundNumber" = ${SERVICE_ONE_HOME_ROUND})))::int AS "withFloatingChart",
+        (count(*) FILTER (WHERE EXISTS (
+          SELECT 1 FROM "PatientProgramServiceOneDreamCard" s
+          WHERE s."patientProgramId" = p."id" AND s."roundNumber" = ${DREAM_CARD_ROUND})))::int AS "withDreamCard",
+        (count(*) FILTER (WHERE EXISTS (
+          SELECT 1 FROM "PatientProgramServiceOneConfidence" s
+          WHERE s."patientProgramId" = p."id" AND s."roundNumber" = ${SERVICE_ONE_HOME_ROUND})))::int AS "withConfidence"
+      FROM "PatientProgram" p
+      JOIN "PatientHospitalRelationship" r ON r."id" = p."patientHospitalRelationshipId"
+      WHERE r."hospitalId" = ANY(${[...hospitalIds]}::uuid[])
+        AND r."endedAt" IS NULL
+        AND p."status"::text IN (${PatientProgramStatus.ACTIVE}, ${PatientProgramStatus.COMPLETED})
+      GROUP BY r."hospitalId"
+    `),
+  ]);
+  const relationshipCounts = new Map(relationshipGroups.map((group) => [group.hospitalId, group._count._all]));
+  const withoutProgramCounts = new Map(withoutProgramGroups.map((group) => [group.hospitalId, group._count._all]));
+  const programCounts = new Map(programRows.map((row) => [row.hospitalId, row]));
+
+  return new Map(hospitalIds.map((hospitalId) => {
+    const programs = programCounts.get(hospitalId);
+    const active = programs?.active ?? 0;
+    const completed = programs?.completed ?? 0;
+    return [hospitalId, {
+      dashboard: {
+        patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: relationshipCounts.get(hospitalId) ?? 0 },
+        relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: withoutProgramCounts.get(hospitalId) ?? 0 },
+        programs: { grain: "PATIENT_PROGRAM", total: active + completed, active, completed },
+      },
+      serviceProcess: {
+        programsWithRoutineRecord: { grain: "PATIENT_PROGRAM", value: programs?.withRoutine ?? 0 },
+        programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM", value: programs?.withFloatingChart ?? 0 },
+        programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM", value: programs?.withDreamCard ?? 0 },
+        programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM", value: programs?.withConfidence ?? 0 },
+      },
+    } satisfies ParentChildHospitalReportingSourceSnapshot];
+  }));
+}
+
 function projectParentChildHospitalReportingContent(
   source: ParentChildHospitalReportingSourceSnapshot,
 ): ParentChildHospitalReportingProjection["content"] {
@@ -1216,6 +1306,13 @@ async function loadParentChildHospitalReportingProjection(
   // The access resolver already proved the active network association in this same snapshot.
   const source = await loadParentChildHospitalReportingSourceSnapshot(transaction, access.hospital.id);
 
+  return toParentChildHospitalReportingProjection(access, source);
+}
+
+function toParentChildHospitalReportingProjection(
+  access: ParentChildHospitalReportAccessContext,
+  source: ParentChildHospitalReportingSourceSnapshot,
+): ParentChildHospitalReportingProjection {
   return {
     operation: "PARENT_CHILD_REPORT",
     access: "PARENT_OWNER",
@@ -1290,6 +1387,109 @@ export async function getParentChildHospitalReportingPage(
   }
 
   return projection;
+}
+
+/**
+ * `getParentChildHospitalReportingPage` for several exact Children of one Parent with constant query count: one
+ * RepeatableRead snapshot authorizes each Child individually and reads all their summaries grouped by Hospital, the
+ * same post-snapshot re-check runs once for all of them, and one insert writes the same per-Child audit event
+ * (`read`, or `denied` with its reason). A denied Child maps to `null`, as the overview drops it. A failure of the
+ * whole read audits every requested Child as `failed` (or `denied` when access itself was refused) and throws.
+ */
+export async function getParentChildHospitalReportingPages(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalReportQueryDependencies = {},
+): Promise<Map<string, ParentChildHospitalReportingProjection | null>> {
+  const parsed = parentChildHospitalReportBatchRequestSchema.safeParse(input);
+  if (!parsed.success) throw new NotFoundError();
+  const { parentHospitalId } = parsed.data;
+  const requested = [...new Set(parsed.data.hospitalIds)];
+  // A Child equal to its Parent fails the single request's schema: denied without a read or an audit event.
+  const hospitalIds = requested.filter((hospitalId) => hospitalId !== parentHospitalId);
+
+  const database = dependencies.database ?? getPrisma();
+  const failureContext = "reporting.getParentChildHospitalReportingPages";
+  const outcomes = new Map<string, ParentChildHospitalReportingProjection | ForbiddenError | NotFoundError>();
+  try {
+    const snapshot = await runConsistentRead(database, async (transaction) => {
+      const access = await resolveParentChildHospitalReportAccessContexts(
+        actor,
+        parentHospitalId,
+        hospitalIds,
+        transaction,
+        HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES.read,
+      );
+      const authorized = hospitalIds.flatMap((hospitalId) => {
+        const result = access.get(hospitalId);
+        return result?.allowed ? [result.access] : [];
+      });
+      // The access resolver already proved each active network association in this same snapshot.
+      const sources = await loadParentChildHospitalReportingSourceSnapshots(
+        transaction,
+        authorized.map(({ hospital }) => hospital.id),
+      );
+      return { access, sources };
+    });
+
+    const readable = hospitalIds.filter((hospitalId) => snapshot.access.get(hospitalId)?.allowed === true);
+    const recheck = await resolveParentChildHospitalReportAccessContexts(actor, parentHospitalId, readable, database);
+    for (const hospitalId of hospitalIds) {
+      const first = snapshot.access.get(hospitalId);
+      const again = recheck.get(hospitalId);
+      const source = snapshot.sources.get(hospitalId);
+      if (!first || !first.allowed) outcomes.set(hospitalId, first?.error ?? new NotFoundError());
+      else if (!again || !again.allowed) outcomes.set(hospitalId, again?.error ?? new NotFoundError());
+      else if (!source) throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
+      else outcomes.set(hospitalId, toParentChildHospitalReportingProjection(first.access, source));
+    }
+  } catch (error: unknown) {
+    try {
+      const denied = error instanceof ForbiddenError || error instanceof NotFoundError;
+      await recordParentChildHospitalReportingAudits(hospitalIds.map((hospitalId) => ({
+        actor,
+        parentHospitalId,
+        hospitalId,
+        outcome: denied ? "denied" : "failed",
+        reason: parentChildHospitalReportingAuditReasonForError(error),
+      })), database);
+    } catch (auditError: unknown) {
+      throw toInfrastructureError(failureContext, auditError, "Parent-to-Child Hospital report could not be loaded");
+    }
+
+    if (
+      error instanceof ForbiddenError ||
+      error instanceof NotFoundError ||
+      error instanceof InfrastructureError
+    ) {
+      throw error;
+    }
+    throw toInfrastructureError(failureContext, error, "Parent-to-Child Hospital report could not be loaded");
+  }
+
+  try {
+    await recordParentChildHospitalReportingAudits(hospitalIds.map((hospitalId) => {
+      const outcome = outcomes.get(hospitalId);
+      return outcome instanceof ForbiddenError || outcome instanceof NotFoundError || outcome === undefined
+        ? {
+          actor,
+          parentHospitalId,
+          hospitalId,
+          outcome: "denied" as const,
+          reason: parentChildHospitalReportingAuditReasonForError(outcome ?? new NotFoundError()),
+        }
+        : { actor, parentHospitalId, hospitalId, outcome: "read" as const };
+    }), database);
+  } catch (error: unknown) {
+    throw toInfrastructureError(failureContext, error, "Parent-to-Child Hospital report could not be loaded");
+  }
+
+  return new Map(requested.map((hospitalId) => {
+    const outcome = outcomes.get(hospitalId);
+    return [hospitalId, outcome instanceof ForbiddenError || outcome instanceof NotFoundError || outcome === undefined
+      ? null
+      : outcome];
+  }));
 }
 
 /**

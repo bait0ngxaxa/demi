@@ -34,6 +34,17 @@ export const parentChildHospitalReportRequestSchema = z
   .strict()
   .refine(({ parentHospitalId, hospitalId }) => parentHospitalId !== hospitalId);
 
+/** Children per batch read: bounds one statement's id list; a larger network is read in several batches. */
+export const PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN = 500;
+
+/** Several exact Children of one Parent; a Child equal to the Parent is denied per Child, as a single request is. */
+export const parentChildHospitalReportBatchRequestSchema = z
+  .object({
+    parentHospitalId: hospitalReportHospitalIdSchema,
+    hospitalIds: z.array(hospitalReportHospitalIdSchema).max(PARENT_CHILD_REPORT_BATCH_MAX_CHILDREN),
+  })
+  .strict();
+
 const cursorSchema = z.string().trim().min(1).max(1024).optional();
 
 /**

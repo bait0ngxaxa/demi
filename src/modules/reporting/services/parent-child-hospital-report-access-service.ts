@@ -6,6 +6,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   findNetworkChild,
+  findNetworkChildren,
   listNetworkScopes,
   type HospitalNetworkDatabase,
 } from "@/modules/hospital-service-areas/services/hospital-network-access";
@@ -66,6 +67,14 @@ async function resolveInDatabase(
   if (!isActiveHospitalOperator(actor, parentHospitalId)) throw new ForbiddenError();
   // ADR-0016: the active operational network (not canonical Master placement) scopes Parent reports.
   const network = await findNetworkChild(database, actor.userId, parentHospitalId, childHospitalId, "REPORT");
+  return toAccessContext(actor, network, capability);
+}
+
+function toAccessContext(
+  actor: ActorContext,
+  network: { parent: { id: string; name: string }; child: { id: string; name: string } } | null,
+  capability: HospitalNetworkChildReportCapability,
+): ParentChildHospitalReportAccessContext {
   if (!network) throw new NotFoundError();
 
   const decision = decideHospitalNetworkChildReportPolicy({
@@ -134,6 +143,70 @@ export async function resolveParentChildHospitalReportAccessContext(
       throw error;
     }
     throw toInfrastructureError("reporting.resolveParentChildHospitalReportAccessContext", error, "Parent-to-Child Hospital report access could not be verified");
+  }
+}
+
+export type ParentChildHospitalReportAccessResult =
+  | { allowed: true; access: ParentChildHospitalReportAccessContext }
+  | { allowed: false; error: ForbiddenError | NotFoundError };
+
+function denied(error: ForbiddenError | NotFoundError): ParentChildHospitalReportAccessResult {
+  return { allowed: false, error };
+}
+
+/**
+ * The exact-Child resolver above for several Children of one Parent in one read: the same context check before any
+ * read, the same association proof and policy decision for each Child individually, and for each Child the same
+ * outcome one `resolveParentChildHospitalReportAccessContext` call would give. Returns one result per requested id,
+ * keyed by the id as given; infrastructure failures still throw for the whole call.
+ */
+export async function resolveParentChildHospitalReportAccessContexts(
+  actor: ActorContext | null | undefined,
+  parentHospitalId: unknown,
+  childHospitalIds: readonly string[],
+  database: ParentChildHospitalReportAccessDatabase = getPrisma(),
+  capability: HospitalNetworkChildReportCapability = HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES.read,
+): Promise<Map<string, ParentChildHospitalReportAccessResult>> {
+  if (!actor) throw new ForbiddenError();
+
+  const parsedParentId = hospitalReportHospitalIdSchema.safeParse(parentHospitalId);
+  const requested = childHospitalIds.map((id) => ({ id, parsed: hospitalReportHospitalIdSchema.safeParse(id) }));
+  const valid = parsedParentId.success
+    ? requested.flatMap(({ id, parsed }) => parsed.success && parsed.data !== parsedParentId.data ? [{ id, childId: parsed.data }] : [])
+    : [];
+
+  const resolveAll = async (db: ParentChildHospitalReportAccessDatabase): Promise<Map<string, ParentChildHospitalReportAccessResult>> => {
+    const results = new Map(requested.map(({ id }) => [id, denied(new NotFoundError())]));
+    if (!parsedParentId.success || valid.length === 0) return results;
+    if (!isActiveHospitalOperator(actor, parsedParentId.data)) {
+      for (const { id } of valid) results.set(id, denied(new ForbiddenError()));
+      return results;
+    }
+    const networks = await findNetworkChildren(
+      db,
+      actor.userId,
+      parsedParentId.data,
+      [...new Set(valid.map(({ childId }) => childId))],
+      "REPORT",
+    );
+    for (const { id, childId } of valid) {
+      try {
+        results.set(id, { allowed: true, access: toAccessContext(actor, networks.get(childId) ?? null, capability) });
+      } catch (error: unknown) {
+        if (error instanceof ForbiddenError || error instanceof NotFoundError) results.set(id, denied(error));
+        else throw error;
+      }
+    }
+    return results;
+  };
+
+  const db = database ?? getPrisma();
+  try {
+    if (!isPrismaClient(db)) return await resolveAll(db);
+    return await db.$transaction((transaction) => resolveAll(transaction), ACCESS_TRANSACTION_OPTIONS);
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError || error instanceof InfrastructureError) throw error;
+    throw toInfrastructureError("reporting.resolveParentChildHospitalReportAccessContexts", error, "Parent-to-Child Hospital report access could not be verified");
   }
 }
 
