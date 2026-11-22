@@ -30,6 +30,7 @@ import {
 } from "./hospital-groups";
 import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
 import { PasswordInput } from "@/components/ui/password-input";
+import { SearchInput } from "@/components/ui/search-input";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/modules/auth/domain/password-policy";
 import { PASSWORD_POLICY_HINT } from "@/modules/auth/domain/password-policy-copy";
 import { LegalAcceptanceFields } from "@/components/legal/legal-acceptance-fields";
@@ -188,16 +189,14 @@ export function HospitalOnboardingForm({ legal }: HospitalOnboardingFormProps) {
               <label className="block text-sm font-semibold text-ink" htmlFor="hospitalSearch">
                 ค้นหาชื่อโรงพยาบาลแม่ข่าย
               </label>
-              <input
+              <SearchInput
                 autoComplete="off"
-                className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand-soft"
                 disabled={pending}
                 id="hospitalSearch"
                 maxLength={HOSPITAL_SEARCH_MAX_LENGTH}
                 onChange={(event) => hospitalSearch.setQuery(event.target.value)}
                 placeholder="เช่น โรงพยาบาลแก่งคอย"
                 ref={searchInputRef}
-                type="search"
                 value={hospitalSearch.query}
               />
               <p className="text-xs leading-5 text-muted">พิมพ์อย่างน้อย {ONBOARDING_HOSPITAL_SEARCH_MIN_LENGTH} ตัวอักษร ระบบแสดงไม่เกิน {HOSPITAL_SEARCH_RESULT_LIMIT} แห่งที่ตรงกัน</p>

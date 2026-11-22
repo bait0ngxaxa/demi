@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { useServerSearch } from "@/components/search/use-server-search";
 import type { MediatedPasswordResetHospitalOption } from "@/modules/account-security/services/mediated-password-reset-service";
 import { searchMediatedPasswordResetHospitalsAction } from "@/modules/account-security/transport/server-actions";
@@ -40,11 +40,10 @@ export function CaregiverResetHospitalPicker({
       <div className="space-y-3">
         <label className="block space-y-2 text-sm font-semibold text-text">
           <span>โรงพยาบาลที่บันทึกการรีเซ็ต</span>
-          <Input
+          <SearchInput
             maxLength={HOSPITAL_SEARCH_MAX_LENGTH}
             onChange={(event) => search.setQuery(event.target.value)}
             placeholder="ค้นหาชื่อโรงพยาบาล"
-            type="search"
             value={search.query}
           />
         </label>

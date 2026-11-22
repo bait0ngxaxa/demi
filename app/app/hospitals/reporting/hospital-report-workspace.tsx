@@ -13,6 +13,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ChevronGlyph } from "@/components/ui/glyphs";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { SearchInput } from "@/components/ui/search-input";
 import { CountBarChart } from "@/components/reporting-charts/count-bar-chart";
 import { ProgramStatusDonut } from "@/components/reporting-charts/program-status-donut";
 import type {
@@ -686,7 +687,7 @@ export function HospitalReportWorkspace({
         {filterForm.fields.map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
         <input type="hidden" name="view" value={view} />
         {includesEnded ? <input type="hidden" name="cohort" value="INCLUDE_ENDED" /> : null}
-        <label className="min-w-0 text-sm">ชื่อผู้ป่วย / HN<input type="search" name="search" maxLength={100} defaultValue={page.filters.search} key={page.filters.search} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring" /></label>
+        <label className="min-w-0 text-sm">ชื่อผู้ป่วย / HN<SearchInput name="search" maxLength={100} defaultValue={page.filters.search} key={page.filters.search} containerClassName="mt-2" /></label>
         <label className="min-w-0 text-sm">ความคืบหน้า<select name="progress" defaultValue={page.filters.progress} key={page.filters.progress} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring">
           <option value="">ทุกรอบ</option>{Array.from({ length: 7 }, (_, round) => <option value={round} key={round}>{round === 6 ? "ครบอย่างน้อย 6 รอบ" : `ครบ ${round} รอบ`}</option>)}<option value="AFTER_RECORDED">บันทึก After แล้ว · รอจบโปรแกรม</option><option value="COMPLETED">สิ้นสุดโปรแกรม</option>
         </select></label>

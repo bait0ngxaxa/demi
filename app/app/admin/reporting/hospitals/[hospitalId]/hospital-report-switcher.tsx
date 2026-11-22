@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { useServerSearch } from "@/components/search/use-server-search";
 import { Button } from "@/components/ui/button";
+import { SearchInput } from "@/components/ui/search-input";
 import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
 import type { GlobalReportingHospitalOption } from "@/modules/reporting/services/global-reporting-service";
 import { searchGlobalReportingHospitalsAction } from "@/modules/reporting/transport/global-reporting-search-actions";
@@ -110,13 +111,13 @@ export function HospitalReportSwitcher({
           id={`${id}-panel`}
         >
           <label className="type-label mb-2 block text-text" htmlFor={`${id}-input`}>ค้นหาชื่อโรงพยาบาล</label>
-          <input
+          <SearchInput
             aria-activedescendant={activeOption ? `${id}-option-${activeOption.id}` : undefined}
             aria-autocomplete="list"
             aria-controls={listId}
             aria-expanded={results.length > 0}
             autoComplete="off"
-            className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            clearOnEscape={false}
             id={`${id}-input`}
             maxLength={HOSPITAL_SEARCH_MAX_LENGTH}
             onChange={(event) => {
@@ -127,7 +128,6 @@ export function HospitalReportSwitcher({
             placeholder="พิมพ์ชื่อโรงพยาบาล"
             ref={inputRef}
             role="combobox"
-            type="search"
             value={search.query}
           />
           <p aria-live="polite" className={`mt-2 text-sm ${search.shown?.error ? "text-danger" : "text-text-muted"}`} role="status">

@@ -5,7 +5,7 @@ import { useId, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { HospitalReportCohort } from "@/modules/reporting/schemas/hospital-report-schemas";
@@ -141,7 +141,7 @@ export function NetworkExportPanel({
         <div className="min-w-0 space-y-3">
           <div className="min-w-0">
             <label className="type-label mb-2 block text-text" htmlFor={`${ids}-search`}>ค้นหาหน่วยบริการ</label>
-            <Input id={`${ids}-search`} onChange={(event) => setSearch(event.target.value)} placeholder="ชื่อหน่วยบริการ" type="search" value={search} />
+            <SearchInput id={`${ids}-search`} onChange={(event) => setSearch(event.target.value)} placeholder="ชื่อหน่วยบริการ" value={search} />
           </div>
           <div className="flex flex-wrap gap-2">
             <Button disabled={visible.length === 0} onClick={() => setVisible(true)} size="compact" type="button" variant="secondary">

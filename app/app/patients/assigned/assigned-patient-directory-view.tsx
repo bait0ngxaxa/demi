@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
@@ -156,13 +156,12 @@ export function AssignedPatientDirectoryView({
             </label>
             <label className="block space-y-2 text-sm font-semibold">
               <span>{lookupLabel}</span>
-              <Input
+              <SearchInput
                 defaultValue={value}
                 key={value}
                 maxLength={maxLength}
                 name="value"
                 placeholder={lookupType === "HOSPITAL_NUMBER" ? "เช่น HN-001" : "เช่น สมชาย"}
-                type="search"
               />
             </label>
             <label className="block space-y-2 text-sm font-semibold">

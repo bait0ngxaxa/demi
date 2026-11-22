@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
@@ -458,13 +458,12 @@ export function CareTrackingWorkspaceView({
             {state.signals.map((signal) => <input key={signal} name="signal" type="hidden" value={signal} />)}
             <label className="block space-y-2 text-sm font-semibold">
               <span>ชื่อผู้ป่วยหรือ HN</span>
-              <Input
+              <SearchInput
                 defaultValue={state.search}
                 key={state.search}
                 maxLength={PATIENT_DIRECTORY_NAME_MAX_LENGTH}
                 name="search"
                 placeholder="เช่น สมชาย หรือ HN-001"
-                type="search"
               />
             </label>
             <PendingSubmitButton pendingLabel="กำลังค้นหา...">ค้นหา</PendingSubmitButton>

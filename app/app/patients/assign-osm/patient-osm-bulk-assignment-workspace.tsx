@@ -9,7 +9,7 @@ import { AssigneeSearchPicker, type AssigneeOption } from "@/components/assignee
 import type { ServerSearchPageResult } from "@/components/search/server-search-paging";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { ModalDialog } from "@/components/ui/modal-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageNumberPagination } from "@/components/ui/page-number-pagination";
@@ -376,13 +376,12 @@ export function PatientOsmBulkAssignmentWorkspace({
                   <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
                   <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold">
                     <span>ค้นหาชื่อผู้ป่วย</span>
-                    <Input
+                    <SearchInput
                       defaultValue={search}
                       disabled={confirming}
                       key={search}
                       maxLength={PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH}
                       name="value"
-                      type="search"
                     />
                   </label>
                   <PendingSubmitButton disabled={confirming} size="compact" variant="secondary" pendingLabel="กำลังค้นหา...">
