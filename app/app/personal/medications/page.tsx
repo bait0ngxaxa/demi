@@ -3,7 +3,7 @@ import { InPlaceRefreshBoundary } from "@/components/ui/in-place-refresh";
 import { createHash, randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { getOwnPersonalMedication, listOwnPersonalMedications } from "@/modules/medications/services/personal-medication-query-service";
 import { ForbiddenError, UnauthenticatedError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { PersonalMedicationWorkspace } from "./personal-medication-workspace";
@@ -22,7 +22,7 @@ export default async function PersonalMedicationsPage({ searchParams }: {
   const params = await searchParams;
   let actor: ActorContext;
   try {
-    actor = await getProtectedApplicationActor();
+    actor = await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect(buildLoginReturnHref(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_MEDICATIONS));
     if (error instanceof ForbiddenError) redirect("/app");

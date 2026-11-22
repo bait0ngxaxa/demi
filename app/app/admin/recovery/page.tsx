@@ -4,7 +4,7 @@ import { connection } from "next/server";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { listQuarantinedMediatedPasswordResets } from "@/modules/account-security/services/mediated-password-reset-service";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "กู้คืนบัญชีผ
 
 async function requireAdmin(): Promise<ActorContext> {
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     if (!actor.roles.includes("ADMIN")) throw new ForbiddenError();
     return actor;
   } catch (error: unknown) {

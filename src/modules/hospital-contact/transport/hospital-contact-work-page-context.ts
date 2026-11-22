@@ -2,7 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { listWorkHospitalContacts } from "../services/hospital-contact-work-query-service";
@@ -12,7 +12,7 @@ export async function getHospitalWorkContactsPageContext(): Promise<HospitalWork
   let actor;
 
   try {
-    actor = await getProtectedApplicationActor();
+    actor = await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect("/login");

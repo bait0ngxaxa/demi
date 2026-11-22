@@ -14,7 +14,7 @@ import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import { getPatientClassificationLabel } from "@/modules/patient-classification/presentation/patient-classification-labels";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { getPatientBaselineNavigationState } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import type { PatientBaselineNavigationState } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import {
@@ -65,7 +65,7 @@ const patientTabs: readonly { id: PatientDetailTab; label: string }[] = [
 
 async function resolveActor(): Promise<ActorContext> {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect("/login");

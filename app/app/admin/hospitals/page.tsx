@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { PageHeader } from "@/components/ui/page-header";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import {
   assertHospitalGovernanceCapability,
   HOSPITAL_GOVERNANCE_CAPABILITIES,
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 
 async function requirePlatformAdmin() {
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     assertHospitalGovernanceCapability(
       actor,
       HOSPITAL_GOVERNANCE_CAPABILITIES.readGovernance,

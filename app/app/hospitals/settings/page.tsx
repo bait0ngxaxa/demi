@@ -5,7 +5,7 @@ import { connection } from "next/server";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import {
   HOSPITAL_CONTACT_CAPABILITIES,
   decideHospitalContactPolicy,
@@ -30,7 +30,7 @@ export default async function HospitalSettingsPage({ searchParams }: HospitalSet
   await connection();
   let actor;
   try {
-    actor = await getProtectedApplicationActor();
+    actor = await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");

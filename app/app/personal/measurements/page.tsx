@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { connection } from "next/server";
 import { notFound, redirect } from "next/navigation";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { listOwnPatientSelfMeasurements } from "@/modules/patient-self-measurements/services/patient-self-measurement-service";
 import { ForbiddenError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
 
@@ -21,7 +21,7 @@ export default async function PatientSelfMeasurementPage({ searchParams }: Patie
   const cursor = typeof query.cursor === "string" ? query.cursor : query.cursor === undefined ? undefined : "";
   let page: Awaited<ReturnType<typeof listOwnPatientSelfMeasurements>>;
   try {
-    page = await listOwnPatientSelfMeasurements(await getProtectedApplicationActor(), { cursor });
+    page = await listOwnPatientSelfMeasurements(await getRequestApplicationActor(), { cursor });
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");

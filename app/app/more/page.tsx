@@ -15,7 +15,7 @@ import { WorkspaceSwitch } from "@/components/app-shell/workspace-switch";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { getPendingActions, type PendingActionsResult } from "@/modules/pending-actions/services/pending-action-service";
 import { withNavigationPendingActions } from "@/components/app-shell/navigation-pending-actions";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -31,7 +31,7 @@ type MorePageProps = {
 
 async function resolveProtectedActor(): Promise<ActorContext> {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError || error instanceof ForbiddenError) {
       redirect("/login");

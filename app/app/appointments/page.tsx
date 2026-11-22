@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { workAppointmentQuerySchema } from "@/modules/appointments/schemas/work-appointment-schemas";
 import {
   APPOINTMENT_REQUEST_KIND_QUEUE_LABELS,
@@ -37,7 +37,7 @@ function firstSearchParam(value: string | string[] | undefined): string | undefi
 
 async function resolveActor() {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
     if (error instanceof ForbiddenError) redirect("/app");
@@ -46,7 +46,7 @@ async function resolveActor() {
 }
 
 async function loadPage(
-  actor: Awaited<ReturnType<typeof getProtectedApplicationActor>>,
+  actor: Awaited<ReturnType<typeof getRequestApplicationActor>>,
   input: WorkAppointmentQueryInput,
 ): Promise<WorkAppointmentPage> {
   try {
@@ -64,7 +64,7 @@ async function loadPage(
  * shows nothing here (the shell states it); a denial keeps this page's protected handling, never an empty scope.
  */
 async function loadPendingScope(
-  actor: Awaited<ReturnType<typeof getProtectedApplicationActor>>,
+  actor: Awaited<ReturnType<typeof getRequestApplicationActor>>,
   page: WorkAppointmentPage,
 ): Promise<WorkAppointmentPendingScope | null> {
   let indicator: PendingActionIndicator | undefined;

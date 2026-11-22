@@ -3,7 +3,7 @@ import "server-only";
 import { HospitalStatus } from "@prisma/client";
 import { notFound, redirect } from "next/navigation";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import type { LoginReturnTo } from "@/modules/auth/schemas/login-schema";
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -34,7 +34,7 @@ export type PatientPersonalHomePageContext = Omit<PatientSelfContext, "hospitalR
 
 async function getPatientActor(returnTo?: LoginReturnTo): Promise<ActorContext> {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect(buildLoginReturnHref(returnTo));
@@ -116,7 +116,7 @@ export async function getPatientSelfHospitalProfilePageContext(
   let actor: ActorContext;
 
   try {
-    actor = await getProtectedApplicationActor();
+    actor = await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect("/login");

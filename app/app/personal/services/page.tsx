@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { preferredDateBounds } from "@/modules/patient-service-requests/domain/patient-service-definitions";
 import { listOwnPatientServiceRequests } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
@@ -18,7 +18,7 @@ export default async function PatientServicesPage(): Promise<React.JSX.Element> 
 
   let relationships: Awaited<ReturnType<typeof listOwnPatientServiceRequests>>;
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     relationships = await listOwnPatientServiceRequests(actor);
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {

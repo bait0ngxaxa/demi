@@ -1,7 +1,7 @@
 import "server-only";
 
 import { notFound, redirect } from "next/navigation";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ApplicationError, ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { getAppointmentGrantManagement, type AppointmentGrantManagement } from "../services/appointment-grant-management-query-service";
@@ -13,7 +13,7 @@ import { canUseFamilyWorkspace } from "../domain/family-access";
 
 /** A platform ADMIN is sent home before any Family data is read. `redirect` throws, so callers' catch rethrows it. */
 async function getFamilyWorkspaceActor(): Promise<ActorContext> {
-  const actor = await getProtectedApplicationActor();
+  const actor = await getRequestApplicationActor();
   if (!canUseFamilyWorkspace(actor.roles)) redirect("/app");
   return actor;
 }
@@ -24,7 +24,7 @@ async function getFamilyWorkspaceActor(): Promise<ActorContext> {
  */
 export async function isSignedInPlatformAdminViewer(): Promise<boolean> {
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     return !canUseFamilyWorkspace(actor.roles);
   } catch (error: unknown) {
     if (error instanceof ApplicationError) return false;

@@ -3,7 +3,7 @@ import "server-only";
 import type { LegalDocumentKind, LegalDocumentStatus } from "@prisma/client";
 import { notFound, redirect } from "next/navigation";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import { getLegalVersionForAdmin, listLegalVersions, type AdminLegalVersion } from "../services/legal-service";
@@ -48,7 +48,7 @@ function redirectWhenNotAdmin(error: unknown): never {
 /** `/app/admin/legal`: every version of every kind; the service re-checks the persisted ADMIN role. */
 export async function getAdminLegalVersionsView(): Promise<AdminLegalVersionView[]> {
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     return (await listLegalVersions(actor)).map(toView);
   } catch (error: unknown) {
     redirectWhenNotAdmin(error);
@@ -58,7 +58,7 @@ export async function getAdminLegalVersionsView(): Promise<AdminLegalVersionView
 /** `/app/admin/legal/[versionId]`: one version, drafts included, for edit and preview. */
 export async function getAdminLegalVersionView(versionId: string): Promise<AdminLegalVersionView> {
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     return toView(await getLegalVersionForAdmin(actor, versionId));
   } catch (error: unknown) {
     redirectWhenNotAdmin(error);

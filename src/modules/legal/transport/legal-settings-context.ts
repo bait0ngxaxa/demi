@@ -2,7 +2,7 @@ import "server-only";
 
 import type { ConsentDecision, LegalChannel } from "@prisma/client";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import type { ConsentDocumentKind } from "../domain/legal-documents";
@@ -33,7 +33,7 @@ export type LegalSettingsView = {
 };
 
 export async function getLegalSettingsView(): Promise<LegalSettingsView> {
-  const actor = await getProtectedApplicationActor();
+  const actor = await getRequestApplicationActor();
   const status = await getMyLegalStatus(actor);
   return {
     canManageDocuments: actor.roles.includes("ADMIN"),

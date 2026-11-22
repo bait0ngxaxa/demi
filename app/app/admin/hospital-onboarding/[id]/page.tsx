@@ -6,7 +6,7 @@ import { connection } from "next/server";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import {
   assertHospitalOnboardingCapability,
   HOSPITAL_ONBOARDING_CAPABILITIES,
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
 
 async function requirePlatformAdmin(): Promise<void> {
   try {
-    const actor = await getProtectedApplicationActor();
+    const actor = await getRequestApplicationActor();
     assertHospitalOnboardingCapability(actor, HOSPITAL_ONBOARDING_CAPABILITIES.review);
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {

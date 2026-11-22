@@ -5,7 +5,7 @@ import { connection } from "next/server";
 import { LineAccountLink } from "@/components/line/line-account-navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { countSoleActiveOwnerHospitals } from "@/modules/hospital-governance/services/hospital-owner-recovery-readiness-service";
 import { getLineAccountSummary } from "@/modules/line/services/line-account-service";
 import { resolveLineRecoveryReadiness } from "@/modules/line/domain/line-recovery-readiness";
@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "บัญชี LINE" };
 
 export default async function ApplicationLineAccountPage(): Promise<React.JSX.Element> {
   await connection();
-  const actor = await getProtectedApplicationActor();
+  const actor = await getRequestApplicationActor();
   const recoveryConfigured = isLinePasswordRecoveryRequestConfigured();
   const isHospitalOwner = !actor.roles.includes(Role.ADMIN) && actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some((membership) =>
     membership.membershipType === MembershipType.OWNER && membership.status === MembershipStatus.ACTIVE && membership.hospitalStatus === HospitalStatus.ACTIVE);

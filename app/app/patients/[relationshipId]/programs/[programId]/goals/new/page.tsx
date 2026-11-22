@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { goalPlanSourceFollowupIdSchema } from "@/modules/goals/schemas/goal-schemas";
 import { getGoalPlanCreateContextForProgram } from "@/modules/goals/services/goal-query-service";
 import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
@@ -32,7 +32,7 @@ type NewProgramGoalPlanPageProps = {
 
 async function resolveActor() {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
       redirect("/login");

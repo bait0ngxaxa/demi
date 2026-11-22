@@ -26,7 +26,7 @@ import { WorkHomeToolGroups } from "@/components/home/work-home-tool-groups";
 import { Alert } from "@/components/ui/alert";
 import { ChevronGlyph } from "@/components/ui/glyphs";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
 import { countWorkAppointmentsAwaitingMyAcceptance } from "@/modules/appointments/services/work-appointment-query-service";
 import { listActorHospitalWorkspaces } from "@/modules/auth/services/actor-workspace-service";
 import { listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
 
 async function resolveProtectedActor(): Promise<ActorContext> {
   try {
-    return await getProtectedApplicationActor();
+    return await getRequestApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError || error instanceof ForbiddenError) {
       redirect("/login");
