@@ -24,6 +24,7 @@
   - `DATABASE_URL`: **Session pooler** (port 5432, host `aws-0-<SUPABASE_REGION>.pooler.supabase.com`, user `postgres.<PROJECT_REF>`) ต่อท้าย `?connection_limit=5` server เป็น process เดียวที่รันยาว ไม่ต้องใช้ transaction pooler (6543) ต้องให้ pool ≥ 2 เพราะ scheduler tick ถือ connection หนึ่งไว้สำหรับ lock (E1 §2)
   - `DIRECT_URL`: Session pooler ตัวเดียวกัน (ไม่ต้องมี `connection_limit`) หรือ Direct connection ถ้า VPS มี IPv6
 - app ต่อด้วย role `postgres` ผ่าน Prisma ต้องอ่าน `_prisma_migrations` ได้ (readiness และ LINE disconnection readiness ใช้ตารางนี้)
+- **JIT ต้องปิด** (`jit = off` เป็นค่าเริ่มต้นของ Supabase ห้ามเปิด) ถ้าเปิด JIT statement ของหน้าจัดบริการ (care tracking) จะเสียเวลา compile ราว 2 วินาทีทุก request เมื่อโรงพยาบาลมีผู้ป่วยตั้งแต่หลักพันคนขึ้นไป (ดู [CARE_TRACKING_PERF.md](../engineering/CARE_TRACKING_PERF.md)) ตรวจด้วย role ที่ app ใช้: `select current_setting('jit');` ต้องได้ `off` และ `select setconfig from pg_db_role_setting where array_to_string(setconfig, ',') ilike '%jit%';` ต้องไม่มีแถวที่ตั้ง `jit=on` หลัง deploy ค่า `checks.jitOff` ของ `/api/health` ต้องเป็น `true` (ตรวจด้วย role ที่แอปใช้จริง)
 
 ## 3. API และ Data API
 

@@ -7,7 +7,7 @@ vi.mock("@/lib/health/application-readiness", () => ({ getApplicationReadiness: 
 import { GET as live } from "./live/route";
 import { GET } from "./route";
 
-const allTrue = { database: true, migrations: true, configuration: true };
+const allTrue = { database: true, migrations: true, configuration: true, jitOff: true };
 
 describe("GET /api/health", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -18,6 +18,14 @@ describe("GET /api/health", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toEqual({ status: "ok", checks: allTrue });
+  });
+
+  it("stays 200 when only the advisory jitOff check is false, and reports it", async () => {
+    const checks = { ...allTrue, jitOff: false };
+    mocks.getApplicationReadiness.mockResolvedValue({ ready: true, checks });
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ok", checks });
   });
 
   it.each(["database", "migrations", "configuration"] as const)("returns 503 when %s is not ready", async (failing) => {

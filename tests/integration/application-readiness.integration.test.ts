@@ -18,12 +18,12 @@ describe("application readiness on PostgreSQL", () => {
   it("reports the migrated test database as ready against the repository's migration directories", async () => {
     expect(readdirSync("prisma/migrations").length).toBeGreaterThan(0);
     await expect(getApplicationReadiness({ database: () => database, configurationValid: () => true }))
-      .resolves.toEqual({ ready: true, checks: { database: true, migrations: true, configuration: true } });
+      .resolves.toEqual({ ready: true, checks: { database: true, migrations: true, configuration: true, jitOff: true } });
   });
 
   it("is not ready when the build ships a migration the database has not applied", async () => {
     const shipped = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     await expect(getApplicationReadiness({ database: () => database, configurationValid: () => true, listMigrations: async () => [...shipped, "99991231000000_not_applied"] }))
-      .resolves.toEqual({ ready: false, checks: { database: true, migrations: false, configuration: true } });
+      .resolves.toEqual({ ready: false, checks: { database: true, migrations: false, configuration: true, jitOff: true } });
   });
 });

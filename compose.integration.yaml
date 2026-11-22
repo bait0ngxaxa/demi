@@ -16,6 +16,10 @@ services:
       - log_min_duration_statement=2000
       - -c
       - "log_line_prefix=%m [%p] %q%u@%d "
+      # Match Supabase, which ships `jit = off` (docs/engineering/CARE_TRACKING_PERF.md): with PostgreSQL's default
+      # `jit = on`, the care-tracking statement pays ~2 s of JIT compilation that production never pays.
+      - -c
+      - jit=off
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}

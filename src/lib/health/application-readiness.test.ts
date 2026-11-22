@@ -6,16 +6,22 @@ import { getApplicationReadiness } from "./application-readiness";
 type Row = { migration_name: string; finished: boolean; rolled_back: boolean };
 const applied = (...names: string[]): Row[] => names.map((migration_name) => ({ migration_name, finished: true, rolled_back: false }));
 
-function database(input: { ping?: () => Promise<unknown>; rows?: () => Promise<Row[]> } = {}): () => PrismaClient {
-  const queryRaw = vi.fn((strings: TemplateStringsArray) =>
-    strings.join("").includes("_prisma_migrations")
-      ? (input.rows ?? (async () => applied("m1", "m2")))()
-      : (input.ping ?? (async () => [{ "?column?": 1 }]))());
+function database(input: {
+  ping?: () => Promise<unknown>;
+  rows?: () => Promise<Row[]>;
+  jit?: () => Promise<unknown>;
+} = {}): () => PrismaClient {
+  const queryRaw = vi.fn((strings: TemplateStringsArray) => {
+    const sql = strings.join("");
+    if (sql.includes("_prisma_migrations")) return (input.rows ?? (async () => applied("m1", "m2")))();
+    if (sql.includes("current_setting('jit')")) return (input.jit ?? (async () => [{ jit: "off" }]))();
+    return (input.ping ?? (async () => [{ "?column?": 1 }]))();
+  });
   return () => ({ $queryRaw: queryRaw }) as unknown as PrismaClient;
 }
 
 const shipped = async () => ["m1", "m2"];
-const ready = { database: true, migrations: true, configuration: true };
+const ready = { database: true, migrations: true, configuration: true, jitOff: true };
 
 describe("application readiness", () => {
   it("is ready when the database answers, every shipped migration is applied and configuration is valid", async () => {
@@ -31,13 +37,13 @@ describe("application readiness", () => {
   it("is not ready when the database client cannot be created", async () => {
     const failing = () => { throw new Error("Server environment is not configured correctly"); };
     await expect(getApplicationReadiness({ database: failing, listMigrations: shipped, configurationValid: () => true }))
-      .resolves.toEqual({ ready: false, checks: { database: false, migrations: false, configuration: true } });
+      .resolves.toEqual({ ready: false, checks: { database: false, migrations: false, configuration: true, jitOff: false } });
   });
 
   it("is not ready when the database is unreachable or does not answer in time", async () => {
     const unreachable = database({ ping: async () => { throw new Error("connect ECONNREFUSED 10.0.0.1:5432"); } });
     await expect(getApplicationReadiness({ database: unreachable, listMigrations: shipped, configurationValid: () => true }))
-      .resolves.toEqual({ ready: false, checks: { database: false, migrations: false, configuration: true } });
+      .resolves.toEqual({ ready: false, checks: { database: false, migrations: false, configuration: true, jitOff: false } });
     const hanging = database({ ping: () => new Promise(() => undefined) });
     await expect(getApplicationReadiness({ database: hanging, listMigrations: shipped, configurationValid: () => true, timeoutMs: 10 }))
       .resolves.toMatchObject({ ready: false, checks: { database: false } });
@@ -65,6 +71,23 @@ describe("application readiness", () => {
       .resolves.toMatchObject({ ready: false, checks: { migrations: false } });
     await expect(getApplicationReadiness({ database: database(), listMigrations: async () => [], configurationValid: () => true }))
       .resolves.toMatchObject({ ready: false, checks: { migrations: false } });
+  });
+
+  it("reports JIT left on without taking the application out of service", async () => {
+    await expect(getApplicationReadiness({
+      database: database({ jit: async () => [{ jit: "on" }] }),
+      listMigrations: shipped,
+      configurationValid: () => true,
+    })).resolves.toEqual({ ready: true, checks: { ...ready, jitOff: false } });
+  });
+
+  it("reports jitOff false when the setting cannot be read, still ready", async () => {
+    const unreadable = database({ jit: async () => { throw new Error("permission denied"); } });
+    await expect(getApplicationReadiness({ database: unreadable, listMigrations: shipped, configurationValid: () => true }))
+      .resolves.toEqual({ ready: true, checks: { ...ready, jitOff: false } });
+    const hanging = database({ jit: () => new Promise(() => undefined) });
+    await expect(getApplicationReadiness({ database: hanging, listMigrations: shipped, configurationValid: () => true, timeoutMs: 10 }))
+      .resolves.toEqual({ ready: true, checks: { ...ready, jitOff: false } });
   });
 
   it("finds this repository's migrations by default", async () => {

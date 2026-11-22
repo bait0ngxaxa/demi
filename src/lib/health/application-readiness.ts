@@ -10,10 +10,20 @@ import { checkDeploymentEnvironment } from "@/lib/env/deployment-environment";
 
 export const APPLICATION_READINESS_TIMEOUT_MS = 5_000;
 
-/** Booleans only: no versions, names, counts or error detail leave this module. */
+/**
+ * Booleans only: no versions, names, counts or error detail leave this module. `jitOff` is advisory and never part of
+ * `ready`: with JIT on, the care-tracking read pays ~2 s of compilation per request (docs/engineering/
+ * CARE_TRACKING_PERF.md), but the application still works, and taking it out of service would not fix a database
+ * setting. The deploy runbook requires it to be true.
+ */
 export type ApplicationReadiness = {
   readonly ready: boolean;
-  readonly checks: { readonly database: boolean; readonly migrations: boolean; readonly configuration: boolean };
+  readonly checks: {
+    readonly database: boolean;
+    readonly migrations: boolean;
+    readonly configuration: boolean;
+    readonly jitOff: boolean;
+  };
 };
 
 export type ApplicationReadinessDependencies = {
@@ -24,6 +34,8 @@ export type ApplicationReadinessDependencies = {
 };
 
 type MigrationRow = { migration_name: string; finished: boolean; rolled_back: boolean };
+
+type JitSettingRow = { jit: string };
 
 /** Migration directories shipped with this build (traced for /api/health in next.config.ts). */
 async function listShippedMigrations(): Promise<string[]> {
@@ -77,5 +89,10 @@ export async function getApplicationReadiness(dependencies: ApplicationReadiness
     const shipped = await (dependencies.listMigrations ?? listShippedMigrations)();
     return shipped.length > 0 && shipped.every((name) => finished.has(name));
   });
-  return { ready: configuration && database && migrations, checks: { database, migrations, configuration } };
+  // The setting as the application role sees it, including any role or database override.
+  const jitOff = prisma !== null && database && await settles(async () => {
+    const rows = await withTimeout(prisma.$queryRaw<JitSettingRow[]>`SELECT current_setting('jit') AS jit`, timeoutMs);
+    return rows[0]?.jit === "off";
+  });
+  return { ready: configuration && database && migrations, checks: { database, migrations, configuration, jitOff } };
 }

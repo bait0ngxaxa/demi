@@ -1,0 +1,287 @@
+
+Sort  (cost=2355583.81..2355585.14 rows=533 width=847) (actual time=111.863..111.923 rows=20 loops=1)
+  Sort Key: (row_number() OVER (?))
+  Sort Method: quicksort  Memory: 34kB
+  Buffers: shared hit=3358
+  CTE scope
+    ->  Hash Semi Join  (cost=1004.54..1333.98 rows=4847 width=96) (actual time=7.598..10.481 rows=4848 loops=1)
+          Hash Cond: (person.id = patient_user."personId")
+          Buffers: shared hit=504
+          ->  Hash Join  (cost=480.60..743.40 rows=4848 width=128) (actual time=3.811..5.967 rows=4848 loops=1)
+                Hash Cond: (profile.id = relationship."patientProfileId")
+                Buffers: shared hit=331
+                ->  Hash Join  (cost=230.50..474.91 rows=7000 width=107) (actual time=1.532..3.394 rows=7000 loops=1)
+                      Hash Cond: (person.id = profile."personId")
+                      Buffers: shared hit=229
+                      ->  Seq Scan on "Person" person  (cost=0.00..226.02 rows=7002 width=75) (actual time=0.006..0.815 rows=7002 loops=1)
+                            Buffers: shared hit=156
+                      ->  Hash  (cost=143.00..143.00 rows=7000 width=32) (actual time=1.486..1.487 rows=7000 loops=1)
+                            Buckets: 8192  Batches: 1  Memory Usage: 502kB
+                            Buffers: shared hit=73
+                            ->  Seq Scan on "PatientProfile" profile  (cost=0.00..143.00 rows=7000 width=32) (actual time=0.005..0.521 rows=7000 loops=1)
+                                  Buffers: shared hit=73
+                ->  Hash  (cost=189.50..189.50 rows=4848 width=53) (actual time=1.582..1.582 rows=4848 loops=1)
+                      Buckets: 8192  Batches: 1  Memory Usage: 433kB
+                      Buffers: shared hit=102
+                      ->  Seq Scan on "PatientHospitalRelationship" relationship  (cost=0.00..189.50 rows=4848 width=53) (actual time=0.136..0.715 rows=4848 loops=1)
+                            Filter: (("endedAt" IS NULL) AND ("hospitalId" = 'f958c890-60ce-495e-8ce8-f95edada855a'::uuid))
+                            Rows Removed by Filter: 2152
+                            Buffers: shared hit=102
+          ->  Hash  (cost=436.44..436.44 rows=7000 width=16) (actual time=3.777..3.778 rows=7000 loops=1)
+                Buckets: 8192  Batches: 1  Memory Usage: 393kB
+                Buffers: shared hit=173
+                ->  Hash Join  (cost=227.03..436.44 rows=7000 width=16) (actual time=1.345..2.927 rows=7000 loops=1)
+                      Hash Cond: (patient_user.id = patient_role."userId")
+                      Buffers: shared hit=173
+                      ->  Seq Scan on "User" patient_user  (cost=0.00..191.02 rows=7002 width=32) (actual time=0.007..0.630 rows=7002 loops=1)
+                            Buffers: shared hit=121
+                      ->  Hash  (cost=139.53..139.53 rows=7000 width=16) (actual time=1.325..1.326 rows=7000 loops=1)
+                            Buckets: 8192  Batches: 1  Memory Usage: 393kB
+                            Buffers: shared hit=52
+                            ->  Seq Scan on "UserRole" patient_role  (cost=0.00..139.53 rows=7000 width=16) (actual time=0.004..0.559 rows=7000 loops=1)
+                                  Filter: (role = 'PATIENT'::"Role")
+                                  Rows Removed by Filter: 2
+                                  Buffers: shared hit=52
+  CTE program
+    ->  Hash Join  (cost=157.53..322.59 rows=4550 width=44) (actual time=5.474..6.239 rows=3153 loops=1)
+          Hash Cond: (patient_program."patientHospitalRelationshipId" = scope.id)
+          Buffers: shared hit=167
+          ->  Seq Scan on "PatientProgram" patient_program  (cost=0.00..102.50 rows=4550 width=44) (actual time=0.004..0.279 rows=4550 loops=1)
+                Buffers: shared hit=57
+          ->  Hash  (cost=96.94..96.94 rows=4847 width=16) (actual time=5.246..5.246 rows=4848 loops=1)
+                Buckets: 8192  Batches: 1  Memory Usage: 292kB
+                Buffers: shared hit=110
+                ->  CTE Scan on scope  (cost=0.00..96.94 rows=4847 width=16) (actual time=0.002..4.630 rows=4848 loops=1)
+                      Buffers: shared hit=110
+  CTE tracked
+    ->  Hash Left Join  (cost=9045.22..2352447.21 rows=4799 width=779) (actual time=74.834..90.897 rows=4362 loops=1)
+          Hash Cond: (scope_1.id = appointment_1."patientHospitalRelationshipId")
+          Buffers: shared hit=3358
+          ->  Hash Left Join  (cost=8605.69..8919.31 rows=4799 width=750) (actual time=71.385..78.291 rows=4362 loops=1)
+                Hash Cond: (scope_1.id = next_appointment."relationshipId")
+                Buffers: shared hit=2943
+                ->  Hash Left Join  (cost=8015.51..8316.53 rows=4799 width=738) (actual time=67.656..73.672 rows=4362 loops=1)
+                      Hash Cond: (scope_1.id = activity."relationshipId")
+                      Buffers: shared hit=2828
+                      ->  Hash Left Join  (cost=2336.08..2624.49 rows=4799 width=730) (actual time=29.738..34.784 rows=4362 loops=1)
+                            Hash Cond: (active_program.id = final_assessment."patientProgramId")
+                            Filter: (CASE WHEN (scope_1."endedAt" IS NOT NULL) THEN 'CARE_ENDED'::text WHEN (active_program.id IS NOT NULL) THEN CASE WHEN (final_assessment.id IS NOT NULL) THEN 'AWAITING_PROGRAM_END'::text WHEN (round_stats."currentOpenRound" IS NOT NULL) THEN CASE WHEN (round_stats."currentOpenRound" > 6) THEN 'IN_EXTRA_ROUND'::text ELSE 'IN_ROUND'::text END WHEN ((COALESCE(round_stats."openedRounds", 0) >= 6) AND (COALESCE(round_stats."completedRounds", 0) = COALESCE(round_stats."openedRounds", 0))) THEN 'AWAITING_AFTER'::text ELSE 'IN_ROUND'::text END WHEN (ANY (scope_1.id = (hashed SubPlan 20).col1)) THEN 'PROGRAM_COMPLETED'::text WHEN (ANY (scope_1.id = (hashed SubPlan 22).col1)) THEN 'READY_FOR_PROGRAM'::text ELSE 'NOT_STARTED'::text END <> ALL ('{PROGRAM_COMPLETED,CARE_ENDED}'::text[]))
+                            Rows Removed by Filter: 486
+                            Buffers: shared hit=1262
+                            ->  Hash Left Join  (cost=2295.46..2449.07 rows=4847 width=714) (actual time=29.475..31.282 rows=4848 loops=1)
+                                  Hash Cond: (scope_1.id = active_program."patientHospitalRelationshipId")
+                                  Buffers: shared hit=1170
+                                  ->  CTE Scan on scope scope_1  (cost=0.00..96.94 rows=4847 width=686) (actual time=7.600..8.139 rows=4848 loops=1)
+                                        Buffers: shared hit=394
+                                  ->  Hash  (cost=2247.33..2247.33 rows=3850 width=44) (actual time=21.849..21.868 rows=2667 loops=1)
+                                        Buckets: 4096  Batches: 1  Memory Usage: 229kB
+                                        Buffers: shared hit=776
+                                        ->  Hash Left Join  (cost=2134.84..2247.33 rows=3850 width=44) (actual time=20.706..21.379 rows=2667 loops=1)
+                                              Hash Cond: (active_program.id = round_stats."patientProgramId")
+                                              Buffers: shared hit=776
+                                              ->  CTE Scan on program active_program  (cost=0.00..102.38 rows=3850 width=32) (actual time=5.476..5.757 rows=2667 loops=1)
+                                                    Filter: (status = 'ACTIVE'::"PatientProgramStatus")
+                                                    Rows Removed by Filter: 486
+                                                    Buffers: shared hit=128
+                                              ->  Hash  (cost=2077.97..2077.97 rows=4550 width=28) (actual time=15.190..15.207 rows=2667 loops=1)
+                                                    Buckets: 8192  Batches: 1  Memory Usage: 219kB
+                                                    Buffers: shared hit=648
+                                                    ->  Subquery Scan on round_stats  (cost=1964.22..2077.97 rows=4550 width=28) (actual time=14.261..14.791 rows=2667 loops=1)
+                                                          Buffers: shared hit=648
+                                                          ->  HashAggregate  (cost=1964.22..2032.47 rows=4550 width=28) (actual time=14.260..14.611 rows=2667 loops=1)
+                                                                Group Key: opened_round."patientProgramId"
+                                                                Batches: 1  Memory Usage: 721kB
+                                                                Buffers: shared hit=648
+                                                                ->  Hash Left Join  (cost=885.50..1783.57 rows=18065 width=36) (actual time=7.351..12.320 rows=11882 loops=1)
+                                                                      Hash Cond: ((opened_round."patientProgramId" = completion."patientProgramId") AND (opened_round."roundNumber" = completion."roundNumber"))
+                                                                      Buffers: shared hit=648
+                                                                      ->  Hash Join  (cost=150.50..953.71 rows=18065 width=20) (actual time=2.757..5.915 rows=11882 loops=1)
+                                                                            Hash Cond: (opened_round."patientProgramId" = program.id)
+                                                                            Buffers: shared hit=368
+                                                                            ->  Seq Scan on "PatientProgramRound" opened_round  (cost=0.00..542.50 rows=21350 width=20) (actual time=0.004..1.249 rows=21350 loops=1)
+                                                                                  Buffers: shared hit=329
+                                                                            ->  Hash  (cost=102.38..102.38 rows=3850 width=16) (actual time=1.931..1.945 rows=2667 loops=1)
+                                                                                  Buckets: 4096  Batches: 1  Memory Usage: 158kB
+                                                                                  Buffers: shared hit=39
+                                                                                  ->  CTE Scan on program  (cost=0.00..102.38 rows=3850 width=16) (actual time=0.001..1.590 rows=2667 loops=1)
+                                                                                        Filter: (status = 'ACTIVE'::"PatientProgramStatus")
+                                                                                        Rows Removed by Filter: 486
+                                                                                        Buffers: shared hit=39
+                                                                      ->  Hash  (cost=462.00..462.00 rows=18200 width=36) (actual time=4.460..4.461 rows=18200 loops=1)
+                                                                            Buckets: 32768  Batches: 1  Memory Usage: 1465kB
+                                                                            Buffers: shared hit=280
+                                                                            ->  Seq Scan on "PatientProgramRoundCompletion" completion  (cost=0.00..462.00 rows=18200 width=36) (actual time=0.005..1.597 rows=18200 loops=1)
+                                                                                  Buffers: shared hit=280
+                            ->  Hash  (cost=27.50..27.50 rows=1050 width=32) (actual time=0.247..0.248 rows=1050 loops=1)
+                                  Buckets: 2048  Batches: 1  Memory Usage: 82kB
+                                  Buffers: shared hit=17
+                                  ->  Seq Scan on "PatientFinalAssessment" final_assessment  (cost=0.00..27.50 rows=1050 width=32) (actual time=0.010..0.098 rows=1050 loops=1)
+                                        Buffers: shared hit=17
+                            SubPlan 20
+                              ->  CTE Scan on program completed_program_4  (cost=0.00..102.38 rows=700 width=16) (actual time=0.001..0.170 rows=486 loops=1)
+                                    Filter: (status = 'COMPLETED'::"PatientProgramStatus")
+                                    Rows Removed by Filter: 2667
+                            SubPlan 22
+                              ->  Seq Scan on "PatientBaseline" baseline_4  (cost=0.00..131.00 rows=5600 width=16) (actual time=0.006..0.420 rows=5600 loops=1)
+                                    Buffers: shared hit=75
+                      ->  Hash  (cost=5676.92..5676.92 rows=200 width=24) (actual time=37.906..37.918 rows=3879 loops=1)
+                            Buckets: 4096 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 245kB
+                            Buffers: shared hit=1566
+                            ->  Subquery Scan on activity  (cost=5672.92..5676.92 rows=200 width=24) (actual time=36.709..37.355 rows=3879 loops=1)
+                                  Buffers: shared hit=1566
+                                  ->  HashAggregate  (cost=5672.92..5674.92 rows=200 width=24) (actual time=36.708..37.096 rows=3879 loops=1)
+                                        Group Key: baseline_5."patientHospitalRelationshipId"
+                                        Batches: 1  Memory Usage: 481kB
+                                        Buffers: shared hit=1566
+                                        ->  Append  (cost=201.00..5209.44 rows=92697 width=24) (actual time=1.215..28.489 rows=64770 loops=1)
+                                              Buffers: shared hit=1566
+                                              ->  Hash Join  (cost=201.00..334.91 rows=4847 width=24) (actual time=1.214..2.456 rows=3879 loops=1)
+                                                    Hash Cond: (scope_2.id = baseline_5."patientHospitalRelationshipId")
+                                                    Buffers: shared hit=75
+                                                    ->  CTE Scan on scope scope_2  (cost=0.00..96.94 rows=4847 width=16) (actual time=0.001..0.338 rows=4848 loops=1)
+                                                    ->  Hash  (cost=131.00..131.00 rows=5600 width=20) (actual time=1.169..1.170 rows=5600 loops=1)
+                                                          Buckets: 8192  Batches: 1  Memory Usage: 349kB
+                                                          Buffers: shared hit=75
+                                                          ->  Seq Scan on "PatientBaseline" baseline_5  (cost=0.00..131.00 rows=5600 width=20) (actual time=0.004..0.460 rows=5600 loops=1)
+                                                                Buffers: shared hit=75
+                                              ->  CTE Scan on program program_1  (cost=0.00..91.00 rows=4550 width=24) (actual time=0.001..0.245 rows=3153 loops=1)
+                                              ->  Hash Join  (cost=147.88..983.94 rows=21350 width=24) (actual time=1.572..5.097 rows=14798 loops=1)
+                                                    Hash Cond: (opened_round_1."patientProgramId" = program_2.id)
+                                                    Buffers: shared hit=329
+                                                    ->  Seq Scan on "PatientProgramRound" opened_round_1  (cost=0.00..542.50 rows=21350 width=24) (actual time=0.008..1.307 rows=21350 loops=1)
+                                                          Buffers: shared hit=329
+                                                    ->  Hash  (cost=91.00..91.00 rows=4550 width=32) (actual time=0.703..0.704 rows=3153 loops=1)
+                                                          Buckets: 8192  Batches: 1  Memory Usage: 262kB
+                                                          ->  CTE Scan on program program_2  (cost=0.00..91.00 rows=4550 width=32) (actual time=0.001..0.233 rows=3153 loops=1)
+                                              ->  Hash Join  (cost=147.88..860.12 rows=18200 width=24) (actual time=1.382..4.136 rows=12616 loops=1)
+                                                    Hash Cond: (completion_1."patientProgramId" = program_3.id)
+                                                    Buffers: shared hit=280
+                                                    ->  Seq Scan on "PatientProgramRoundCompletion" completion_1  (cost=0.00..462.00 rows=18200 width=24) (actual time=0.005..1.020 rows=18200 loops=1)
+                                                          Buffers: shared hit=280
+                                                    ->  Hash  (cost=91.00..91.00 rows=4550 width=32) (actual time=0.689..0.690 rows=3153 loops=1)
+                                                          Buckets: 8192  Batches: 1  Memory Usage: 262kB
+                                                          ->  CTE Scan on program program_3  (cost=0.00..91.00 rows=4550 width=32) (actual time=0.001..0.229 rows=3153 loops=1)
+                                              ->  Hash Join  (cost=147.88..507.53 rows=8575 width=24) (actual time=1.083..2.668 rows=5943 loops=1)
+                                                    Hash Cond: (vitals."patientProgramId" = program_4.id)
+                                                    Buffers: shared hit=156
+                                                    ->  Seq Scan on "PatientProgramRoundVitals" vitals  (cost=0.00..241.75 rows=8575 width=24) (actual time=0.008..0.559 rows=8575 loops=1)
+                                                          Buffers: shared hit=156
+                                                    ->  Hash  (cost=91.00..91.00 rows=4550 width=32) (actual time=0.702..0.703 rows=3153 loops=1)
+                                                          Buckets: 8192  Batches: 1  Memory Usage: 262kB
+                                                          ->  CTE Scan on program program_4  (cost=0.00..91.00 rows=4550 width=32) (actual time=0.001..0.242 rows=3153 loops=1)
+                                              ->  Hash Join  (cost=157.53..780.93 rows=12775 width=24) (actual time=1.523..3.971 rows=8855 loops=1)
+                                                    Hash Cond: (followup."patientHospitalRelationshipId" = scope_3.id)
+                                                    Buffers: shared hit=320
+                                                    ->  Seq Scan on "PatientFollowup" followup  (cost=0.00..447.75 rows=12775 width=24) (actual time=0.005..0.916 rows=12775 loops=1)
+                                                          Buffers: shared hit=320
+                                                    ->  Hash  (cost=96.94..96.94 rows=4847 width=16) (actual time=0.968..0.968 rows=4848 loops=1)
+                                                          Buckets: 8192  Batches: 1  Memory Usage: 292kB
+                                                          ->  CTE Scan on scope scope_3  (cost=0.00..96.94 rows=4847 width=16) (actual time=0.001..0.385 rows=4848 loops=1)
+                                              ->  Hash Join  (cost=147.88..1043.94 rows=21350 width=24) (actual time=1.596..5.305 rows=14798 loops=1)
+                                                    Hash Cond: (round_activity."patientProgramId" = program_5.id)
+                                                    Buffers: shared hit=389
+                                                    ->  Seq Scan on "PatientProgramRoundActivity" round_activity  (cost=0.00..602.50 rows=21350 width=24) (actual time=0.011..1.287 rows=21350 loops=1)
+                                                          Buffers: shared hit=389
+                                                    ->  Hash  (cost=91.00..91.00 rows=4550 width=32) (actual time=0.736..0.737 rows=3153 loops=1)
+                                                          Buckets: 8192  Batches: 1  Memory Usage: 262kB
+                                                          ->  CTE Scan on program program_5  (cost=0.00..91.00 rows=4550 width=32) (actual time=0.001..0.246 rows=3153 loops=1)
+                                              ->  Hash Join  (cost=40.62..143.58 rows=1050 width=24) (actual time=0.266..0.733 rows=728 loops=1)
+                                                    Hash Cond: (program_6.id = final_assessment_1."patientProgramId")
+                                                    Buffers: shared hit=17
+                                                    ->  CTE Scan on program program_6  (cost=0.00..91.00 rows=4550 width=32) (actual time=0.001..0.176 rows=3153 loops=1)
+                                                    ->  Hash  (cost=27.50..27.50 rows=1050 width=24) (actual time=0.251..0.251 rows=1050 loops=1)
+                                                          Buckets: 2048  Batches: 1  Memory Usage: 74kB
+                                                          Buffers: shared hit=17
+                                                          ->  Seq Scan on "PatientFinalAssessment" final_assessment_1  (cost=0.00..27.50 rows=1050 width=24) (actual time=0.006..0.110 rows=1050 loops=1)
+                                                                Buffers: shared hit=17
+                ->  Hash  (cost=563.57..563.57 rows=2129 width=28) (actual time=3.705..3.708 rows=2424 loops=1)
+                      Buckets: 4096  Batches: 1  Memory Usage: 175kB
+                      Buffers: shared hit=115
+                      ->  Subquery Scan on next_appointment  (cost=530.30..563.57 rows=2129 width=28) (actual time=2.845..3.353 rows=2424 loops=1)
+                            Buffers: shared hit=115
+                            ->  Unique  (cost=530.30..542.28 rows=2129 width=44) (actual time=2.843..3.170 rows=2424 loops=1)
+                                  Buffers: shared hit=115
+                                  ->  Sort  (cost=530.30..536.29 rows=2395 width=44) (actual time=2.842..2.938 rows=2424 loops=1)
+                                        Sort Key: appointment."patientHospitalRelationshipId", appointment."scheduledAt", appointment.id
+                                        Sort Method: quicksort  Memory: 248kB
+                                        Buffers: shared hit=115
+                                        ->  Hash Join  (cost=244.69..395.87 rows=2395 width=44) (actual time=1.272..2.244 rows=2424 loops=1)
+                                              Hash Cond: (scope_4.id = appointment."patientHospitalRelationshipId")
+                                              Buffers: shared hit=115
+                                              ->  CTE Scan on scope scope_4  (cost=0.00..96.94 rows=4847 width=16) (actual time=0.001..0.332 rows=4848 loops=1)
+                                              ->  Hash  (cost=214.75..214.75 rows=2395 width=44) (actual time=1.246..1.247 rows=3500 loops=1)
+                                                    Buckets: 4096  Batches: 1  Memory Usage: 292kB
+                                                    Buffers: shared hit=115
+                                                    ->  Seq Scan on "PatientAppointment" appointment  (cost=0.00..214.75 rows=2395 width=44) (actual time=0.006..0.685 rows=3500 loops=1)
+                                                          Filter: (("scheduledAt" >= '2026-11-22 03:00:00+00'::timestamp with time zone) AND (status = 'SCHEDULED'::"AppointmentStatus"))
+                                                          Rows Removed by Filter: 3150
+                                                          Buffers: shared hit=115
+          ->  Hash  (cost=415.27..415.27 rows=1941 width=16) (actual time=1.770..1.772 rows=728 loops=1)
+                Buckets: 2048  Batches: 1  Memory Usage: 51kB
+                Buffers: shared hit=115
+                ->  HashAggregate  (cost=395.86..415.27 rows=1941 width=16) (actual time=1.609..1.674 rows=728 loops=1)
+                      Group Key: appointment_1."patientHospitalRelationshipId"
+                      Batches: 1  Memory Usage: 145kB
+                      Buffers: shared hit=115
+                      ->  Hash Join  (cost=241.69..390.47 rows=2155 width=16) (actual time=0.754..1.473 rows=728 loops=1)
+                            Hash Cond: (scope_5.id = appointment_1."patientHospitalRelationshipId")
+                            Buffers: shared hit=115
+                            ->  CTE Scan on scope scope_5  (cost=0.00..96.94 rows=4847 width=16) (actual time=0.000..0.309 rows=4848 loops=1)
+                            ->  Hash  (cost=214.75..214.75 rows=2155 width=16) (actual time=0.728..0.729 rows=1050 loops=1)
+                                  Buckets: 4096  Batches: 1  Memory Usage: 82kB
+                                  Buffers: shared hit=115
+                                  ->  Seq Scan on "PatientAppointment" appointment_1  (cost=0.00..214.75 rows=2155 width=16) (actual time=0.007..0.594 rows=1050 loops=1)
+                                        Filter: (("scheduledAt" < '2026-11-22 03:00:00+00'::timestamp with time zone) AND (status = 'SCHEDULED'::"AppointmentStatus"))
+                                        Rows Removed by Filter: 5600
+                                        Buffers: shared hit=115
+          SubPlan 4
+            ->  Seq Scan on "PatientBaseline" baseline  (cost=0.00..131.00 rows=5600 width=16) (actual time=0.006..0.455 rows=5600 loops=1)
+                  Buffers: shared hit=75
+          SubPlan 6
+            ->  CTE Scan on program completed_program  (cost=0.00..102.38 rows=700 width=16) (actual time=0.002..0.173 rows=486 loops=1)
+                  Filter: (status = 'COMPLETED'::"PatientProgramStatus")
+                  Rows Removed by Filter: 2667
+          SubPlan 8
+            ->  CTE Scan on program completed_program_1  (cost=0.00..102.38 rows=700 width=16) (actual time=0.002..0.186 rows=486 loops=1)
+                  Filter: (status = 'COMPLETED'::"PatientProgramStatus")
+                  Rows Removed by Filter: 2667
+          SubPlan 10
+            ->  Seq Scan on "PatientBaseline" baseline_1  (cost=0.00..131.00 rows=5600 width=16) (actual time=0.003..0.380 rows=5600 loops=1)
+                  Buffers: shared hit=75
+          SubPlan 12
+            ->  CTE Scan on program completed_program_2  (cost=0.00..102.38 rows=700 width=16) (actual time=0.002..0.172 rows=486 loops=1)
+                  Filter: (status = 'COMPLETED'::"PatientProgramStatus")
+                  Rows Removed by Filter: 2667
+          SubPlan 14
+            ->  Seq Scan on "PatientBaseline" baseline_2  (cost=0.00..131.00 rows=5600 width=16) (actual time=0.003..0.376 rows=5600 loops=1)
+                  Buffers: shared hit=75
+          SubPlan 16
+            ->  CTE Scan on program completed_program_3  (cost=0.00..102.38 rows=700 width=16) (actual time=0.001..0.172 rows=486 loops=1)
+                  Filter: (status = 'COMPLETED'::"PatientProgramStatus")
+                  Rows Removed by Filter: 2667
+          SubPlan 18
+            ->  Seq Scan on "PatientBaseline" baseline_3  (cost=0.00..131.00 rows=5600 width=16) (actual time=0.005..0.434 rows=5600 loops=1)
+                  Buffers: shared hit=75
+  CTE filtered
+    ->  CTE Scan on tracked tracked_1  (cost=0.00..95.98 rows=4799 width=779) (actual time=0.000..0.312 rows=4362 loops=1)
+  ->  Nested Loop Left Join  (cost=857.34..1359.91 rows=533 width=847) (actual time=107.472..111.826 rows=20 loops=1)
+        Join Filter: (((row_number() OVER (?)) <= (((LEAST('1'::numeric, GREATEST('1'::numeric, ceil(((((count(*))::integer))::numeric / '20'::numeric)))))::integer)::bigint * 20)) AND ((row_number() OVER (?)) > ((((LEAST('1'::numeric, GREATEST('1'::numeric, ceil(((((count(*))::integer))::numeric / '20'::numeric)))))::integer - 1))::bigint * 20)))
+        Rows Removed by Join Filter: 4342
+        Buffers: shared hit=3358
+        ->  Nested Loop  (cost=443.91..443.95 rows=1 width=52) (actual time=96.787..96.791 rows=1 loops=1)
+              Buffers: shared hit=3358
+              ->  Aggregate  (cost=335.93..335.95 rows=1 width=48) (actual time=95.377..95.377 rows=1 loops=1)
+                    Buffers: shared hit=3358
+                    ->  CTE Scan on tracked  (cost=0.00..95.98 rows=4799 width=35) (actual time=74.837..93.883 rows=4362 loops=1)
+                          Buffers: shared hit=3358
+              ->  Aggregate  (cost=107.98..107.99 rows=1 width=4) (actual time=1.408..1.409 rows=1 loops=1)
+                    ->  CTE Scan on filtered  (cost=0.00..95.98 rows=4799 width=0) (actual time=0.001..1.224 rows=4362 loops=1)
+        ->  WindowAgg  (cost=413.43..581.36 rows=4799 width=852) (actual time=10.670..12.763 rows=4362 loops=1)
+              ->  Sort  (cost=413.40..425.40 rows=4799 width=832) (actual time=10.660..10.993 rows=4362 loops=1)
+                    Sort Key: ((filtered_1."overdueAppointment" OR filtered_1."noUpcomingAppointment" OR filtered_1.stale)) DESC, filtered_1."nextAppointmentAt", filtered_1."lastActivityAt" NULLS FIRST, (COALESCE(btrim((filtered_1."givenName")::text), ''::text)), (COALESCE(btrim((filtered_1."familyName")::text), ''::text)), filtered_1.id
+                    Sort Method: quicksort  Memory: 1080kB
+                    ->  CTE Scan on filtered filtered_1  (cost=0.00..119.98 rows=4799 width=832) (actual time=0.004..1.821 rows=4362 loops=1)
+Planning:
+  Buffers: shared hit=178
+Planning Time: 4.664 ms
+Execution Time: 114.779 ms
