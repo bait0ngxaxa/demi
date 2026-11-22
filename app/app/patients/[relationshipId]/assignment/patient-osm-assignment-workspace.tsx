@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -258,13 +258,12 @@ export function PatientOsmAssignmentWorkspace({
           <Form action="" className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
             <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold">
               <span>ค้นหาชื่อ อสม.</span>
-              <Input
+              <SearchInput
                 defaultValue={candidateSearch}
                 key={candidateSearch}
                 maxLength={PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH}
                 name="value"
                 placeholder="เช่น สมใจ"
-                type="search"
               />
             </label>
             <PendingSubmitButton size="compact" variant="secondary" pendingLabel="กำลังค้นหา...">

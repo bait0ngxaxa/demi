@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { SearchInput } from "@/components/ui/search-input";
 import type { PatientDirectoryLookupType } from "@/modules/patient-directory/schemas/patient-directory-schemas";
 import type { PatientDirectoryItem } from "@/modules/patient-directory/services/patient-directory-query-service";
 import type { WorkAppointmentHospitalScope } from "@/modules/appointments/services/work-appointment-query-service";
@@ -78,13 +79,11 @@ export function AppointmentPatientPicker({
               </label>
               <label className="block space-y-2 text-sm font-semibold text-text sm:col-span-2">
                 คำค้นหา
-                <input
+                <SearchInput
                   autoComplete="off"
-                  className="min-h-12 w-full rounded-control border border-border bg-surface px-4 text-base text-text focus:border-action-primary focus:ring-4 focus:ring-focus-ring"
                   defaultValue={value}
                   maxLength={120}
                   name="value"
-                  type="search"
                 />
               </label>
               <div className="flex flex-wrap items-center gap-3 sm:col-span-2">

@@ -2,7 +2,7 @@
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { useServerSearch } from "@/components/search/use-server-search";
 import {
@@ -157,12 +157,11 @@ export function AssigneeSearchPicker({
       )}
       <label className="block space-y-2 text-sm font-semibold">
         <span>{searchLabel ?? copy.searchLabel}</span>
-        <Input
+        <SearchInput
           form={formId}
           disabled={disabled}
           maxLength={ASSIGNEE_SEARCH_MAX_LENGTH}
           onChange={(event) => state.setQuery(event.target.value)}
-          type="search"
           value={state.query}
         />
       </label>

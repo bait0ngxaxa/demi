@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import type {
   WorkforceHospital,
   WorkforceListResult,
@@ -161,7 +161,7 @@ export function WorkforceWorkspace({
             <input name="tab" type="hidden" value={tab} />
             <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-search">
               <span>ค้นหาชื่อ</span>
-              <Input defaultValue={pageInfo.search} id="workforce-search" maxLength={120} name="search" type="search" />
+              <SearchInput defaultValue={pageInfo.search} id="workforce-search" maxLength={120} name="search" />
             </label>
             <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-status">
               <span>สถานะการทำงานกับโรงพยาบาล</span>

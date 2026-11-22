@@ -4,6 +4,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CharacterCount } from "@/components/ui/character-count";
 import { Input, inputClassName } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import { EXERCISE_DURATION_MAX, EXERCISE_ACTIVITY_MAX, EXERCISE_ACTIVITY_RAW_MAX, EXERCISE_NOTE_MAX, EXERCISE_NOTE_RAW_MAX, type PersonalExerciseDto } from "@/modules/exercises/domain/personal-exercise";
 import type { ExerciseActionState } from "@/modules/exercises/transport/action-state";
@@ -86,7 +87,7 @@ export function ExerciseEditor({ item, today, maxDate, nonce, coordination, init
     <fieldset hidden={editorOpen} disabled={blocked || recovering} className="space-y-4">
       <div className="space-y-4">
         <label htmlFor={`${prefix}-search`} className="sr-only">ค้นหาและเลือกการออกกำลังกาย</label>
-        <Input id={`${prefix}-search`} type="search" maxLength={120} placeholder="ค้นหากิจกรรม" value={search} onChange={(event) => setSearch(event.target.value)} />
+        <SearchInput id={`${prefix}-search`} maxLength={120} placeholder="ค้นหากิจกรรม" value={search} onChange={(event) => setSearch(event.target.value)} />
         <div className="grid max-h-80 gap-3 overflow-y-auto overscroll-contain p-2 sm:grid-cols-2" role="group" aria-label="กิจกรรมที่เลือกได้">
           {activityOptions.filter((name) => name.includes(search.trim())).map((name) => <Button key={name} variant="secondary" className="min-h-16 w-full justify-between gap-4 text-left" aria-controls={`${prefix}-entry`} onClick={() => chooseActivity(name)}><span className="flex w-full items-center justify-between gap-4 text-left"><span className="text-base">{name}</span><svg aria-hidden="true" className="h-5 w-5 shrink-0 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></svg></span></Button>)}
           <Button variant="secondary" className="min-h-16 w-full justify-start text-base" aria-controls={`${prefix}-entry`} onClick={() => chooseActivity("")}><span className="w-full text-left">อื่น ๆ / กรอกเอง</span></Button>

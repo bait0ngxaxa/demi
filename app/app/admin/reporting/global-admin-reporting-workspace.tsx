@@ -8,6 +8,7 @@ import { ChevronGlyph } from "@/components/ui/glyphs";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { SearchInput } from "@/components/ui/search-input";
 import type { HospitalHierarchyUnit } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 import type { GlobalReportingDirectory } from "@/modules/reporting/projections/global-reporting-projection";
 import { HOSPITAL_SEARCH_MAX_LENGTH } from "@/shared/search/hospital-search";
@@ -159,14 +160,12 @@ function GlobalHospitalDirectory({
       <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_15rem]">
         <div className="min-w-0">
           <label className="type-label mb-2 block text-text" htmlFor="global-hospital-search">ค้นหาชื่อโรงพยาบาล</label>
-          <input
+          <SearchInput
             autoComplete="off"
-            className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             id="global-hospital-search"
             maxLength={HOSPITAL_SEARCH_MAX_LENGTH}
             onChange={(event) => setSearch(event.currentTarget.value)}
             placeholder="พิมพ์ชื่อโรงพยาบาล"
-            type="search"
             value={search}
           />
         </div>

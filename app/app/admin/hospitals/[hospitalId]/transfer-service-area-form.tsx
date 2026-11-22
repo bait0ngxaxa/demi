@@ -6,7 +6,8 @@ import { NetworkMutationForm } from "@/components/hospital-network/network-mutat
 import { useServerSearch } from "@/components/search/use-server-search";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input, inputClassName } from "@/components/ui/input";
+import { inputClassName } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { hospitalDisplayNames } from "@/modules/hospital-hierarchy/presentation/hospital-display-names";
 import type { HospitalNetworkFacilitySummary } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { HOSPITAL_SEARCH_MAX_LENGTH, HOSPITAL_SEARCH_RESULT_LIMIT } from "@/shared/search/hospital-search";
@@ -59,13 +60,12 @@ export function TransferServiceAreaForm({
     >
       <label className="block text-sm font-semibold text-text">
         ค้นหาแม่ข่ายปลายทาง (ชื่อ)
-        <Input
-          className="mt-2"
+        <SearchInput
+          containerClassName="mt-2"
           // Its own form, so Enter searches instead of submitting the transfer.
           form={searchFormId}
           maxLength={HOSPITAL_SEARCH_MAX_LENGTH}
           onChange={(event) => search.setQuery(event.target.value)}
-          type="search"
           value={search.query}
         />
       </label>

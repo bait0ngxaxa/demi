@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { NetworkMutationForm } from "@/components/hospital-network/network-mutation-form";
 import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
@@ -156,14 +157,13 @@ function DirectorySearch({
       {filter === "network" && placement !== "all" ? <input name="placement" type="hidden" value={placement} /> : null}
       <label className="min-w-0 flex-1 text-sm font-semibold text-text" htmlFor="hospital-directory-search">
         ค้นหาชื่อโรงพยาบาล
-        <Input
-          className="mt-2"
+        <SearchInput
+          containerClassName="mt-2"
           defaultValue={value}
           id="hospital-directory-search"
           key={`${filter}\n${value}`}
           maxLength={HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH}
           name="value"
-          type="search"
         />
       </label>
       <PendingSubmitButton className="shrink-0" pendingLabel="กำลังค้นหา..." variant="secondary">
