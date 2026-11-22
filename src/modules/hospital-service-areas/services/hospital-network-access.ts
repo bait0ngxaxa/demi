@@ -106,16 +106,47 @@ export async function findNetworkChild(
   authority: HospitalNetworkAuthority,
 ): Promise<{ parent: HospitalNetworkFacility; child: HospitalNetworkFacility } | null> {
   const area = await database.hospitalServiceArea.findFirst({
-    where: {
-      parentHospitalId,
-      childHospitalId,
-      endedAt: null,
-      parent: { is: buildNetworkParentHospitalWhere(actorUserId, authority) },
-      child: { is: activeChildWhere },
-    },
+    where: networkChildAreaWhere(actorUserId, parentHospitalId, childHospitalId, authority),
     select: { parent: { select: facilitySelect }, child: { select: facilitySelect } },
   });
   return area ?? null;
+}
+
+/**
+ * The same exact-Child proof as `findNetworkChild` for several Children of one Parent in one read: each returned
+ * Child individually satisfies that predicate; a Child absent from the result has no active association.
+ */
+export async function findNetworkChildren(
+  database: HospitalNetworkDatabase,
+  actorUserId: string,
+  parentHospitalId: string,
+  childHospitalIds: readonly string[],
+  authority: HospitalNetworkAuthority,
+): Promise<Map<string, { parent: HospitalNetworkFacility; child: HospitalNetworkFacility }>> {
+  const uniqueChildIds = [...new Set(childHospitalIds)];
+  if (uniqueChildIds.length === 0) return new Map();
+  const areas = await database.hospitalServiceArea.findMany({
+    where: networkChildAreaWhere(actorUserId, parentHospitalId, { in: uniqueChildIds }, authority),
+    select: { parent: { select: facilitySelect }, child: { select: facilitySelect } },
+    // HospitalServiceArea_active_child_key: at most one active area per Child, so this bound is exact.
+    take: uniqueChildIds.length,
+  });
+  return new Map(areas.map((area) => [area.child.id, area]));
+}
+
+function networkChildAreaWhere(
+  actorUserId: string,
+  parentHospitalId: string,
+  childHospitalId: string | { in: string[] },
+  authority: HospitalNetworkAuthority,
+): Prisma.HospitalServiceAreaWhereInput {
+  return {
+    parentHospitalId,
+    childHospitalId,
+    endedAt: null,
+    parent: { is: buildNetworkParentHospitalWhere(actorUserId, authority) },
+    child: { is: activeChildWhere },
+  };
 }
 
 /** The Parent through which the actor may read this Child's Patients, or null. One active Parent per Child. */

@@ -34,6 +34,14 @@ export const parentChildHospitalReportRequestSchema = z
   .strict()
   .refine(({ parentHospitalId, hospitalId }) => parentHospitalId !== hospitalId);
 
+/** Several exact Children of one Parent; a Child equal to the Parent is denied per Child, as a single request is. */
+export const parentChildHospitalReportBatchRequestSchema = z
+  .object({
+    parentHospitalId: hospitalReportHospitalIdSchema,
+    hospitalIds: z.array(hospitalReportHospitalIdSchema),
+  })
+  .strict();
+
 const cursorSchema = z.string().trim().min(1).max(1024).optional();
 
 /**

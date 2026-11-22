@@ -3,7 +3,7 @@ import "server-only";
 import { type PrismaClient } from "@prisma/client";
 
 import type { AuditEventInput } from "@/modules/audit/schemas/audit-schemas";
-import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { recordAuditEvent, recordAuditEvents } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   ForbiddenError,
@@ -38,6 +38,14 @@ export async function recordParentChildHospitalReportingAudit(
   database?: PrismaClient,
 ): Promise<void> {
   await recordAuditEvent(parentChildHospitalReportingAuditEvent(input), database);
+}
+
+/** One event per Child, exactly as `recordParentChildHospitalReportingAudit` writes it, in one insert. */
+export async function recordParentChildHospitalReportingAudits(
+  inputs: readonly ParentChildHospitalReportingAuditInput[],
+  database?: PrismaClient,
+): Promise<void> {
+  await recordAuditEvents(inputs.map(parentChildHospitalReportingAuditEvent), database);
 }
 
 export function parentChildHospitalReportingAuditEvent(input: ParentChildHospitalReportingAuditInput): AuditEventInput {

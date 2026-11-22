@@ -29,6 +29,7 @@ import {
   getHospitalReportingDatasetForExport,
   getHospitalReportingPage,
   getParentChildHospitalReportingPage,
+  getParentChildHospitalReportingPages,
 } from "@/modules/reporting/services/hospital-report-query-service";
 import { getGlobalReportingDirectory, searchGlobalReportingHospitals } from "@/modules/reporting/services/global-reporting-service";
 import { resolveGlobalReportingAccessContext } from "@/modules/reporting/services/global-reporting-access-service";
@@ -1345,5 +1346,141 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       parentHospitalId: parentB.id,
       hospitalId: child.id,
     })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("reads several Children with exactly the per-Child results and audit events of the exact-Child path", async () => {
+    const fixture = newFixture();
+    currentFixture = fixture;
+    const parent = await createHospital(fixture, { name: "แม่ข่ายเทียบผล" });
+    const richChild = await createHospital(fixture, { name: "ลูกข่ายมีข้อมูล", kind: "CHILD" });
+    const emptyChild = await createHospital(fixture, { name: "ลูกข่ายว่าง", kind: "CHILD" });
+    const completedChild = await createHospital(fixture, { name: "ลูกข่ายจบโปรแกรม", kind: "CHILD" });
+    const endedAreaChild = await createHospital(fixture, { name: "ลูกข่ายสิ้นสุดเขต", kind: "CHILD" });
+    const suspendedChild = await createHospital(fixture, { name: "ลูกข่ายระงับ", kind: "CHILD", status: HospitalStatus.SUSPENDED });
+    const unrelated = await createHospital(fixture, { name: "โรงพยาบาลนอกเครือข่าย", kind: "CHILD" });
+    const parentOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parent });
+    const admin = await createActor(fixture, { role: Role.ADMIN });
+    const childOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: richChild });
+    await attachNetwork(parent.id, [richChild.id, emptyChild.id, completedChild.id, endedAreaChild.id, suspendedChild.id], parentOwner.userId);
+    // Ends after it started by the database clock (HospitalServiceArea_lifecycle), not the test process clock.
+    const endedArea = await prisma.hospitalServiceArea.findFirstOrThrow({
+      where: { childHospitalId: endedAreaChild.id, endedAt: null },
+      select: { id: true, createdAt: true },
+    });
+    await prisma.hospitalServiceArea.update({
+      where: { id: endedArea.id },
+      data: { endedAt: new Date(endedArea.createdAt.getTime() + 1), endedByUserId: parentOwner.userId, endReason: "สิ้นสุดเขต" },
+    });
+
+    async function addProgram(
+      hospitalId: string,
+      label: string,
+      status: PatientProgramStatus,
+    ): Promise<{ id: string; relationshipId: string }> {
+      const profile = await createPatientProfile(fixture, label);
+      const relationship = await createRelationship(fixture, profile.id, hospitalId, label);
+      const program = await createProgram(fixture, { relationshipId: relationship.id, createdByUserId: childOwner.userId, status });
+      return { id: program.id, relationshipId: relationship.id };
+    }
+    const active = await addProgram(richChild.id, "RICH-ACTIVE", PatientProgramStatus.ACTIVE);
+    const completed = await addProgram(richChild.id, "RICH-COMPLETED", PatientProgramStatus.COMPLETED);
+    const endedCare = await addProgram(richChild.id, "RICH-ENDED-CARE", PatientProgramStatus.ACTIVE);
+    const noProgramProfile = await createPatientProfile(fixture, "RICH-NO-PROGRAM");
+    await createRelationship(fixture, noProgramProfile.id, richChild.id, "RICH-NO-PROGRAM");
+    await prisma.patientHospitalRelationship.update({
+      where: { id: endedCare.relationshipId },
+      data: { endedAt: new Date(), endedByUserId: admin.userId, endReason: "สิ้นสุดการดูแล" },
+    });
+    await addProgram(completedChild.id, "COMPLETED-ONLY", PatientProgramStatus.COMPLETED);
+    const recordedByUserId = childOwner.userId;
+    // Rows of the ended relationship must not count for either path.
+    await prisma.patientProgramServiceOneRoutine.createMany({
+      data: [
+        { patientProgramId: active.id, roundNumber: 1, recordedByUserId },
+        { patientProgramId: endedCare.id, roundNumber: 1, recordedByUserId },
+      ],
+    });
+    await prisma.patientProgramServiceOneFloatingChart.create({
+      data: { patientProgramId: completed.id, roundNumber: 1, recordedByUserId },
+    });
+    await prisma.patientProgramServiceOneDreamCard.create({
+      data: { patientProgramId: active.id, roundNumber: 3, recordedByUserId },
+    });
+    await prisma.patientProgramServiceOneConfidence.create({
+      data: { patientProgramId: active.id, roundNumber: 1, recordedByUserId, score: 4 },
+    });
+
+    const childIds = [richChild.id, emptyChild.id, completedChild.id, endedAreaChild.id, suspendedChild.id, unrelated.id];
+    const auditWhere = (actorUserId: string): Prisma.AuditEventWhereInput => ({
+      actorUserId,
+      action: { startsWith: "parent_child_reporting.access." },
+    });
+    async function takeAudits(actorUserId: string): Promise<unknown[]> {
+      const events = await prisma.auditEvent.findMany({
+        where: auditWhere(actorUserId),
+        select: { actorUserId: true, action: true, resourceType: true, resourceId: true, metadata: true },
+      });
+      await prisma.auditEvent.deleteMany({ where: auditWhere(actorUserId) });
+      return events.sort((left, right) =>
+        `${left.resourceId}:${left.action}`.localeCompare(`${right.resourceId}:${right.action}`));
+    }
+
+    for (const actor of [parentOwner, admin]) {
+      const exact = new Map<string, unknown>();
+      for (const hospitalId of childIds) {
+        try {
+          exact.set(hospitalId, await getParentChildHospitalReportingPage(actor.actor, { parentHospitalId: parent.id, hospitalId }));
+        } catch (error: unknown) {
+          if (!(error instanceof ForbiddenError || error instanceof NotFoundError)) throw error;
+          exact.set(hospitalId, null);
+        }
+      }
+      const exactAudits = await takeAudits(actor.userId);
+
+      // The Parent itself in the list is denied without a read or an audit event, as a single request is.
+      const batch = await getParentChildHospitalReportingPages(actor.actor, {
+        parentHospitalId: parent.id,
+        hospitalIds: [...childIds, parent.id],
+      });
+      const batchAudits = await takeAudits(actor.userId);
+
+      expect(new Map([...batch].filter(([hospitalId]) => hospitalId !== parent.id))).toEqual(exact);
+      expect(batch.get(parent.id)).toBeNull();
+      expect(batchAudits).toEqual(exactAudits);
+      expect(batchAudits).toHaveLength(childIds.length);
+    }
+
+    const owned = await getParentChildHospitalReportingPages(parentOwner.actor, {
+      parentHospitalId: parent.id,
+      hospitalIds: childIds,
+    });
+    expect([...owned].filter(([, report]) => report !== null).map(([hospitalId]) => hospitalId))
+      .toEqual([richChild.id, emptyChild.id, completedChild.id]);
+    expect(owned.get(richChild.id)?.content).toEqual({
+      state: "AVAILABLE",
+      dashboard: {
+        state: "AVAILABLE",
+        value: {
+          patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 3 },
+          relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },
+          programs: { grain: "PATIENT_PROGRAM", total: 2, active: 1, completed: 1 },
+        },
+      },
+      serviceProcess: {
+        state: "AVAILABLE",
+        value: {
+          programsWithRoutineRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+          programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+          programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+          programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+        },
+      },
+    });
+    expect(owned.get(emptyChild.id)?.content.dashboard.value.programs).toEqual({
+      grain: "PATIENT_PROGRAM",
+      total: 0,
+      active: 0,
+      completed: 0,
+    });
   });
 });

@@ -25,6 +25,7 @@ const supportedActions = new Set([
   "migrate:appointments-populated",
   "test",
   "test:focused",
+  "benchmark",
   "verify",
 ]);
 
@@ -781,6 +782,31 @@ async function testFocused(environment, relativeTestPath) {
   );
 }
 
+/** Opt-in measurement against the same disposable database; never part of `test` or CI regression. */
+async function benchmark(environment, relativeBenchmarkPath) {
+  if (
+    !relativeBenchmarkPath ||
+    !/^tests\/benchmarks\/[A-Za-z0-9._/-]+\.benchmark\.test\.ts$/u.test(relativeBenchmarkPath) ||
+    relativeBenchmarkPath.split("/").includes("..")
+  ) {
+    fail("benchmark requires one benchmark path under tests/benchmarks");
+  }
+
+  generate(environment);
+  await migrate(environment);
+  run(
+    process.execPath,
+    [
+      resolve(repositoryRoot, "node_modules", "vitest", "vitest.mjs"),
+      "run",
+      "--config",
+      "vitest.benchmark.config.mts",
+      relativeBenchmarkPath,
+    ],
+    { env: environment },
+  );
+}
+
 async function verifyIntegration(environment) {
   generate(environment);
   await migrate(environment);
@@ -807,6 +833,11 @@ if (action === "test") {
 
 if (action === "test:focused") {
   await testFocused(environment, process.argv[3]);
+  process.exit(0);
+}
+
+if (action === "benchmark") {
+  await benchmark(environment, process.argv[3]);
   process.exit(0);
 }
 
