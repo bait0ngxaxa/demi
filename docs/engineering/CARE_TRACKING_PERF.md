@@ -95,10 +95,15 @@ What this is not:
 The audit's options (a), a LATERAL rewrite of `activity`, and (b), splitting the summary from the page query, would
 not remove the JIT cost. Neither is needed to meet the budget below once JIT is out of the way.
 
-## Proposed budget (for the team to approve)
+## Budget
 
-**Proposed:** `getCareTrackingPage` p95 ≤ 300 ms at 5,000 patients in one Hospital, measured with this benchmark;
-staging re-measures it on the Supabase Session pooler before production.
+**`getCareTrackingPage` p95 ≤ 300 ms at 5,000 patients in one Hospital.** The repository owner approved it on
+2026-11-22, during the PR-C review (#58). It is measured with this benchmark here, and on staging through the Supabase
+Session pooler before production (see Follow-ups).
+
+Sample size: every figure in this document comes from 10 measured runs, so its p95 is effectively the largest sample.
+That is enough to separate 100 ms from 2 s. It is not an SLO measurement: the staging measurement uses at least
+30–50 runs per scenario.
 
 | measurement | result | budget | status |
 |---|---:|---:|---|
@@ -137,14 +142,16 @@ statement p95 at 5,000 patients. That is within the approved budget. The 2 s cos
 test database. The production project was not read directly (it is not in this account). Its value is checked with
 the step added to `docs/operations/SUPABASE_PRODUCTION.md` §2.
 
-**Approved budget:** `getCareTrackingPage` p95 ≤ 300 ms at 5,000 patients in one Hospital.
-
-**Decision:** no runtime change. Remedy 1 would add a transaction (two to three more round trips to the pooler) to
+**Decision:** no change to the request path. Remedy 1 would add a transaction (two to three more round trips to the pooler) to
 every request, for a setting production already has. Instead:
 - **Test database:** `compose.integration.yaml` sets `jit = off`, so integration tests and benchmarks run with the
   planner settings production runs with.
 - **Production check:** `docs/operations/SUPABASE_PRODUCTION.md` §2 requires `jit = off` and says how to verify it as
   the application role.
+- **Enforced check:** `/api/health` reports `checks.jitOff` from `current_setting('jit')` as the application role, so a
+  platform change, a role or database override, or a new host is visible to the deploy runbook and the uptime monitor.
+  It is advisory and never turns readiness into 503: the application still works with JIT on, and taking it out of
+  service would not fix a database setting. `docs/operations/DEPLOY_VPS.md` requires it to be `true`.
 - **This benchmark:** it still times `SET LOCAL jit = on` for its page scenarios, so a regression back to a JIT-heavy
   plan stays visible.
 
@@ -162,3 +169,11 @@ At 5,000 patients the page p95 is 116 ms, within the 300 ms budget.
 
 Remedy 1 or 2 becomes necessary if DEMI moves to a PostgreSQL host whose default is `jit = on`. Remedy 3 is optional
 tuning; nothing in these measurements requires it.
+
+## Follow-ups
+
+- **Staging measurement (open).** Before production, run the scenarios above on staging through the Supabase Session
+  pooler with at least 30–50 runs each. Record p50/p95 next to the budget. Confirm `/api/health` reports
+  `"jitOff": true` there.
+- **Production setting (open).** Read `checks.jitOff` and run the SUPABASE_PRODUCTION.md §2 query on the production
+  project at its first deploy. Only Demi-dev was available for this analysis.

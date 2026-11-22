@@ -294,7 +294,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 curl -fsS "https://$PROD_HOST/api/health"
 ```
 
-`/api/health` ต้องได้ `{"status":"ok","checks":{"database":true,"migrations":true,"configuration":true}}` (ค่าใน checks เป็น boolean ล้วน) ถ้าได้ 503 ให้ดู check ที่เป็น `false` แล้ว rollback (§3) ส่วน uptime monitor ภายนอกให้ใช้ `https://<PROD_HOST>/api/health`
+`/api/health` ต้องได้ `{"status":"ok","checks":{"database":true,"migrations":true,"configuration":true,"jitOff":true}}` (ค่าใน checks เป็น boolean ล้วน) ถ้าได้ 503 ให้ดู check ที่เป็น `false` แล้ว rollback (§3) ส่วน `jitOff` เป็นค่าเตือน ไม่ทำให้ได้ 503 และ rollback แอปไม่ช่วย ถ้าได้ `false` ให้หยุดการ deploy ไว้ก่อนแล้วแก้ค่า `jit` ของฐานข้อมูลตาม [SUPABASE_PRODUCTION.md](SUPABASE_PRODUCTION.md) §2 ส่วน uptime monitor ภายนอกให้ใช้ `https://<PROD_HOST>/api/health`
 
 หลัง tick รอบถัดไป (timer ทุกนาที; `TOO_SOON` อาจทำให้รออีกหนึ่งรอบหลัง completed) ให้ตรวจ readiness ของ scheduler ตาม §1.11
 
