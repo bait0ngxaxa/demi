@@ -12,7 +12,8 @@ npm run test:db:down
 ```
 
 `tests/benchmarks/care-tracking.benchmark.test.ts` uses the disposable integration database (PostgreSQL 17,
-`compose.integration.yaml`, default planner and JIT settings). The setup:
+`compose.integration.yaml`). The results below were taken while that database still ran PostgreSQL's default
+`jit = on`; it now runs `jit = off` like Supabase (see the decision at the end). The setup:
 
 - **Data:** one Hospital is grown to 500, then 2,000, then 5,000 patients. A second Hospital with 2,000 patients is out
   of scope. Both use the synthetic distribution documented in the file header (baseline, active/completed Programs
@@ -120,6 +121,44 @@ staging re-measures it on the Supabase Session pooler before production.
    - The estimate still grows with the patient count, so it moves the threshold instead of removing it.
    - It is worth doing together with 1 only if a plan shows a measurable gain.
 
-**Open fact:** the JIT settings of the production Supabase project (`SHOW jit`, `jit_above_cost`,
-`jit_inline_above_cost`, `jit_optimize_above_cost`) have not been read. If `jit` is already off there, production
-behaves like the "jit off" columns today and remedy 1 is defensive rather than corrective.
+## Supabase setting and decision (2026-11-22)
+
+The Supabase project available to this account is `Demi-dev` (PostgreSQL 17.6). Its settings were read with one
+read-only query as the application role `postgres`:
+
+| setting | Demi-dev | disposable test database before this change |
+|---|---|---|
+| `jit` | **off** | on (PostgreSQL default) |
+| `jit_above_cost` / `jit_inline_above_cost` / `jit_optimize_above_cost` | 100000 / 500000 / 500000 | same |
+| role or database overrides of `jit` (`pg_db_role_setting`) | none | none |
+
+Supabase ships `jit = off`, so a Supabase-hosted DEMI already behaves like the "jit off" columns above: about 110 ms
+statement p95 at 5,000 patients. That is within the approved budget. The 2 s cost appeared only in the disposable
+test database. The production project was not read directly (it is not in this account). Its value is checked with
+the step added to `docs/operations/SUPABASE_PRODUCTION.md` §2.
+
+**Approved budget:** `getCareTrackingPage` p95 ≤ 300 ms at 5,000 patients in one Hospital.
+
+**Decision:** no runtime change. Remedy 1 would add a transaction (two to three more round trips to the pooler) to
+every request, for a setting production already has. Instead:
+- **Test database:** `compose.integration.yaml` sets `jit = off`, so integration tests and benchmarks run with the
+  planner settings production runs with.
+- **Production check:** `docs/operations/SUPABASE_PRODUCTION.md` §2 requires `jit = off` and says how to verify it as
+  the application role.
+- **This benchmark:** it still times `SET LOCAL jit = on` for its page scenarios, so a regression back to a JIT-heavy
+  plan stays visible.
+
+Confirmation run with the test database at `jit = off` (ms; "jit on" is `SET LOCAL jit = on` on the same statement):
+
+| patients | scenario | statement p50 / p95 | jit on p50 / p95 | page p50 / p95 |
+|---:|---|---:|---:|---:|
+| 500 | default page | 27.4 / 36.8 | 225.5 / 302.9 | 61.4 / 109.6 |
+| 2,000 | default page | 44.2 / 51.3 | 2,079.4 / 2,106.8 | 54.1 / 69.1 |
+| 5,000 | default page | 88.0 / 89.5 | 2,009.8 / 2,057.2 | 98.0 / 116.2 |
+| 5,000 | last page | 90.2 / 92.0 | 2,015.0 / 2,054.1 | 98.5 / 115.9 |
+| 5,000 | name search (~10%) | 24.6 / 26.3 | 27.2 / 27.9 | 34.3 / 48.6 |
+
+At 5,000 patients the page p95 is 116 ms, within the 300 ms budget.
+
+Remedy 1 or 2 becomes necessary if DEMI moves to a PostgreSQL host whose default is `jit = on`. Remedy 3 is optional
+tuning; nothing in these measurements requires it.

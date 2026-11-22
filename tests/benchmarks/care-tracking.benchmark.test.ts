@@ -36,8 +36,9 @@ import {
  * read against one Hospital of 500, 2,000 and 5,000 patients, next to a 2,000-patient Hospital that is out of scope.
  * Run with `npm run test:benchmark -- tests/benchmarks/care-tracking.benchmark.test.ts`. Timings go to stdout;
  * `EXPLAIN (ANALYZE, BUFFERS)` plans and every result row are appended to files as soon as they are measured, so an
- * interrupted run keeps what it measured. Every scenario is timed with `jit = off`; the default settings and the whole
- * page read are timed for the scenarios marked `pageRead`.
+ * interrupted run keeps what it measured. Every scenario is timed with the database defaults, which match Supabase
+ * (`jit = off`, set in compose.integration.yaml); for the scenarios marked `pageRead`, the whole page read and the
+ * statement with `SET LOCAL jit = on` (PostgreSQL's own default) are timed too.
  *
  * Synthetic distribution per patient (deterministic by index): 80% baseline; of those 70% an ACTIVE Program
  * (1-8 opened rounds, every earlier round completed, every 10th with all opened rounds completed, 5% with a final
@@ -296,10 +297,10 @@ async function measure(run: () => Promise<unknown>): Promise<Stats> {
   return stats(samples);
 }
 
-/** The same statement with JIT compilation disabled for its transaction only (`SET LOCAL`). */
-function withoutJit<T>(run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+/** The same statement with JIT compilation enabled for its transaction only (`SET LOCAL`). */
+function withJit<T>(run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SET LOCAL jit = off`;
+    await tx.$executeRaw`SET LOCAL jit = on`;
     return run(tx);
   }, { timeout: 120_000 });
 }
@@ -334,7 +335,7 @@ describe("CT-1 care tracking read under growing Hospital size", () => {
     writeFileSync(planPath, "", "utf8");
     writeFileSync(resultPath, [
       `${MEASURED_RUNS} measured runs after ${WARMUP_RUNS} warm-up run; out-of-scope Hospital: ${NOISE_PATIENTS} patients (ms)`,
-      "| patients | scenario | rows matched | statement p50 | statement p95 | jit off p50 | jit off p95 | page p50 | page p95 |",
+      "| patients | scenario | rows matched | statement p50 | statement p95 | jit on p50 | jit on p95 | page p50 | page p95 |",
       "|---:|---|---:|---:|---:|---:|---:|---:|---:|",
       "",
     ].join("\n"), "utf8");
@@ -356,16 +357,16 @@ describe("CT-1 care tracking read under growing Hospital size", () => {
           const plan = await prisma.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN (ANALYZE, BUFFERS) ${sql}`);
           const planText = plan.map((line) => line["QUERY PLAN"]).join("\n");
           appendFileSync(planPath, `### ${size} patients — ${scenario.name}\n\n${planText}\n\n`, "utf8");
-          const jitOffPlan = await withoutJit((tx) =>
+          const jitOnPlan = await withJit((tx) =>
             tx.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN (ANALYZE, BUFFERS) ${sql}`));
-          const jitOffText = jitOffPlan.map((line) => line["QUERY PLAN"]).join("\n");
-          appendFileSync(planPath, `### ${size} patients — ${scenario.name} (jit = off)\n\n${jitOffText}\n\n`, "utf8");
+          const jitOnText = jitOnPlan.map((line) => line["QUERY PLAN"]).join("\n");
+          appendFileSync(planPath, `### ${size} patients — ${scenario.name} (jit = on)\n\n${jitOnText}\n\n`, "utf8");
           plans += 1;
         }
         const result = await prisma.$queryRaw<{ total: number }[]>(sql);
+        const statementStats = await measure(() => prisma.$queryRaw(sql));
         // With JIT the cost is the same compile for every filter, so it is timed only for the page scenarios.
-        const statementStats = scenario.pageRead ? await measure(() => prisma.$queryRaw(sql)) : null;
-        const jitOffStats = await measure(() => withoutJit((tx) => tx.$queryRaw(sql)));
+        const jitOnStats = scenario.pageRead ? await measure(() => withJit((tx) => tx.$queryRaw(sql))) : null;
         const pageStats = scenario.pageRead
           ? await measure(() => getCareTrackingPage(target.actor, {
             hospitalId: target.hospitalId,
@@ -376,8 +377,8 @@ describe("CT-1 care tracking read under growing Hospital size", () => {
             ...(scenario.includeEnded ? { includeEnded: true } : {}),
           }, { database: prisma, now: () => NOW }))
           : null;
-        const row = `| ${size} | ${scenario.name} | ${result[0]?.total ?? 0} | ${statementStats?.p50.toFixed(1) ?? "-"} | ` +
-          `${statementStats?.p95.toFixed(1) ?? "-"} | ${jitOffStats.p50.toFixed(1)} | ${jitOffStats.p95.toFixed(1)} | ` +
+        const row = `| ${size} | ${scenario.name} | ${result[0]?.total ?? 0} | ${statementStats.p50.toFixed(1)} | ` +
+          `${statementStats.p95.toFixed(1)} | ${jitOnStats?.p50.toFixed(1) ?? "-"} | ${jitOnStats?.p95.toFixed(1) ?? "-"} | ` +
           `${pageStats?.p50.toFixed(1) ?? "-"} | ${pageStats?.p95.toFixed(1) ?? "-"} |`;
         appendFileSync(resultPath, `${row}\n`, "utf8");
         process.stdout.write(`${row}\n`);
