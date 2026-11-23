@@ -42,9 +42,9 @@ async function resolveProtectedActor(): Promise<ActorContext> {
 }
 
 /** UNAVAILABLE shows no dots here; the shared shell carries the unavailable note. Denials keep protected handling. */
-async function resolvePendingActions(userId: string): Promise<PendingActionsResult> {
+async function resolvePendingActions(): Promise<PendingActionsResult> {
   try {
-    return await getPendingActions(userId);
+    return await getPendingActions();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError || error instanceof ForbiddenError) {
       redirect("/login");
@@ -67,7 +67,7 @@ export default async function MorePage({ searchParams }: MorePageProps): Promise
   const [actor, query] = await Promise.all([resolveProtectedActor(), searchParams]);
   const [hospitalWorkspaces, pendingActions] = await Promise.all([
     listNavigationHospitalWorkspaces(actor),
-    resolvePendingActions(actor.userId),
+    resolvePendingActions(),
   ]);
   const navigation = withNavigationPendingActions(projectApplicationNavigation(actor, hospitalWorkspaces), pendingActions);
   const mobileNavigation = projectMobileNavigation(navigation);

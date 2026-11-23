@@ -11,11 +11,13 @@ vi.mock("@/lib/db/prisma", () => ({ getPrisma: () => ({
   hospitalOnboardingApplication: { count: mocks.onboarding }, supportReport: { count: mocks.support },
   patientServiceRequest: { count: mocks.services },
 }) }));
-import { calculatePendingActions, loadPendingActions } from "./pending-action-service";
+import { calculatePendingActions, calculatePendingActionsForActor, loadPendingActions } from "./pending-action-service";
 
 const actor: ActorContext = { userId: "user", personId: "person", roles: ["PATIENT"], hospitalMemberships: [], osmHospitalRelationships: [] };
+let authorizedActor: ActorContext = actor;
 function authorize(overrides: Partial<ActorContext>): void {
-  mocks.actor.mockResolvedValue({ status: "AUTHORIZED", actor: { ...actor, ...overrides } });
+  authorizedActor = { ...actor, ...overrides };
+  mocks.actor.mockResolvedValue({ status: "AUTHORIZED", actor: authorizedActor });
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -27,10 +29,17 @@ beforeEach(() => {
   mocks.acceptances.mockResolvedValue([]);
 });
 
-describe("pending action sources", () => {
+// The user-ID entry point resolves the actor itself; the actor entry point counts for an actor the caller resolved.
+// Both must produce identical counts, so every source test runs against each.
+const entryPoints = [
+  ["calculatePendingActions", () => calculatePendingActions(actor.userId)],
+  ["calculatePendingActionsForActor", () => calculatePendingActionsForActor(authorizedActor)],
+] as const;
+
+describe.each(entryPoints)("pending action sources via %s", (_entryPoint, calculate) => {
   it("counts only ADMIN queues even with a Hospital role", async () => {
     authorize({ roles: ["ADMIN", "HOSPITAL"] });
-    expect((await calculatePendingActions(actor.userId)).map(({ count }) => count)).toEqual([2, 3]);
+    expect((await calculate()).map(({ count }) => count)).toEqual([2, 3]);
     expect(mocks.onboarding).toHaveBeenCalledWith({ where: { status: "PENDING" } });
     expect(mocks.support).toHaveBeenCalledWith({ where: { status: "NEW" } });
     expect(mocks.services).not.toHaveBeenCalled();
@@ -41,7 +50,7 @@ describe("pending action sources", () => {
   it.each(["OWNER", "MEMBER"] as const)("respects active %s review authority and deduplicates Hospitals", async (membershipType) => {
     const membership = { hospitalId: "hospital", membershipType, profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" } as const;
     authorize({ roles: ["HOSPITAL"], hospitalMemberships: [membership, membership, { ...membership, hospitalId: "suspended", hospitalStatus: "SUSPENDED" }] });
-    const indicators = await calculatePendingActions(actor.userId);
+    const indicators = await calculate();
     expect(indicators.map(({ count }) => count)).toEqual([4, 5]);
     expect(mocks.appointments).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ userId: "user" }), ["hospital"], expect.anything());
     expect(mocks.services).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
@@ -54,7 +63,7 @@ describe("pending action sources", () => {
     const membership = (hospitalId: string, membershipType: "OWNER" | "MEMBER") => ({ hospitalId, membershipType, profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" }) as const;
     authorize({ roles: ["HOSPITAL"], hospitalMemberships: [membership("a", "OWNER"), membership("b", "MEMBER"), membership("c", "MEMBER")] });
     mocks.appointments.mockResolvedValue([{ hospitalId: "a", count: 0 }, { hospitalId: "b", count: 4 }, { hospitalId: "c", count: 2 }]);
-    const indicators = await calculatePendingActions(actor.userId);
+    const indicators = await calculate();
     expect(mocks.appointments).toHaveBeenCalledOnce();
     expect(indicators[1]).toMatchObject({ count: 6, href: "/app/appointments?tab=PENDING_REQUESTS&hospitalId=b", label: "คำขอนัดหมายรอพิจารณา" });
     expect(indicators[1]?.hospitalQueue).toEqual({ tab: "PENDING_REQUESTS", hospitals: [{ hospitalId: "a", count: 0 }, { hospitalId: "b", count: 4 }, { hospitalId: "c", count: 2 }] });
@@ -64,7 +73,7 @@ describe("pending action sources", () => {
     const membership = (hospitalId: string) => ({ hospitalId, membershipType: "MEMBER", profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" }) as const;
     const row = (hospitalId: string, count: number, rescheduleCount: number, cancellationCount: number) => ({ hospitalId, count, rescheduleCount, cancellationCount });
     async function appointmentIndicator() {
-      return (await calculatePendingActions(actor.userId)).find(({ navigationHref }) => navigationHref === "/app/appointments");
+      return (await calculate()).find(({ navigationHref }) => navigationHref === "/app/appointments");
     }
 
     it("splits both kinds across Hospitals, links each to its first Hospital and keeps the distinct total", async () => {
@@ -102,7 +111,7 @@ describe("pending action sources", () => {
   it("sends OSM to their acceptance queue, including a Hospital that has pending work", async () => {
     authorize({ roles: ["OSM"] });
     mocks.acceptances.mockResolvedValue([{ hospitalId: "other", count: 0 }, { hospitalId: "mine", count: 10000 }]);
-    expect(await calculatePendingActions(actor.userId)).toEqual([expect.objectContaining({
+    expect(await calculate()).toEqual([expect.objectContaining({
       count: 10000, navigationHref: "/app/appointments", href: "/app/appointments?tab=AWAITING_MY_ACCEPTANCE&hospitalId=mine",
       label: "นัดหมายรอคุณตอบรับ", hospitalQueue: { tab: "AWAITING_MY_ACCEPTANCE", hospitals: [{ hospitalId: "other", count: 0 }, { hospitalId: "mine", count: 10000 }] },
     })]);
@@ -111,12 +120,20 @@ describe("pending action sources", () => {
   });
 
   it("does not expand to personal roles or revoked Hospital memberships", async () => {
-    expect(await calculatePendingActions(actor.userId)).toEqual([]);
+    expect(await calculate()).toEqual([]);
     authorize({ roles: ["HOSPITAL"], hospitalMemberships: [] });
-    expect(await calculatePendingActions(actor.userId)).toEqual([]);
+    expect(await calculate()).toEqual([]);
     expect(mocks.services).not.toHaveBeenCalled();
   });
 
+  it("reports infrastructure failure explicitly", async () => {
+    authorize({ roles: ["ADMIN"] });
+    mocks.support.mockRejectedValue(new Error("database offline"));
+    await expect(calculate()).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+  });
+});
+
+describe("pending action actor resolution", () => {
   it("propagates authorization failures rather than returning an empty queue", async () => {
     mocks.actor.mockResolvedValue({ status: "ACCOUNT_NOT_ACTIVE", accountStatus: "SUSPENDED" });
     await expect(calculatePendingActions(actor.userId)).rejects.toBeInstanceOf(ForbiddenError);
@@ -124,10 +141,10 @@ describe("pending action sources", () => {
     await expect(calculatePendingActions(actor.userId)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it("reports infrastructure failure explicitly", async () => {
+  it("does not re-read the actor when the caller already resolved it", async () => {
     authorize({ roles: ["ADMIN"] });
-    mocks.support.mockRejectedValue(new Error("database offline"));
-    await expect(calculatePendingActions(actor.userId)).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+    await calculatePendingActionsForActor(authorizedActor);
+    expect(mocks.actor).not.toHaveBeenCalled();
   });
 });
 

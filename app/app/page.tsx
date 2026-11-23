@@ -207,7 +207,7 @@ export default async function ApplicationPage(
   // The feed re-applies the persisted work-membership predicate; the locator only narrows it.
   // An infrastructure failure stays inside the news section; authorization errors still propagate.
   const [pendingActions, teamNews] = await Promise.all([
-    getPendingActions(actor.userId),
+    getPendingActions(),
     selectedHospital
       ? loadHomeSection(() => listHospitalWorkContent(actor, { hospitalId: selectedHospital.hospitalId, limit: 3 }))
       : null,

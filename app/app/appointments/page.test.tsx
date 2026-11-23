@@ -75,7 +75,7 @@ describe("work appointment page query", () => {
       expect(await scopeFor()).toEqual({ tab: "PENDING_REQUESTS", label: "คำขอนัดหมายรอพิจารณา", totalCount: 6, hospitals: [
         { hospitalId, hospitalName: "รพ. ก", count: 2 }, { hospitalId: other, hospitalName: "รพ. ข", count: 4 },
       ] });
-      expect(mocks.pendingActions).toHaveBeenCalledExactlyOnceWith(owner.userId);
+      expect(mocks.pendingActions).toHaveBeenCalledExactlyOnceWith();
     });
 
     it("summarizes a request-kind filtered queue with that kind's authorized per-Hospital counts", async () => {
