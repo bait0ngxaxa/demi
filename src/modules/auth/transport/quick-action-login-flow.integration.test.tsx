@@ -188,7 +188,7 @@ describe("unauthenticated LINE quick-action login flow", () => {
     await proxy(new NextRequest("https://demi.example.org/app/personal/medications?liff.hback=2"));
     mocks.headers.mockResolvedValue(new Headers({ [LINE_QUICK_ACTION_RETURN_TO_HEADER]: "/app/personal/medications" }));
     await expect(renderProtectedShell()).resolves.toBeDefined();
-    expect(mocks.pendingActions).toHaveBeenCalledExactlyOnceWith("u");
+    expect(mocks.pendingActions).toHaveBeenCalledExactlyOnceWith();
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 

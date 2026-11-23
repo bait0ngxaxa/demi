@@ -5,6 +5,8 @@ import { Role, type Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { createActorContextStore, resolveActorAccessByUserId } from "@/modules/auth/services/actor-context-service";
+import { getRequestApplicationActor } from "@/modules/auth/services/request-application-actor";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   APPOINTMENT_REQUEST_KINDS,
   APPOINTMENT_REQUEST_KIND_QUEUE_LABELS,
@@ -82,10 +84,28 @@ export async function calculatePendingActions(
   database: PrismaClient | Prisma.TransactionClient = getPrisma(),
   now: Date = new Date(),
 ): Promise<readonly PendingActionIndicator[]> {
+  let actor: ActorContext;
   try {
     const access = await resolveActorAccessByUserId(userId, createActorContextStore(database));
     if (access.status !== "AUTHORIZED") throw new ForbiddenError();
-    const actor = access.actor;
+    actor = access.actor;
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw toInfrastructureError("pending-actions.calculate", error, "Pending actions could not be loaded");
+  }
+  return calculatePendingActionsForActor(actor, database, now);
+}
+
+/**
+ * Counts for an actor the caller already resolved from persistence in this request; it never accepts client-supplied
+ * roles or scopes. Every scope below is derived from `actor` and re-applied by the persisted count predicates.
+ */
+export async function calculatePendingActionsForActor(
+  actor: ActorContext,
+  database: PrismaClient | Prisma.TransactionClient = getPrisma(),
+  now: Date = new Date(),
+): Promise<readonly PendingActionIndicator[]> {
+  try {
     if (actor.roles.includes(Role.ADMIN)) {
       const [onboarding, support] = await Promise.all([
         database.hospitalOnboardingApplication.count({ where: { status: "PENDING" } }),
@@ -157,15 +177,39 @@ export async function loadPendingActions(
   database: PrismaClient | Prisma.TransactionClient = getPrisma(),
   now: Date = new Date(),
 ): Promise<PendingActionsResult> {
+  return settlePendingActions(() => calculatePendingActions(userId, database, now), now);
+}
+
+async function settlePendingActions(
+  calculate: () => Promise<readonly PendingActionIndicator[]>,
+  now: Date,
+): Promise<PendingActionsResult> {
   try {
-    return { status: "READY", checkedAt: now.getTime(), indicators: await calculatePendingActions(userId, database, now) };
+    return { status: "READY", checkedAt: now.getTime(), indicators: await calculate() };
   } catch (error: unknown) {
     if (error instanceof InfrastructureError) return { status: "UNAVAILABLE", checkedAt: now.getTime() };
     throw error;
   }
 }
 
-/** Request-local deduplication for the layout and More page; never a cross-user or persistent cache. */
-export const getPendingActions = cache(async (userId: string): Promise<PendingActionsResult> =>
-  loadPendingActions(userId),
-);
+async function requestActor(): Promise<ActorContext> {
+  try {
+    return await getRequestApplicationActor();
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw toInfrastructureError("pending-actions.calculate", error, "Pending actions could not be loaded");
+  }
+}
+
+/**
+ * Render-only, request-local deduplication for the protected layout and pages; never a cross-user or persistent cache.
+ * The actor is the request-scoped protected actor, which this render request read from persistence (after the provider
+ * session check), so the indicators share the shell's single actor read instead of re-reading it. Failures keep the
+ * `loadPendingActions` contract: an infrastructure failure is UNAVAILABLE; a missing session or denied/suspended actor
+ * propagates as UnauthenticatedError/ForbiddenError to the caller's protected-access handling. Server actions and route
+ * handlers must not use this; they call `calculatePendingActions` or `loadPendingActions` with a fresh resolution.
+ */
+export const getPendingActions = cache(async (): Promise<PendingActionsResult> => {
+  const now = new Date();
+  return settlePendingActions(async () => calculatePendingActionsForActor(await requestActor(), getPrisma(), now), now);
+});

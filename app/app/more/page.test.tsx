@@ -27,7 +27,7 @@ vi.mock("@/modules/auth/services/actor-workspace-service", () => ({
   listActorHospitalWorkspaces: () => Promise.resolve([]),
 }));
 vi.mock("@/modules/pending-actions/services/pending-action-service", () => ({
-  getPendingActions: (userId: string) => dependencies.pendingActions(userId),
+  getPendingActions: () => dependencies.pendingActions(),
 }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: () => dependencies.actor(),

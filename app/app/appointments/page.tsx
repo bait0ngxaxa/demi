@@ -64,12 +64,11 @@ async function loadPage(
  * shows nothing here (the shell states it); a denial keeps this page's protected handling, never an empty scope.
  */
 async function loadPendingScope(
-  actor: Awaited<ReturnType<typeof getRequestApplicationActor>>,
   page: WorkAppointmentPage,
 ): Promise<WorkAppointmentPendingScope | null> {
   let indicator: PendingActionIndicator | undefined;
   try {
-    const result = await getPendingActions(actor.userId);
+    const result = await getPendingActions();
     if (result.status !== "READY") return null;
     indicator = result.indicators.find(({ navigationHref }) => navigationHref === "/app/appointments");
   } catch (error: unknown) {
@@ -140,5 +139,5 @@ export default async function WorkAppointmentPage({
     }
   }
 
-  return <WorkAppointmentView page={page} pendingScope={await loadPendingScope(actor, page)} queryError={queryError} />;
+  return <WorkAppointmentView page={page} pendingScope={await loadPendingScope(page)} queryError={queryError} />;
 }

@@ -53,12 +53,12 @@ async function resolveProtectedActor(lineQuickActionReturnTo: string | null): Pr
 }
 
 /**
- * Indicator infrastructure failures arrive as UNAVAILABLE and never block the shell. An actor revoked between the
- * session check and the indicator re-read is denied through the same protected-access handling as the shell.
+ * Indicator infrastructure failures arrive as UNAVAILABLE and never block the shell. The indicators count for the same
+ * request-scoped actor the shell resolved; a denial is handled through the same protected-access handling as the shell.
  */
-async function resolvePendingActions(userId: string, lineQuickActionReturnTo: string | null): Promise<PendingActionsResult> {
+async function resolvePendingActions(lineQuickActionReturnTo: string | null): Promise<PendingActionsResult> {
   try {
-    return await getPendingActions(userId);
+    return await getPendingActions();
   } catch (error: unknown) {
     redirectDeniedAccess(error, lineQuickActionReturnTo);
     throw error;
@@ -77,7 +77,7 @@ async function ResolvedProtectedApplicationShell({
   const actor = await resolveProtectedActor(lineQuickActionReturnTo);
   const [hospitalWorkspaces, pendingActions, displayName, passwordResetNoticeAt, legalReacceptanceNeeded] = await Promise.all([
     listNavigationHospitalWorkspaces(actor),
-    resolvePendingActions(actor.userId, lineQuickActionReturnTo),
+    resolvePendingActions(lineQuickActionReturnTo),
     getActorDisplayName(actor).catch((error: unknown) =>
       error instanceof InfrastructureError ? "ผู้ใช้งาน DEMI" : Promise.reject(error),
     ),

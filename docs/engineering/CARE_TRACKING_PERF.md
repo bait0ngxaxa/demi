@@ -149,9 +149,16 @@ every request, for a setting production already has. Instead:
 - **Production check:** `docs/operations/SUPABASE_PRODUCTION.md` §2 requires `jit = off` and says how to verify it as
   the application role.
 - **Enforced check:** `/api/health` reports `checks.jitOff` from `current_setting('jit')` as the application role, so a
-  platform change, a role or database override, or a new host is visible to the deploy runbook and the uptime monitor.
-  It is advisory and never turns readiness into 503: the application still works with JIT on, and taking it out of
-  service would not fix a database setting. `docs/operations/DEPLOY_VPS.md` requires it to be `true`.
+  platform change, a role or database override, or a new host is visible wherever someone reads that field. It is
+  advisory and never turns readiness into 503: the application still works with JIT on, and taking it out of service
+  would not fix a database setting. Because the response stays 200 when `jitOff` is `false`, the external uptime monitor
+  (a status-code check) sees availability only and never notices JIT. `jitOff` is checked by the deploy runbook
+  (`docs/operations/DEPLOY_VPS.md` requires it to be `true` after every deploy) and at the first production deploy
+  (`docs/operations/SUPABASE_PRODUCTION.md` §2).
+- **Reading `jitOff: false`:** it means "JIT is not confirmed off", not only "JIT is on". It is also `false` when the
+  setting could not be read: the database is unreachable (`checks.database` is `false` and the response is already
+  503), or the database answered but the `current_setting('jit')` query failed or timed out (still 200). Check
+  `checks.database` first, then run the SUPABASE_PRODUCTION.md §2 query as the application role.
 - **This benchmark:** it still times `SET LOCAL jit = on` for its page scenarios, so a regression back to a JIT-heavy
   plan stays visible.
 

@@ -169,7 +169,7 @@ describe("application home workspace routing", () => {
       }],
     });
 
-    expect(getPendingActions).toHaveBeenCalledExactlyOnceWith(actor.userId);
+    expect(getPendingActions).toHaveBeenCalledExactlyOnceWith();
     expect(html).toContain('<div class="hidden lg:block"><section aria-labelledby="work-home-pending-heading"');
     expect(html).toContain('<div class="mt-8 hidden lg:block"><section aria-labelledby="work-home-tools-heading"');
     expect(html).toContain('class="contents lg:block lg:min-w-0 lg:@container/home-main"');
