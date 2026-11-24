@@ -14,6 +14,7 @@ function input(overrides: Record<string, unknown> = {}): Record<string, unknown>
     expectedUpdatedAt: null,
     addressText: null,
     phoneNumber: null,
+    locationText: null,
     ...overrides,
   };
 }
@@ -117,11 +118,13 @@ describe("Hospital Contact phone normalization", () => {
 });
 
 describe("Hospital Contact mutation schema", () => {
-  it("requires the exact locator, expectation and both desired-state fields", () => {
+  it("requires the exact locator, expectation and every desired-state field", () => {
     expect(hospitalContactMutationSchema.safeParse(input()).success).toBe(true);
     expect(hospitalContactMutationSchema.safeParse({ ...input(), extra: "field" }).success).toBe(false);
     expect(hospitalContactMutationSchema.safeParse({ ...input(), phoneNumber: undefined }).success).toBe(false);
     expect(hospitalContactMutationSchema.safeParse({ ...input(), addressText: undefined }).success).toBe(false);
+    // Omitting the location must not silently clear it: the field is required, null clears.
+    expect(hospitalContactMutationSchema.safeParse({ ...input(), locationText: undefined }).success).toBe(false);
   });
 
   it.each([23, [], {}, true])("rejects non-string contact values (%j)", (value) => {
@@ -142,7 +145,35 @@ describe("Hospital Contact mutation schema", () => {
       expectedUpdatedAt: null,
       addressText: "ถนน สุขภาพ\n บ้านเลขที่ 1",
       phoneNumber: "+66 2 123 4567 ext 9",
+      location: null,
     });
+  });
+
+  it("parses the map location into a rounded point and clears it when empty", () => {
+    expect(hospitalContactMutationSchema.parse(input({ locationText: " 13.7563314, 100.5017649 " }))).toMatchObject({
+      location: { latitude: 13.756331, longitude: 100.501765 },
+    });
+    expect(hospitalContactMutationSchema.parse(input({ locationText: "   " }))).toMatchObject({ location: null });
+  });
+
+  it.each([
+    ["https://maps.app.goo.gl/AbCdEf123", "SHORT_LINK"],
+    ["100.501765, 13.756331", "OUT_OF_BOUNDS"],
+    ["ไม่ใช่พิกัด", "UNRECOGNIZED"],
+  ])("reports the location failure reason for %s on locationText", (locationText, reason) => {
+    const result = hospitalContactMutationSchema.safeParse(input({ locationText }));
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toEqual([expect.objectContaining({ path: ["locationText"], message: reason })]);
+  });
+
+  it("bounds the location text separately from the address/phone byte budget", () => {
+    expect(hospitalContactMutationSchema.safeParse(input({ locationText: "x".repeat(2049) })).success).toBe(false);
+    expect(
+      hospitalContactMutationSchema.safeParse(
+        input({ addressText: " ".repeat(16 * 1024), locationText: "13.756331, 100.501765" }),
+      ).success,
+    ).toBe(true);
   });
 
   it("accepts a canonical UTC millisecond token and rejects other timestamp forms", () => {

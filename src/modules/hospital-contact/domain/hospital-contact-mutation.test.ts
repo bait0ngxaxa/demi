@@ -14,7 +14,7 @@ describe("Hospital Contact expected-version decisions", () => {
       decideHospitalContactMutation({
         current: null,
         expectedUpdatedAt: null,
-        desired: { addressText: null, phoneNumber: null },
+        desired: { addressText: null, phoneNumber: null, location: null },
       }),
     ).toEqual({ kind: "NOOP_ABSENT" });
   });
@@ -24,14 +24,14 @@ describe("Hospital Contact expected-version decisions", () => {
       decideHospitalContactMutation({
         current: null,
         expectedUpdatedAt: null,
-        desired: { addressText: "ถนนสุขภาพ", phoneNumber: null },
+        desired: { addressText: "ถนนสุขภาพ", phoneNumber: null, location: null },
       }),
     ).toEqual({ kind: "CREATE" });
     expect(
       decideHospitalContactMutation({
         current: null,
         expectedUpdatedAt: token,
-        desired: { addressText: null, phoneNumber: null },
+        desired: { addressText: null, phoneNumber: null, location: null },
       }),
     ).toEqual({ kind: "CONFLICT" });
   });
@@ -40,6 +40,7 @@ describe("Hospital Contact expected-version decisions", () => {
     const current = {
       addressText: "ที่อยู่",
       phoneNumber: "02-123-4567",
+      location: null,
       updatedAt: version,
     };
 
@@ -47,21 +48,21 @@ describe("Hospital Contact expected-version decisions", () => {
       decideHospitalContactMutation({
         current,
         expectedUpdatedAt: token,
-        desired: { addressText: "ที่อยู่", phoneNumber: "02-123-4567" },
+        desired: { addressText: "ที่อยู่", phoneNumber: "02-123-4567", location: null },
       }),
     ).toEqual({ kind: "NOOP" });
     expect(
       decideHospitalContactMutation({
         current,
         expectedUpdatedAt: new Date(version.getTime() - 1).toISOString(),
-        desired: { addressText: "ที่อยู่", phoneNumber: "02-123-4567" },
+        desired: { addressText: "ที่อยู่", phoneNumber: "02-123-4567", location: null },
       }),
     ).toEqual({ kind: "CONFLICT" });
     expect(
       decideHospitalContactMutation({
         current,
         expectedUpdatedAt: null,
-        desired: { addressText: "ที่อยู่", phoneNumber: "02-123-4567" },
+        desired: { addressText: "ที่อยู่", phoneNumber: "02-123-4567", location: null },
       }),
     ).toEqual({ kind: "CONFLICT" });
   });
@@ -69,18 +70,51 @@ describe("Hospital Contact expected-version decisions", () => {
   it("updates changed values, including a clear, only from the matching version", () => {
     expect(
       decideHospitalContactMutation({
-        current: { addressText: "ที่อยู่", phoneNumber: null, updatedAt: version },
+        current: { addressText: "ที่อยู่", phoneNumber: null, location: null, updatedAt: version },
         expectedUpdatedAt: token,
-        desired: { addressText: null, phoneNumber: null },
+        desired: { addressText: null, phoneNumber: null, location: null },
       }),
     ).toEqual({ kind: "UPDATE" });
     expect(
       decideHospitalContactMutation({
-        current: { addressText: "ที่อยู่", phoneNumber: null, updatedAt: version },
+        current: { addressText: "ที่อยู่", phoneNumber: null, location: null, updatedAt: version },
         expectedUpdatedAt: null,
-        desired: { addressText: null, phoneNumber: null },
+        desired: { addressText: null, phoneNumber: null, location: null },
       }),
     ).toEqual({ kind: "CONFLICT" });
+  });
+
+  it("treats the map location as contact data for create, NOOP and update", () => {
+    const location = { latitude: 13.756331, longitude: 100.501765 };
+
+    expect(
+      decideHospitalContactMutation({
+        current: null,
+        expectedUpdatedAt: null,
+        desired: { addressText: null, phoneNumber: null, location },
+      }),
+    ).toEqual({ kind: "CREATE" });
+    expect(
+      decideHospitalContactMutation({
+        current: { addressText: null, phoneNumber: null, location, updatedAt: version },
+        expectedUpdatedAt: token,
+        desired: { addressText: null, phoneNumber: null, location: { ...location } },
+      }),
+    ).toEqual({ kind: "NOOP" });
+    expect(
+      decideHospitalContactMutation({
+        current: { addressText: null, phoneNumber: null, location, updatedAt: version },
+        expectedUpdatedAt: token,
+        desired: { addressText: null, phoneNumber: null, location: { ...location, longitude: 100.501766 } },
+      }),
+    ).toEqual({ kind: "UPDATE" });
+    expect(
+      decideHospitalContactMutation({
+        current: { addressText: null, phoneNumber: null, location, updatedAt: version },
+        expectedUpdatedAt: token,
+        desired: { addressText: null, phoneNumber: null, location: null },
+      }),
+    ).toEqual({ kind: "UPDATE" });
   });
 });
 

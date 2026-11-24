@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 
+import { HospitalMapLink } from "@/components/hospital-contact/hospital-map-link";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -10,6 +11,7 @@ import { notify } from "@/components/ui/notify";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { formatHospitalLocation } from "@/modules/hospital-contact/domain/hospital-location";
 import type {
   HospitalContactEditorProjection,
   HospitalContactOwnerHospital,
@@ -26,12 +28,16 @@ import {
 type ContactDraft = {
   addressText: string;
   phoneNumber: string;
+  locationText: string;
 };
+
+const emptyDraft: ContactDraft = { addressText: "", phoneNumber: "", locationText: "" };
 
 function toDraft(contact: HospitalContactEditorProjection): ContactDraft {
   return {
     addressText: contact.addressText ?? "",
     phoneNumber: contact.phoneNumber ?? "",
+    locationText: contact.location ? formatHospitalLocation(contact.location) : "",
   };
 }
 
@@ -56,7 +62,8 @@ function completeness(contact: HospitalContactEditorProjection): {
 function valuesMatchDraft(contact: HospitalContactEditorProjection, draft: ContactDraft): boolean {
   return (
     (contact.addressText ?? "") === draft.addressText &&
-    (contact.phoneNumber ?? "") === draft.phoneNumber
+    (contact.phoneNumber ?? "") === draft.phoneNumber &&
+    toDraft(contact).locationText === draft.locationText
   );
 }
 
@@ -84,6 +91,7 @@ export function HospitalContactWorkspace({
   const [isPending, startTransition] = useTransition();
   const addressRef = useRef<HTMLTextAreaElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
+  const locationRef = useRef<HTMLInputElement>(null);
   const mountedRef = useRef(false);
   const submitInFlightRef = useRef(false);
 
@@ -103,7 +111,9 @@ export function HospitalContactWorkspace({
       ? addressRef.current
       : mutationState.fieldErrors?.phoneNumber
         ? phoneRef.current
-        : null;
+        : mutationState.fieldErrors?.locationText
+          ? locationRef.current
+          : null;
 
     if (invalidControl && !invalidControl.disabled) {
       invalidControl.focus();
@@ -156,6 +166,7 @@ export function HospitalContactWorkspace({
           expectedUpdatedAt: current.expectedUpdatedAt,
           addressText: draft.addressText === "" ? null : draft.addressText,
           phoneNumber: draft.phoneNumber === "" ? null : draft.phoneNumber,
+          locationText: draft.locationText.trim() === "" ? null : draft.locationText,
         });
 
         setMutationState(result);
@@ -186,9 +197,10 @@ export function HospitalContactWorkspace({
             ...value,
             addressText: null,
             phoneNumber: null,
+            location: null,
             expectedUpdatedAt: null,
           }));
-          setDraft({ addressText: "", phoneNumber: "" });
+          setDraft(emptyDraft);
           setPreviousDraft(null);
           setReviewCurrent(null);
         }
@@ -244,9 +256,10 @@ export function HospitalContactWorkspace({
             ...value,
             addressText: null,
             phoneNumber: null,
+            location: null,
             expectedUpdatedAt: null,
           }));
-          setDraft({ addressText: "", phoneNumber: "" });
+          setDraft(emptyDraft);
           setPreviousDraft(null);
           setReviewCurrent(null);
         }
@@ -370,6 +383,10 @@ export function HospitalContactWorkspace({
                   <dt className="text-text-muted">หมายเลขโทรศัพท์</dt>
                   <dd className="mt-1 break-words text-text">{reviewCurrent.phoneNumber ?? "ไม่มีข้อมูล"}</dd>
                 </div>
+                <div className="min-w-0">
+                  <dt className="text-text-muted">ตำแหน่งบนแผนที่</dt>
+                  <dd className="mt-1 break-words text-text">{reviewCurrent.location ? formatHospitalLocation(reviewCurrent.location) : "ไม่มีข้อมูล"}</dd>
+                </div>
               </dl>
               <Button className="mt-4" disabled={isPending} onClick={beginFromCurrent} type="button" variant="secondary">
                 เริ่มแก้ไขจากข้อมูลปัจจุบัน
@@ -393,6 +410,10 @@ export function HospitalContactWorkspace({
                 <div className="min-w-0">
                   <dt className="text-text-muted">หมายเลขโทรศัพท์</dt>
                   <dd className="mt-1 break-words text-text">{previousDraft.phoneNumber || "ไม่มีข้อมูล"}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-text-muted">ตำแหน่งบนแผนที่</dt>
+                  <dd className="mt-1 break-words text-text">{previousDraft.locationText.trim() || "ไม่มีข้อมูล"}</dd>
                 </div>
               </dl>
             </div>
@@ -418,6 +439,10 @@ export function HospitalContactWorkspace({
             <div className="min-w-0">
               <dt className="text-text-muted">หมายเลขโทรศัพท์</dt>
               <dd className="mt-1 break-words text-text">{previousDraft.phoneNumber || "ไม่มีข้อมูล"}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-text-muted">ตำแหน่งบนแผนที่</dt>
+              <dd className="mt-1 break-words text-text">{previousDraft.locationText.trim() || "ไม่มีข้อมูล"}</dd>
             </div>
           </dl>
         </Panel>
@@ -488,6 +513,41 @@ export function HospitalContactWorkspace({
               <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-contact-phone-error">
                 {mutationState.status === "ERROR" ? mutationState.fieldErrors?.phoneNumber ?? "" : ""}
               </p>
+            </div>
+
+            <div className="min-w-0">
+              <label className="type-label mb-2 block text-text" htmlFor="hospital-contact-location">
+                ตำแหน่งบนแผนที่
+              </label>
+              <input
+                aria-describedby="hospital-contact-location-description hospital-contact-location-error"
+                aria-invalid={Boolean(mutationState.status === "ERROR" && mutationState.fieldErrors?.locationText)}
+                autoComplete="off"
+                className="type-control min-h-12 w-full max-w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 aria-invalid:border-danger"
+                disabled={isPending || reconciliationRequired}
+                id="hospital-contact-location"
+                inputMode="url"
+                ref={locationRef}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  setDraft((value) => ({ ...value, locationText: nextValue }));
+                }}
+                spellCheck={false}
+                type="text"
+                value={draft.locationText}
+              />
+              <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-contact-location-description">
+                ใน Google Maps แตะค้างที่ตำแหน่งโรงพยาบาลจนขึ้นหมุด แล้วคัดลอกพิกัดมาวาง หรือวางลิงก์แบบเต็ม
+              </p>
+              <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-contact-location-error">
+                {mutationState.status === "ERROR" ? mutationState.fieldErrors?.locationText ?? "" : ""}
+              </p>
+              {current.location ? (
+                <p className="flex min-w-0 flex-wrap items-center gap-x-3 text-sm leading-6 text-text-muted">
+                  <span className="break-words">ตำแหน่งที่บันทึกไว้ {formatHospitalLocation(current.location)}</span>
+                  <HospitalMapLink hospitalName={current.hospital.name} location={current.location} />
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">

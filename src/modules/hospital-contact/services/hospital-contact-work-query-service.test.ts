@@ -1,4 +1,4 @@
-import { HospitalStatus, MembershipStatus, MembershipType, Role, UserStatus, type PrismaClient } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, MembershipType, Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -33,7 +33,12 @@ function actor(overrides: Partial<ActorContext> = {}): ActorContext {
 function database(rows: Array<{
   hospitalCode: string;
   name: string;
-  contact: { addressText: string | null; phoneNumber: string | null } | null;
+  contact: {
+    addressText: string | null;
+    phoneNumber: string | null;
+    latitude: Prisma.Decimal | null;
+    longitude: Prisma.Decimal | null;
+  } | null;
 }>, userExists = true) {
   const userFindFirst = vi.fn().mockResolvedValue(userExists ? { id: userId } : null);
   const hospitalFindMany = vi.fn().mockResolvedValue(rows);
@@ -53,7 +58,12 @@ describe("listWorkHospitalContacts", () => {
       {
         hospitalCode: "H-001",
         name: "โรงพยาบาลทดสอบ",
-        contact: { addressText: "ถนนสุขภาพ", phoneNumber: "02-123-4567" },
+        contact: {
+          addressText: "ถนนสุขภาพ",
+          phoneNumber: "02-123-4567",
+          latitude: new Prisma.Decimal("13.756331"),
+          longitude: new Prisma.Decimal("100.501765"),
+        },
       },
     ]);
 
@@ -63,6 +73,7 @@ describe("listWorkHospitalContacts", () => {
         availability: "AVAILABLE",
         addressText: "ถนนสุขภาพ",
         phoneNumber: "02-123-4567",
+        location: { latitude: 13.756331, longitude: 100.501765 },
       },
     ]);
 
@@ -99,9 +110,34 @@ describe("listWorkHospitalContacts", () => {
       select: {
         hospitalCode: true,
         name: true,
-        contact: { select: { addressText: true, phoneNumber: true } },
+        contact: { select: { addressText: true, phoneNumber: true, latitude: true, longitude: true } },
       },
     }));
+  });
+
+  it("treats a Hospital with only a map location as an available contact", async () => {
+    const db = database([
+      {
+        hospitalCode: "H-001",
+        name: "โรงพยาบาลทดสอบ",
+        contact: {
+          addressText: null,
+          phoneNumber: null,
+          latitude: new Prisma.Decimal("13.756331"),
+          longitude: new Prisma.Decimal("100.501765"),
+        },
+      },
+    ]);
+
+    await expect(listWorkHospitalContacts(actor(), db.database)).resolves.toEqual([
+      {
+        hospital: { hospitalCode: "H-001", name: "โรงพยาบาลทดสอบ" },
+        availability: "AVAILABLE",
+        addressText: null,
+        phoneNumber: null,
+        location: { latitude: 13.756331, longitude: 100.501765 },
+      },
+    ]);
   });
 
   it("uses active OSM relationship and ACTIVE user, person, and Hospital filters in the database query", async () => {
@@ -115,7 +151,7 @@ describe("listWorkHospitalContacts", () => {
     });
     const db = database([
       { hospitalCode: "H-001", name: "โรงพยาบาล ก", contact: null },
-      { hospitalCode: "H-002", name: "โรงพยาบาล ข", contact: { addressText: null, phoneNumber: null } },
+      { hospitalCode: "H-002", name: "โรงพยาบาล ข", contact: { addressText: null, phoneNumber: null, latitude: null, longitude: null } },
     ]);
 
     await expect(listWorkHospitalContacts(workActor, db.database)).resolves.toEqual([
@@ -124,12 +160,14 @@ describe("listWorkHospitalContacts", () => {
         availability: "UNAVAILABLE",
         addressText: null,
         phoneNumber: null,
+        location: null,
       },
       {
         hospital: { hospitalCode: "H-002", name: "โรงพยาบาล ข" },
         availability: "UNAVAILABLE",
         addressText: null,
         phoneNumber: null,
+        location: null,
       },
     ]);
 

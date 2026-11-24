@@ -39,6 +39,7 @@ function contact(overrides: Partial<HospitalContactEditorProjection> = {}): Hosp
     hospital,
     addressText: "ที่อยู่เดิม",
     phoneNumber: "02-000-0000",
+    location: null,
     expectedUpdatedAt: updatedAt,
     ...overrides,
   };
@@ -186,6 +187,7 @@ describe("Hospital Contact event lifecycle regression", () => {
       expectedUpdatedAt: updatedAt,
       addressText: "ที่อยู่สำหรับบันทึก",
       phoneNumber: "02-555-0188",
+      locationText: null,
     });
   });
 

@@ -1,3 +1,7 @@
+import type { HospitalLocation } from "../domain/hospital-location";
+
+export type { HospitalLocation } from "../domain/hospital-location";
+
 export type HospitalContactOwnerHospital = {
   id: string;
   hospitalCode: string;
@@ -8,6 +12,7 @@ export type HospitalContactEditorProjection = {
   hospital: HospitalContactOwnerHospital;
   addressText: string | null;
   phoneNumber: string | null;
+  location: HospitalLocation | null;
   expectedUpdatedAt: string | null;
 };
 
@@ -18,6 +23,7 @@ export type PatientHospitalContactProjection = {
   };
   addressText: string | null;
   phoneNumber: string | null;
+  location: HospitalLocation | null;
 };
 
 export type HospitalWorkContactProjection = {
@@ -28,6 +34,7 @@ export type HospitalWorkContactProjection = {
   availability: "AVAILABLE" | "UNAVAILABLE";
   addressText: string | null;
   phoneNumber: string | null;
+  location: HospitalLocation | null;
 };
 
 export type PatientHospitalContactRead =

@@ -1,3 +1,4 @@
+import { HospitalMapLink } from "@/components/hospital-contact/hospital-map-link";
 import type { PatientHospitalContactProjection } from "@/modules/hospital-contact/types/hospital-contact-projections";
 
 export function HomeHospitalContact({
@@ -13,14 +14,19 @@ export function HomeHospitalContact({
         ติดต่อโรงพยาบาล
       </h2>
       <p className="mt-1 break-words text-sm leading-6 text-text-muted">{hospitalName}</p>
-      {contact.addressText === null && contact.phoneNumber === null ? (
+      {contact.addressText === null && contact.phoneNumber === null && contact.location === null ? (
         <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีข้อมูลติดต่อ</p>
       ) : (
         <address className="mt-3 grid min-w-0 gap-4 not-italic sm:grid-cols-2">
-          {contact.addressText !== null ? (
+          {contact.addressText !== null || contact.location !== null ? (
             <div className="min-w-0">
               <h3 className="text-sm font-medium text-text-muted">ที่อยู่</h3>
-              <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-text">{contact.addressText}</p>
+              {contact.addressText !== null ? (
+                <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-text">{contact.addressText}</p>
+              ) : null}
+              {contact.location !== null ? (
+                <HospitalMapLink className="mt-1" hospitalName={hospitalName} location={contact.location} />
+              ) : null}
             </div>
           ) : null}
           {contact.phoneNumber !== null ? (

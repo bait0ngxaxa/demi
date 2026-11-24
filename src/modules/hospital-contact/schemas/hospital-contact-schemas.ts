@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  MAX_HOSPITAL_LOCATION_INPUT_CODE_UNITS,
+  parseHospitalLocationInput,
+  type HospitalLocation,
+} from "../domain/hospital-location";
+
 const MAX_CONTACT_PAYLOAD_BYTES = 16 * 1024;
 const MAX_ADDRESS_CODE_UNITS = 500;
 const MAX_PHONE_CODE_UNITS = 32;
@@ -145,6 +151,8 @@ const rawMutationSchema = z
     expectedUpdatedAt: expectedUpdatedAtSchema.nullable(),
     addressText: z.string().nullable(),
     phoneNumber: z.string().nullable(),
+    // Parsed into a map point below; it is not part of the address/phone byte budget.
+    locationText: z.string().max(MAX_HOSPITAL_LOCATION_INPUT_CODE_UNITS).nullable(),
   })
   .strict()
   .superRefine((input, context) => {
@@ -164,6 +172,7 @@ const rawMutationSchema = z
 export const hospitalContactMutationSchema = rawMutationSchema.transform((input, context) => {
   let addressText: string | null = null;
   let phoneNumber: string | null = null;
+  let location: HospitalLocation | null = null;
   let valid = true;
 
   try {
@@ -188,6 +197,20 @@ export const hospitalContactMutationSchema = rawMutationSchema.transform((input,
     });
   }
 
+  const parsedLocation = parseHospitalLocationInput(input.locationText);
+
+  if (parsedLocation.ok) {
+    location = parsedLocation.location;
+  } else {
+    valid = false;
+    // The reason code is the message so the transport can pick the matching Thai guidance.
+    context.addIssue({
+      code: "custom",
+      path: ["locationText"],
+      message: parsedLocation.reason,
+    });
+  }
+
   if (!valid) {
     return z.NEVER;
   }
@@ -197,6 +220,7 @@ export const hospitalContactMutationSchema = rawMutationSchema.transform((input,
     expectedUpdatedAt: input.expectedUpdatedAt,
     addressText,
     phoneNumber,
+    location,
   };
 });
 

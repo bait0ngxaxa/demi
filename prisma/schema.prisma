@@ -760,6 +760,10 @@ model HospitalContact {
   hospitalId  String   @unique @db.Uuid
   addressText String?  @db.VarChar(500)
   phoneNumber String?  @db.VarChar(32)
+  // Map point set by the OWNER. CHECK "HospitalContact_location_pair": both or neither;
+  // CHECK "HospitalContact_location_bounds": inside Thailand's bounding box.
+  latitude    Decimal? @db.Decimal(9, 6)
+  longitude   Decimal? @db.Decimal(9, 6)
   createdAt   DateTime @default(now()) @db.Timestamp(3)
   updatedAt   DateTime @updatedAt @db.Timestamp(3)
 

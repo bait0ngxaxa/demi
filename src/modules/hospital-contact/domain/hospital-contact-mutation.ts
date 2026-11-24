@@ -1,6 +1,9 @@
+import { hospitalLocationsEqual, type HospitalLocation } from "./hospital-location";
+
 export type HospitalContactValues = {
   addressText: string | null;
   phoneNumber: string | null;
+  location: HospitalLocation | null;
 };
 
 export type CurrentHospitalContact = HospitalContactValues & {
@@ -19,7 +22,10 @@ export function decideHospitalContactMutation(input: {
   expectedUpdatedAt: string | null;
   desired: HospitalContactValues;
 }): HospitalContactMutationDecision {
-  const desiredIsEmpty = input.desired.addressText === null && input.desired.phoneNumber === null;
+  const desiredIsEmpty =
+    input.desired.addressText === null &&
+    input.desired.phoneNumber === null &&
+    input.desired.location === null;
 
   if (input.current === null) {
     if (input.expectedUpdatedAt !== null) {
@@ -39,7 +45,8 @@ export function decideHospitalContactMutation(input: {
 
   if (
     input.current.addressText === input.desired.addressText &&
-    input.current.phoneNumber === input.desired.phoneNumber
+    input.current.phoneNumber === input.desired.phoneNumber &&
+    hospitalLocationsEqual(input.current.location, input.desired.location)
   ) {
     return { kind: "NOOP" };
   }

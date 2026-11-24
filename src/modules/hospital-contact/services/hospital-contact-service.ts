@@ -22,6 +22,7 @@ import {
 } from "@/shared/errors/application-error";
 
 import { decideHospitalContactMutation, nextHospitalContactVersion } from "../domain/hospital-contact-mutation";
+import { describeHospitalLocationChange, type HospitalLocationChange } from "../domain/hospital-location";
 import {
   assertHospitalContactPolicy,
   HOSPITAL_CONTACT_CAPABILITIES,
@@ -38,6 +39,7 @@ import type {
   PatientHospitalContactRead,
 } from "../types/hospital-contact-projections";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
+import { toHospitalLocation } from "./hospital-location-record";
 
 export type HospitalContactDatabase = PrismaClient;
 export type {
@@ -67,6 +69,8 @@ type HospitalContactOwnerReadRow = {
   hospitalName: string;
   addressText: string | null;
   phoneNumber: string | null;
+  latitude: Prisma.Decimal | null;
+  longitude: Prisma.Decimal | null;
   updatedAt: Date | null;
 };
 type PatientHospitalContactReadRow = {
@@ -77,6 +81,8 @@ type PatientHospitalContactReadRow = {
   careEnded: boolean;
   addressText: string | null;
   phoneNumber: string | null;
+  latitude: Prisma.Decimal | null;
+  longitude: Prisma.Decimal | null;
 };
 type PersistedPatientSelfRow = { authorized: boolean };
 type LockedMembershipRow = {
@@ -145,6 +151,7 @@ function toEditorProjection(record: HospitalContactOwnerReadRow): HospitalContac
     },
     addressText: record.addressText,
     phoneNumber: record.phoneNumber,
+    location: toHospitalLocation(record.latitude, record.longitude),
     expectedUpdatedAt: record.updatedAt?.toISOString() ?? null,
   };
 }
@@ -222,6 +229,8 @@ export async function readHospitalContactForOwner(
         hospital."name" AS "hospitalName",
         contact."addressText" AS "addressText",
         contact."phoneNumber" AS "phoneNumber",
+        contact."latitude" AS "latitude",
+        contact."longitude" AS "longitude",
         contact."updatedAt" AS "updatedAt"
       FROM "Hospital" AS hospital
       INNER JOIN "User" AS actor_user
@@ -340,6 +349,7 @@ async function recordContactAudit(
     action: "hospital_contact.created" | "hospital_contact.updated";
     resourceId: string;
     hospitalId: string;
+    locationChange: HospitalLocationChange;
   },
   transaction: Prisma.TransactionClient,
 ): Promise<void> {
@@ -350,7 +360,8 @@ async function recordContactAudit(
         action: input.action,
         resourceType: "HospitalContact",
         resourceId: input.resourceId,
-        metadata: { hospitalId: input.hospitalId },
+        // Only the kind of location change is recorded, never the coordinates or a pasted URL.
+        metadata: { hospitalId: input.hospitalId, locationChange: input.locationChange },
       },
       transaction,
     );
@@ -374,20 +385,28 @@ async function updateHospitalContactInTransaction(
       hospitalId: true,
       addressText: true,
       phoneNumber: true,
+      latitude: true,
+      longitude: true,
       updatedAt: true,
     },
   });
+  const currentLocation = current ? toHospitalLocation(current.latitude, current.longitude) : null;
 
   const decision = decideHospitalContactMutation({
     current: current
       ? {
           addressText: current.addressText,
           phoneNumber: current.phoneNumber,
+          location: currentLocation,
           updatedAt: current.updatedAt,
         }
       : null,
     expectedUpdatedAt: input.expectedUpdatedAt,
-    desired: { addressText: input.addressText, phoneNumber: input.phoneNumber },
+    desired: {
+      addressText: input.addressText,
+      phoneNumber: input.phoneNumber,
+      location: input.location,
+    },
   });
 
   if (decision.kind === "CONFLICT") {
@@ -410,6 +429,7 @@ async function updateHospitalContactInTransaction(
         hospital,
         addressText: null,
         phoneNumber: null,
+        location: null,
         expectedUpdatedAt: null,
       },
     };
@@ -431,6 +451,7 @@ async function updateHospitalContactInTransaction(
         hospital,
         addressText: current.addressText,
         phoneNumber: current.phoneNumber,
+        location: currentLocation,
         expectedUpdatedAt: current.updatedAt.toISOString(),
       },
     };
@@ -448,6 +469,8 @@ async function updateHospitalContactInTransaction(
         hospitalId: input.hospitalId,
         addressText: input.addressText,
         phoneNumber: input.phoneNumber,
+        latitude: input.location?.latitude ?? null,
+        longitude: input.location?.longitude ?? null,
         createdAt: new Date(now.getTime()),
         updatedAt: new Date(now.getTime()),
       },
@@ -460,6 +483,7 @@ async function updateHospitalContactInTransaction(
         action: "hospital_contact.created",
         resourceId: created.id,
         hospitalId: input.hospitalId,
+        locationChange: describeHospitalLocationChange(null, input.location),
       },
       transaction,
     );
@@ -479,6 +503,7 @@ async function updateHospitalContactInTransaction(
         hospital,
         addressText: input.addressText,
         phoneNumber: input.phoneNumber,
+        location: input.location,
         expectedUpdatedAt: created.updatedAt.toISOString(),
       },
     };
@@ -506,6 +531,8 @@ async function updateHospitalContactInTransaction(
     data: {
       addressText: input.addressText,
       phoneNumber: input.phoneNumber,
+      latitude: input.location?.latitude ?? null,
+      longitude: input.location?.longitude ?? null,
       updatedAt,
     },
   });
@@ -520,6 +547,7 @@ async function updateHospitalContactInTransaction(
       action: "hospital_contact.updated",
       resourceId: current.id,
       hospitalId: input.hospitalId,
+      locationChange: describeHospitalLocationChange(currentLocation, input.location),
     },
     transaction,
   );
@@ -539,6 +567,7 @@ async function updateHospitalContactInTransaction(
       hospital,
       addressText: input.addressText,
       phoneNumber: input.phoneNumber,
+      location: input.location,
       expectedUpdatedAt: updatedAt.toISOString(),
     },
   };
@@ -644,6 +673,8 @@ function toPatientContactRead(input: {
   careEnded: boolean;
   addressText: string | null;
   phoneNumber: string | null;
+  latitude: Prisma.Decimal | null;
+  longitude: Prisma.Decimal | null;
 }): PatientHospitalContactRead {
   // Phase F: no contact is shown for a Hospital whose care with the Patient ended.
   if (input.hospitalStatus !== HospitalStatus.ACTIVE || input.careEnded) {
@@ -660,6 +691,7 @@ function toPatientContactRead(input: {
       },
       addressText: input.addressText,
       phoneNumber: input.phoneNumber,
+      location: toHospitalLocation(input.latitude, input.longitude),
     },
   };
 }
@@ -681,7 +713,9 @@ function patientHospitalContactReadQuery(
       -- Phase F: raw-SQL form of activePatientHospitalRelationshipWhere (ended relationship = no contact).
       patient_relationship."endedAt" IS NOT NULL AS "careEnded",
       contact."addressText" AS "addressText",
-      contact."phoneNumber" AS "phoneNumber"
+      contact."phoneNumber" AS "phoneNumber",
+      contact."latitude" AS "latitude",
+      contact."longitude" AS "longitude"
     FROM "User" AS actor_user
     INNER JOIN "Person" AS actor_person
       ON actor_person."id" = actor_user."personId"

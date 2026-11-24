@@ -31,6 +31,7 @@ function contact(overrides: Partial<HospitalContactEditorProjection> = {}): Hosp
     hospital: hospitalA,
     addressText: null,
     phoneNumber: null,
+    location: null,
     expectedUpdatedAt: null,
     ...overrides,
   };

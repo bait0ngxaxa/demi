@@ -20,13 +20,14 @@ import {
 } from "../policies/hospital-contact-policy";
 import type { HospitalWorkContactProjection } from "../types/hospital-contact-projections";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
+import { toHospitalLocation } from "./hospital-location-record";
 
 type Database = PrismaClient;
 
 const hospitalWorkContactSelect = {
   hospitalCode: true,
   name: true,
-  contact: { select: { addressText: true, phoneNumber: true } },
+  contact: { select: { addressText: true, phoneNumber: true, latitude: true, longitude: true } },
 } satisfies Prisma.HospitalSelect;
 
 type HospitalWorkContactRecord = Prisma.HospitalGetPayload<{
@@ -83,12 +84,14 @@ function assertWorkActor(actor: ActorContext | null | undefined): asserts actor 
 function toWorkContactProjection(row: HospitalWorkContactRecord): HospitalWorkContactProjection {
   const addressText = row.contact?.addressText ?? null;
   const phoneNumber = row.contact?.phoneNumber ?? null;
+  const location = row.contact ? toHospitalLocation(row.contact.latitude, row.contact.longitude) : null;
 
   return {
     hospital: { hospitalCode: row.hospitalCode, name: row.name },
-    availability: addressText || phoneNumber ? "AVAILABLE" : "UNAVAILABLE",
+    availability: addressText || phoneNumber || location ? "AVAILABLE" : "UNAVAILABLE",
     addressText,
     phoneNumber,
+    location,
   };
 }
 

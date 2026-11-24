@@ -128,7 +128,7 @@ async function saveContact(
 ): Promise<ContactState> {
   const result = await updateHospitalContact(
     actor,
-    { hospitalId, expectedUpdatedAt, addressText, phoneNumber },
+    { hospitalId, expectedUpdatedAt, addressText, phoneNumber, locationText: null },
     { database, now: () => at },
   );
   if (result.outcome === "UNCONFIRMED") throw new Error("Hospital Contact result was unconfirmed");
@@ -220,7 +220,7 @@ describe("Phase 17I.4A Hospital Knowledge / Contact PostgreSQL integration", () 
       byTable.set(column.table_name, current);
     }
     expect(byTable.get("HospitalContact")?.map(({ column_name }) => column_name)).toEqual([
-      "id", "hospitalId", "addressText", "phoneNumber", "createdAt", "updatedAt",
+      "id", "hospitalId", "addressText", "phoneNumber", "createdAt", "updatedAt", "latitude", "longitude",
     ]);
     expect(byTable.get("HospitalContent")?.map(({ column_name }) => column_name)).toEqual([
       "id", "hospitalId", "submissionNonce", "title", "body", "category", "sourceText", "status",
@@ -234,6 +234,20 @@ describe("Phase 17I.4A Hospital Knowledge / Contact PostgreSQL integration", () 
     expect(contact.get("phoneNumber")).toMatchObject({ data_type: "character varying", maximum_length: 32 });
     expect(contact.get("createdAt")).toMatchObject({ data_type: "timestamp without time zone", time_precision: 3 });
     expect(contact.get("updatedAt")).toMatchObject({ data_type: "timestamp without time zone", time_precision: 3 });
+    expect(contact.get("latitude")).toMatchObject({ data_type: "numeric", udt_name: "numeric" });
+    expect(contact.get("longitude")).toMatchObject({ data_type: "numeric", udt_name: "numeric" });
+    const precision = await database.$queryRaw<Array<{ column_name: string; numeric_precision: number; numeric_scale: number }>>(Prisma.sql`
+      SELECT "column_name", "numeric_precision", "numeric_scale"
+      FROM information_schema.columns
+      WHERE "table_schema" = current_schema()
+        AND "table_name" = 'HospitalContact'
+        AND "column_name" IN ('latitude', 'longitude')
+      ORDER BY "column_name"
+    `);
+    expect(precision).toEqual([
+      { column_name: "latitude", numeric_precision: 9, numeric_scale: 6 },
+      { column_name: "longitude", numeric_precision: 9, numeric_scale: 6 },
+    ]);
     expect(content.get("id")).toMatchObject({ data_type: "uuid", udt_name: "uuid" });
     expect(content.get("hospitalId")).toMatchObject({ data_type: "uuid", udt_name: "uuid" });
     expect(content.get("submissionNonce")).toMatchObject({ data_type: "uuid", udt_name: "uuid" });
@@ -318,7 +332,7 @@ describe("Phase 17I.4A Hospital Knowledge / Contact PostgreSQL integration", () 
       orderBy: { createdAt: "asc" },
     });
     expect(contactAudit.map(({ action }) => action).sort()).toEqual(["hospital_contact.created", "hospital_contact.updated"].sort());
-    expect(contactAudit.every((event) => event.resourceType === "HospitalContact" && event.resourceId === contactRow.id && JSON.stringify(event.metadata) === JSON.stringify({ hospitalId }))).toBe(true);
+    expect(contactAudit.every((event) => event.resourceType === "HospitalContact" && event.resourceId === contactRow.id && JSON.stringify(event.metadata) === JSON.stringify({ hospitalId, locationChange: "UNCHANGED" }))).toBe(true);
     const contentAudit = await database.auditEvent.findMany({
       where: { resourceId: draft.id },
       select: { action: true, resourceType: true, resourceId: true, metadata: true },

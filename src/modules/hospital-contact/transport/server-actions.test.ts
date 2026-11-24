@@ -35,6 +35,7 @@ const projection = {
   hospital: { id: hospitalId, hospitalCode: "H-001", name: "โรงพยาบาล ก" },
   addressText: "ถนนสุขภาพ",
   phoneNumber: null,
+  location: null,
   expectedUpdatedAt: "2026-10-05T02:03:04.005Z",
 };
 
@@ -44,6 +45,7 @@ function mutationInput(overrides: Record<string, unknown> = {}): Record<string, 
     expectedUpdatedAt: null,
     addressText: "ถนนสุขภาพ",
     phoneNumber: null,
+    locationText: null,
     ...overrides,
   };
 }
@@ -94,6 +96,22 @@ describe("Hospital Contact Server Action boundary", () => {
     expect(JSON.stringify(result)).not.toContain("99999999");
     expect(JSON.stringify(result)).not.toContain("ADMIN");
     expect(JSON.stringify(result)).not.toContain("OWNER");
+  });
+
+  it.each([
+    ["https://maps.app.goo.gl/AbCdEf123", "ใช้ลิงก์แบบย่อไม่ได้ กรุณาวางลิงก์แบบเต็มจาก Google Maps หรือพิกัด"],
+    ["100.501765, 13.756331", "พิกัดอยู่นอกประเทศไทย ตรวจสอบว่าใส่ละติจูดก่อนลองจิจูด"],
+    ["ไม่ใช่พิกัด", "ไม่พบพิกัด กรุณาวางพิกัด เช่น 13.756331, 100.501765 หรือลิงก์แบบเต็มจาก Google Maps"],
+  ])("returns Thai location guidance for %s without calling the service", async (locationText, message) => {
+    const result = await updateHospitalContactAction(mutationInput({ locationText }));
+
+    expect(result).toEqual({
+      status: "ERROR",
+      code: "VALIDATION",
+      message: "กรุณาตรวจสอบข้อมูลติดต่อที่กรอก",
+      fieldErrors: { locationText: message },
+    });
+    expect(mocks.updateContact).not.toHaveBeenCalled();
   });
 
   it("maps stale conflicts to manual reconciliation without revalidation or retry", async () => {

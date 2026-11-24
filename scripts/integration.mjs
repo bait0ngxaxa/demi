@@ -319,6 +319,8 @@ async function migratePopulated(environment, runtime) {
       await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.ACTIVE }, select: { id: true } });
       await prisma.hospitalContact.create({
         data: { hospitalId: hospital.id, addressText: "ที่อยู่ก่อนการย้ายฐานข้อมูล", phoneNumber: "02-123-4567" },
+        // Later migrations add columns the generated client would otherwise return here.
+        select: { id: true },
       });
       hospitalBefore = await prisma.hospital.findUniqueOrThrow({
         where: { id: hospital.id },
