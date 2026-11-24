@@ -45,6 +45,32 @@ describe("read-only Hospital work contacts page", () => {
     expect(mock.connection).toHaveBeenCalledOnce();
   });
 
+  it("links each located Hospital to the map and renders no embedded map content", async () => {
+    mock.contacts.mockResolvedValue([
+      {
+        hospital: { hospitalCode: "H-001", name: "โรงพยาบาล ก" },
+        availability: "AVAILABLE",
+        addressText: "ถนนสุขภาพ",
+        phoneNumber: null,
+        location: { latitude: 13.756331, longitude: 100.501765 },
+      },
+      {
+        hospital: { hospitalCode: "H-002", name: "โรงพยาบาล ข" },
+        availability: "AVAILABLE",
+        addressText: "ถนนข้างเคียง",
+        phoneNumber: null,
+        location: null,
+      },
+    ]);
+
+    const html = renderToStaticMarkup(await Page());
+
+    expect(html).toContain('aria-label="เปิดแผนที่ โรงพยาบาล ก (เปิดหน้าใหม่)"');
+    expect(html).not.toContain("เปิดแผนที่ โรงพยาบาล ข");
+    expect(html).not.toMatch(/<(?:iframe|img|script|object|embed)\b/u);
+    expect(html.match(/(?:href|src)="https?:/gu)).toHaveLength(1);
+  });
+
   it("shows an explicit message when a Hospital has not provided contact details", async () => {
     mock.contacts.mockResolvedValue([
       {

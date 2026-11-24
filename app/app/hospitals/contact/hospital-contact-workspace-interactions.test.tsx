@@ -108,6 +108,7 @@ function contact(overrides: Partial<HospitalContactEditorProjection> = {}): Hosp
     hospital: hospitalA,
     addressText: null,
     phoneNumber: null,
+    location: null,
     expectedUpdatedAt: null,
     ...overrides,
   };
@@ -295,16 +296,64 @@ describe("Hospital Contact Owner form interactions", () => {
       expectedUpdatedAt: loaded.expectedUpdatedAt,
       addressText: addressDraft,
       phoneNumber: null,
+      locationText: null,
     });
     expect(markup(loaded)).toContain(message);
     // CREATED/UPDATED are announced by their Toast; NOOP has none, so its Alert is the live status.
     expect(markup(loaded)).toContain(outcome === "NOOP" ? 'role="status"' : 'role="none"');
   });
 
+  it("submits the pasted map location and shows the saved point with a map link", async () => {
+    const pasted = "https://www.google.com/maps/@13.756331,100.501765,17z";
+    const saved = contact({
+      addressText: "ที่อยู่เดิม",
+      location: { latitude: 13.756331, longitude: 100.501765 },
+      expectedUpdatedAt: nextVersion,
+    });
+    const loaded = contact({ addressText: "ที่อยู่เดิม", expectedUpdatedAt: currentVersion });
+    mocks.update.mockResolvedValue(success("UPDATED", saved));
+
+    expect(markup(loaded)).not.toContain("เปิดแผนที่");
+    field(renderWorkspace(loaded), "hospital-contact-location").props.onChange?.({ currentTarget: { value: pasted } });
+    submit(renderWorkspace(loaded));
+    await finishTransition();
+
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+      hospitalId: hospitalA.id,
+      expectedUpdatedAt: currentVersion,
+      addressText: "ที่อยู่เดิม",
+      phoneNumber: null,
+      locationText: pasted,
+    });
+    const html = markup(loaded);
+    expect(field(renderWorkspace(loaded), "hospital-contact-location").props.value).toBe("13.756331, 100.501765");
+    expect(html).toContain("ตำแหน่งที่บันทึกไว้ 13.756331, 100.501765");
+    expect(html).toContain('href="https://www.google.com/maps/search/?api=1&amp;query=13.756331%2C100.501765"');
+    expect(html).not.toMatch(/<(?:iframe|img)\b/u);
+  });
+
+  it("clears a saved location when the field is emptied", async () => {
+    const loaded = contact({
+      addressText: "ที่อยู่เดิม",
+      location: { latitude: 13.756331, longitude: 100.501765 },
+      expectedUpdatedAt: currentVersion,
+    });
+    mocks.update.mockResolvedValue(success("UPDATED", contact({ addressText: "ที่อยู่เดิม", expectedUpdatedAt: nextVersion })));
+
+    expect(field(renderWorkspace(loaded), "hospital-contact-location").props.value).toBe("13.756331, 100.501765");
+    field(renderWorkspace(loaded), "hospital-contact-location").props.onChange?.({ currentTarget: { value: "  " } });
+    submit(renderWorkspace(loaded));
+    await finishTransition();
+
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ locationText: null }));
+    expect(markup(loaded)).not.toContain("ตำแหน่งที่บันทึกไว้");
+  });
+
   it.each([
     { fields: { addressText: "ตรวจสอบที่อยู่" }, focused: "hospital-contact-address" },
     { fields: { phoneNumber: "ตรวจสอบหมายเลขโทรศัพท์" }, focused: "hospital-contact-phone" },
     { fields: { addressText: "ตรวจสอบที่อยู่", phoneNumber: "ตรวจสอบหมายเลขโทรศัพท์" }, focused: "hospital-contact-address" },
+    { fields: { locationText: "ใช้ลิงก์แบบย่อไม่ได้" }, focused: "hospital-contact-location" },
   ])("focuses $focused after validation and preserves both exact draft values", async ({ fields, focused }) => {
     mocks.update.mockResolvedValue({
       status: "ERROR",

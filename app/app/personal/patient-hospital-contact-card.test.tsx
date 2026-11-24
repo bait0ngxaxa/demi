@@ -25,6 +25,7 @@ function relationship(overrides: Partial<Relationship> = {}): Relationship {
         hospital: { hospitalCode: "H-001", name: hospitalName },
         addressText: null,
         phoneNumber: null,
+        location: null,
       },
     },
     ...overrides,
@@ -52,6 +53,7 @@ describe("Patient Hospital Contact relationship card", () => {
                 hospital: { hospitalCode: "H-001", name: hospitalName },
                 addressText,
                 phoneNumber: "02-123-4567 ต่อ 123",
+                location: null,
               },
             },
           }),
@@ -76,6 +78,7 @@ describe("Patient Hospital Contact relationship card", () => {
                 hospital: { hospitalCode: "H-001", name: hospitalName },
                 addressText: null,
                 phoneNumber: "02-123-4567",
+                location: null,
               },
             },
           }),
@@ -84,6 +87,32 @@ describe("Patient Hospital Contact relationship card", () => {
     );
     expect(partial).toContain("หมายเลขโทรศัพท์");
     expect(partial).not.toContain("ที่อยู่</dt>");
+  });
+
+  it("adds a map link for a set location without loading anything from a map host", () => {
+    const html = renderToStaticMarkup(
+      <PatientSelfRelationshipList
+        relationships={[
+          relationship({
+            hospitalContact: {
+              status: "AVAILABLE",
+              contact: {
+                hospital: { hospitalCode: "H-001", name: hospitalName },
+                addressText: null,
+                phoneNumber: null,
+                location: { latitude: 13.756331, longitude: 100.501765 },
+              },
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(html).not.toContain("ยังไม่มีข้อมูลติดต่อ");
+    expect(html).toContain('href="https://www.google.com/maps/search/?api=1&amp;query=13.756331%2C100.501765"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).not.toMatch(/<(?:iframe|img|script|object|embed)\b/u);
+    expect(html.match(/(?:href|src)="https?:/gu)).toHaveLength(1);
   });
 
   it("distinguishes unavailable and non-ACTIVE Hospital Contact from confirmed empty data", () => {

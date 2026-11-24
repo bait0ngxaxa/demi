@@ -1,6 +1,7 @@
 import { HospitalStatus } from "@prisma/client";
 import Link from "next/link";
 
+import { HospitalMapLink } from "@/components/hospital-contact/hospital-map-link";
 import { buttonClassName } from "@/components/ui/button";
 
 import type { PatientSelfContactAvailability } from "@/modules/patient-self/transport/patient-self-page-context";
@@ -76,18 +77,30 @@ export function PatientSelfRelationshipList({
                       ข้อมูลติดต่อยังไม่พร้อมแสดง
                     </p>
                   ) : relationship.hospitalContact.contact.addressText === null &&
-                    relationship.hospitalContact.contact.phoneNumber === null ? (
+                    relationship.hospitalContact.contact.phoneNumber === null &&
+                    relationship.hospitalContact.contact.location === null ? (
                     <p className="mt-2 break-words text-sm leading-6 text-text-muted">
                       ยังไม่มีข้อมูลติดต่อ
                     </p>
                   ) : (
                     <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                      {relationship.hospitalContact.contact.addressText !== null ? (
+                      {relationship.hospitalContact.contact.addressText !== null ||
+                      relationship.hospitalContact.contact.location !== null ? (
                         <div className="min-w-0 sm:col-span-2">
                           <dt className="text-text-muted">ที่อยู่</dt>
-                          <dd className="mt-1 whitespace-pre-wrap break-words text-text">
-                            {relationship.hospitalContact.contact.addressText}
-                          </dd>
+                          {relationship.hospitalContact.contact.addressText !== null ? (
+                            <dd className="mt-1 whitespace-pre-wrap break-words text-text">
+                              {relationship.hospitalContact.contact.addressText}
+                            </dd>
+                          ) : null}
+                          {relationship.hospitalContact.contact.location !== null ? (
+                            <dd className="mt-1">
+                              <HospitalMapLink
+                                hospitalName={relationship.hospitalName}
+                                location={relationship.hospitalContact.contact.location}
+                              />
+                            </dd>
+                          ) : null}
                         </div>
                       ) : null}
                       {relationship.hospitalContact.contact.phoneNumber !== null ? (

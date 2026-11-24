@@ -44,6 +44,7 @@ function contact(
     hospital: { ...hospital, id: hospitalId },
     addressText: null,
     phoneNumber: null,
+    location: null,
     expectedUpdatedAt: null,
     ...overrides,
   };

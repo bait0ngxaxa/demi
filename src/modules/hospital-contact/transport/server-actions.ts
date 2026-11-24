@@ -15,14 +15,27 @@ import type {
   HospitalContactMutationActionState,
   HospitalContactReadActionState,
 } from "./action-state";
+import type { HospitalLocationParseFailure } from "../domain/hospital-location";
 import { hospitalContactMutationSchema } from "../schemas/hospital-contact-schemas";
 import {
   readHospitalContactForOwner,
   updateHospitalContact,
 } from "../services/hospital-contact-service";
 
+const LOCATION_FIELD_ERRORS: Record<HospitalLocationParseFailure, string> = {
+  SHORT_LINK: "ใช้ลิงก์แบบย่อไม่ได้ กรุณาวางลิงก์แบบเต็มจาก Google Maps หรือพิกัด",
+  OUT_OF_BOUNDS: "พิกัดอยู่นอกประเทศไทย ตรวจสอบว่าใส่ละติจูดก่อนลองจิจูด",
+  UNRECOGNIZED: "ไม่พบพิกัด กรุณาวางพิกัด เช่น 13.756331, 100.501765 หรือลิงก์แบบเต็มจาก Google Maps",
+};
+
+function toLocationFieldError(message: string): string {
+  return message === "SHORT_LINK" || message === "OUT_OF_BOUNDS"
+    ? LOCATION_FIELD_ERRORS[message]
+    : LOCATION_FIELD_ERRORS.UNRECOGNIZED;
+}
+
 function getFieldErrors(
-  issues: readonly { path: readonly PropertyKey[] }[],
+  issues: readonly { path: readonly PropertyKey[]; message: string }[],
 ): Partial<Record<HospitalContactField, string>> {
   const fieldErrors: Partial<Record<HospitalContactField, string>> = {};
 
@@ -35,6 +48,10 @@ function getFieldErrors(
 
     if (field === "phoneNumber" && !fieldErrors.phoneNumber) {
       fieldErrors.phoneNumber = "ตรวจสอบหมายเลขโทรศัพท์และข้อความที่กรอกอีกครั้ง";
+    }
+
+    if (field === "locationText" && !fieldErrors.locationText) {
+      fieldErrors.locationText = toLocationFieldError(issue.message);
     }
   }
 

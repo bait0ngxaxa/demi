@@ -30,7 +30,7 @@ const actor = { userId: "user", personId: "person", roles: ["PATIENT" as const],
 const hospital = (relationshipId: string, hospitalName: string, careEndedAt: Date | null = null) => ({
   relationshipId, hospitalName, hospitalId: relationshipId, hospitalCode: "H", hospitalNumber: null, careEndedAt,
   hospitalStatus: "ACTIVE" as const, hospitalContact: { status: "AVAILABLE" as const,
-    contact: { hospital: { hospitalCode: "H", name: hospitalName }, addressText: null, phoneNumber: "021234567" } },
+    contact: { hospital: { hospitalCode: "H", name: hospitalName }, addressText: null, phoneNumber: "021234567", location: null } },
 });
 const date = new Date("2026-10-20T00:00:00Z");
 

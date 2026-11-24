@@ -3,7 +3,7 @@ import type {
   HospitalContactMutationResult,
 } from "../types/hospital-contact-projections";
 
-export type HospitalContactField = "addressText" | "phoneNumber";
+export type HospitalContactField = "addressText" | "phoneNumber" | "locationText";
 
 export type HospitalContactReadActionState =
   | { status: "SUCCESS"; contact: HospitalContactEditorProjection }

@@ -89,6 +89,7 @@ function input(overrides: Record<string, unknown> = {}): Record<string, unknown>
     expectedUpdatedAt: null,
     addressText: "ที่อยู่ 1",
     phoneNumber: null,
+    locationText: null,
     ...overrides,
   };
 }
@@ -139,6 +140,8 @@ describe("Hospital Contact editor and Patient projections", () => {
       hospitalName: "โรงพยาบาล ก",
       addressText: "ถนนสุขภาพ",
       phoneNumber: "02-123-4567",
+      latitude: new Prisma.Decimal("13.756331"),
+      longitude: new Prisma.Decimal("100.501765"),
       updatedAt: version,
     }]);
     const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
@@ -149,6 +152,7 @@ describe("Hospital Contact editor and Patient projections", () => {
       hospital: { id: hospitalId, hospitalCode: "H-001", name: "โรงพยาบาล ก" },
       addressText: "ถนนสุขภาพ",
       phoneNumber: "02-123-4567",
+      location: { latitude: 13.756331, longitude: 100.501765 },
       expectedUpdatedAt: version.toISOString(),
     });
     expect(JSON.stringify(result)).not.toContain(hospitalContactId);
@@ -163,6 +167,8 @@ describe("Hospital Contact editor and Patient projections", () => {
     expect(query.sql).toContain('owner_membership."membershipType" = \'OWNER\'');
     expect(query.sql).toContain('owner_membership."status" = \'ACTIVE\'');
     expect(query.sql).toContain('LEFT JOIN "HospitalContact" AS contact');
+    expect(query.sql).toContain('contact."latitude" AS "latitude"');
+    expect(query.sql).toContain('contact."longitude" AS "longitude"');
     expect(query.sql).toContain('hospital."status" = \'ACTIVE\'');
     expect(query.values).toEqual(expect.arrayContaining([userId, personId, hospitalId]));
   });
@@ -174,6 +180,8 @@ describe("Hospital Contact editor and Patient projections", () => {
       hospitalName: "โรงพยาบาล ก",
       addressText: null,
       phoneNumber: null,
+      latitude: null,
+      longitude: null,
       updatedAt: null,
     }]);
     const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
@@ -182,6 +190,7 @@ describe("Hospital Contact editor and Patient projections", () => {
       hospital: { id: hospitalId, hospitalCode: "H-001", name: "โรงพยาบาล ก" },
       addressText: null,
       phoneNumber: null,
+      location: null,
       expectedUpdatedAt: null,
     });
     expect(queryRaw).toHaveBeenCalledOnce();
@@ -195,6 +204,8 @@ describe("Hospital Contact editor and Patient projections", () => {
       hospitalStatus: HospitalStatus.ACTIVE,
       addressText: null,
       phoneNumber: null,
+      latitude: new Prisma.Decimal("13.756331"),
+      longitude: new Prisma.Decimal("100.501765"),
     }]);
     const patientActor = ownerActor({ roles: [Role.PATIENT, Role.HOSPITAL] });
     const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
@@ -206,6 +217,7 @@ describe("Hospital Contact editor and Patient projections", () => {
         hospital: { hospitalCode: "H-001", name: "โรงพยาบาล ก" },
         addressText: null,
         phoneNumber: null,
+        location: { latitude: 13.756331, longitude: 100.501765 },
       },
     });
     expect(queryRaw).toHaveBeenCalledOnce();
@@ -234,6 +246,8 @@ describe("Hospital Contact editor and Patient projections", () => {
         hospitalStatus: HospitalStatus.ACTIVE,
         addressText: "ถนนสุขภาพ",
         phoneNumber: null,
+        latitude: null,
+        longitude: null,
       },
     ]);
     const patientActor = ownerActor({ roles: [Role.PATIENT] });
@@ -247,6 +261,7 @@ describe("Hospital Contact editor and Patient projections", () => {
           hospital: { hospitalCode: "H-001", name: "โรงพยาบาล ก" },
           addressText: "ถนนสุขภาพ",
           phoneNumber: null,
+          location: null,
         },
       },
     ]);
@@ -269,6 +284,8 @@ describe("Hospital Contact editor and Patient projections", () => {
       hospitalStatus: HospitalStatus.SUSPENDED,
       addressText: null,
       phoneNumber: null,
+      latitude: null,
+      longitude: null,
     }]);
     const patientActor = ownerActor({ roles: [Role.PATIENT] });
     const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
@@ -348,6 +365,8 @@ describe("Hospital Contact transaction results", () => {
         hospitalId,
         addressText: "same",
         phoneNumber: null,
+        latitude: null,
+        longitude: null,
         updatedAt: version,
       },
     });
@@ -370,6 +389,8 @@ describe("Hospital Contact transaction results", () => {
         hospitalId,
         addressText: "same",
         phoneNumber: null,
+        latitude: null,
+        longitude: null,
         updatedAt: version,
       },
     });
@@ -400,6 +421,8 @@ describe("Hospital Contact transaction results", () => {
         hospitalId,
         addressText: "ที่อยู่ 1",
         phoneNumber: null,
+        latitude: null,
+        longitude: null,
         createdAt: now,
         updatedAt: now,
       },
@@ -411,7 +434,7 @@ describe("Hospital Contact transaction results", () => {
         action: "hospital_contact.created",
         resourceType: "HospitalContact",
         resourceId: hospitalContactId,
-        metadata: { hospitalId },
+        metadata: { hospitalId, locationChange: "UNCHANGED" },
       },
       tx,
     );
@@ -423,6 +446,8 @@ describe("Hospital Contact transaction results", () => {
       hospitalId,
       addressText: "ที่อยู่เดิม",
       phoneNumber: "02-111-1111",
+      latitude: new Prisma.Decimal("13.756331"),
+      longitude: new Prisma.Decimal("100.501765"),
       updatedAt: version,
     };
     const { tx, database } = createTransaction({ currentContact: current });
@@ -435,11 +460,22 @@ describe("Hospital Contact transaction results", () => {
       ),
     ).resolves.toMatchObject({
       outcome: "UPDATED",
-      contact: { addressText: null, phoneNumber: null, expectedUpdatedAt: new Date(version.getTime() + 1).toISOString() },
+      contact: {
+        addressText: null,
+        phoneNumber: null,
+        location: null,
+        expectedUpdatedAt: new Date(version.getTime() + 1).toISOString(),
+      },
     });
     expect(tx.hospitalContact.updateMany).toHaveBeenCalledWith({
       where: { id: hospitalContactId, hospitalId, updatedAt: version },
-      data: { addressText: null, phoneNumber: null, updatedAt: new Date(version.getTime() + 1) },
+      data: {
+        addressText: null,
+        phoneNumber: null,
+        latitude: null,
+        longitude: null,
+        updatedAt: new Date(version.getTime() + 1),
+      },
     });
     expect(recordAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -447,10 +483,92 @@ describe("Hospital Contact transaction results", () => {
         action: "hospital_contact.updated",
         resourceType: "HospitalContact",
         resourceId: hospitalContactId,
-        metadata: { hospitalId },
+        metadata: { hospitalId, locationChange: "CLEARED" },
       }),
       tx,
     );
+  });
+
+  it("persists a parsed map location and audits only the kind of location change", async () => {
+    const pastedUrl = "https://www.google.com/maps/place/X/data=!3m1!4b1!8m2!3d13.7563314!4d100.5017649";
+    const created = createTransaction({ currentContact: null });
+
+    await expect(
+      updateHospitalContact(ownerActor(), input({ addressText: null, locationText: pastedUrl }), {
+        database: created.database,
+        now: () => version,
+      }),
+    ).resolves.toMatchObject({
+      outcome: "CREATED",
+      contact: { location: { latitude: 13.756331, longitude: 100.501765 } },
+    });
+    expect(created.tx.hospitalContact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ latitude: 13.756331, longitude: 100.501765 }),
+      }),
+    );
+    expect(recordAuditEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ metadata: { hospitalId, locationChange: "SET" } }),
+      created.tx,
+    );
+    expect(JSON.stringify(recordAuditEvent.mock.calls)).not.toContain("13.75");
+    expect(JSON.stringify(recordAuditEvent.mock.calls)).not.toContain("google");
+
+    const stored = {
+      id: hospitalContactId,
+      hospitalId,
+      addressText: null,
+      phoneNumber: null,
+      latitude: new Prisma.Decimal("13.756331"),
+      longitude: new Prisma.Decimal("100.501765"),
+      updatedAt: version,
+    };
+    const same = createTransaction({ currentContact: stored });
+
+    await expect(
+      updateHospitalContact(
+        ownerActor(),
+        input({ expectedUpdatedAt: version.toISOString(), addressText: null, locationText: "13.756331, 100.501765" }),
+        { database: same.database },
+      ),
+    ).resolves.toMatchObject({
+      outcome: "NOOP",
+      contact: { location: { latitude: 13.756331, longitude: 100.501765 } },
+    });
+    expect(same.tx.hospitalContact.updateMany).not.toHaveBeenCalled();
+    expect(same.tx.hospitalContact.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ latitude: true, longitude: true }) }),
+    );
+
+    const changed = createTransaction({ currentContact: stored });
+
+    await expect(
+      updateHospitalContact(
+        ownerActor(),
+        input({ expectedUpdatedAt: version.toISOString(), addressText: null, locationText: "14.0, 100.5" }),
+        { database: changed.database, now: () => version },
+      ),
+    ).resolves.toMatchObject({ outcome: "UPDATED", contact: { location: { latitude: 14, longitude: 100.5 } } });
+    expect(changed.tx.hospitalContact.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ latitude: 14, longitude: 100.5 }) }),
+    );
+    expect(recordAuditEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ metadata: { hospitalId, locationChange: "CHANGED" } }),
+      changed.tx,
+    );
+  });
+
+  it.each([
+    ["https://maps.app.goo.gl/AbCdEf123"],
+    ["100.501765, 13.756331"],
+    ["โรงพยาบาล"],
+  ])("rejects the location input %s before any transaction", async (locationText) => {
+    const { database, transaction } = createTransaction({ currentContact: null });
+
+    await expect(
+      updateHospitalContact(ownerActor(), input({ locationText }), { database }),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it("locks authority in order and rechecks the persisted exact Owner predicates", async () => {

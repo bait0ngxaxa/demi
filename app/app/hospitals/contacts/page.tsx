@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 
+import { HospitalMapLink } from "@/components/hospital-contact/hospital-map-link";
 import { PageHeader } from "@/components/ui/page-header";
 import { getHospitalWorkContactsPageContext } from "@/modules/hospital-contact/transport/hospital-contact-work-page-context";
 
@@ -31,10 +32,17 @@ export default async function HospitalWorkContactsPage(): Promise<React.JSX.Elem
                 <p className="mt-4 text-text-muted">ยังไม่ได้ระบุข้อมูลติดต่อ</p>
               ) : (
                 <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-                  {contact.addressText ? (
+                  {contact.addressText || contact.location ? (
                     <div className="min-w-0">
                       <dt className="text-sm font-semibold text-text">ที่อยู่</dt>
-                      <dd className="mt-1 whitespace-pre-wrap break-words text-text-muted">{contact.addressText}</dd>
+                      {contact.addressText ? (
+                        <dd className="mt-1 whitespace-pre-wrap break-words text-text-muted">{contact.addressText}</dd>
+                      ) : null}
+                      {contact.location ? (
+                        <dd className="mt-1">
+                          <HospitalMapLink hospitalName={contact.hospital.name} location={contact.location} />
+                        </dd>
+                      ) : null}
                     </div>
                   ) : null}
                   {contact.phoneNumber ? (

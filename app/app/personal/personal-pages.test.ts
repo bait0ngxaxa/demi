@@ -64,6 +64,7 @@ const completeContext = {
           hospital: { hospitalCode: "H-001", name: "โรงพยาบาล ก" },
           addressText: null,
           phoneNumber: null,
+          location: null,
         },
       },
       profile: {

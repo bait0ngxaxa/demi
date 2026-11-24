@@ -189,8 +189,9 @@ function desiredState(
   expectedUpdatedAt: string | null,
   addressText: string | null,
   phoneNumber: string | null,
+  locationText: string | null = null,
 ): Record<string, unknown> {
-  return { hospitalId, expectedUpdatedAt, addressText, phoneNumber };
+  return { hospitalId, expectedUpdatedAt, addressText, phoneNumber, locationText };
 }
 
 
@@ -366,12 +367,14 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
           availability: "AVAILABLE",
           addressText: "ถนนสุขภาพ",
           phoneNumber: "02-123-4567",
+          location: null,
         },
         {
           hospital: { hospitalCode: withoutContact.hospitalCode, name: withoutContact.name },
           availability: "UNAVAILABLE",
           addressText: null,
           phoneNumber: null,
+          location: null,
         },
       ]);
     },
@@ -422,12 +425,14 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
         availability: "AVAILABLE",
         addressText: null,
         phoneNumber: "02-765-4321",
+        location: null,
       },
       {
         hospital: { hospitalCode: withoutContact.hospitalCode, name: withoutContact.name },
         availability: "UNAVAILABLE",
         addressText: null,
         phoneNumber: null,
+        location: null,
       },
     ]);
   });
@@ -781,7 +786,11 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
       "hospital_contact.updated",
       "hospital_contact.updated",
     ]);
-    expect(audits.every(({ metadata }) => JSON.stringify(metadata) === JSON.stringify({ hospitalId: hospital.id }))).toBe(true);
+    expect(audits.map(({ metadata }) => metadata)).toEqual([
+      { hospitalId: hospital.id, locationChange: "UNCHANGED" },
+      { hospitalId: hospital.id, locationChange: "UNCHANGED" },
+      { hospitalId: hospital.id, locationChange: "UNCHANGED" },
+    ]);
   });
 
   it("treats absent-empty as NOOP, fresh equality as NOOP, and stale equality as Conflict", async () => {
@@ -1020,6 +1029,7 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
         hospital: { hospitalCode: hospital.hospitalCode, name: hospital.name },
         addressText: "ถนนติดต่อ",
         phoneNumber: "02-123-4567",
+        location: null,
       },
     });
     await expect(listOwnPatientHospitalContacts(patient.actor)).resolves.toEqual([
@@ -1030,6 +1040,7 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
           hospital: { hospitalCode: hospital.hospitalCode, name: hospital.name },
           addressText: "ถนนติดต่อ",
           phoneNumber: "02-123-4567",
+          location: null,
         },
       },
     ]);
@@ -1242,6 +1253,7 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
         hospital: { hospitalCode: child.hospitalCode, name: child.name },
         addressText: null,
         phoneNumber: null,
+        location: null,
       },
     });
   });
@@ -1291,9 +1303,9 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
       action: "hospital_contact.created",
       resourceType: "HospitalContact",
       resourceId: contact.id,
-      metadata: { hospitalId: hospital.id },
+      metadata: { hospitalId: hospital.id, locationChange: "UNCHANGED" },
     });
-    expect(createdAudit.metadata).toEqual({ hospitalId: hospital.id });
+    expect(createdAudit.metadata).toEqual({ hospitalId: hospital.id, locationChange: "UNCHANGED" });
     expect(JSON.stringify(createdAudit.metadata)).not.toContain("private address");
     expect(JSON.stringify(createdAudit.metadata)).not.toContain("02 123 4567");
 
@@ -1311,6 +1323,148 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
       updateHospitalContact(member.actor, desiredState(hospital.id, null, "ข้อมูลลับ", null)),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(await prisma.auditEvent.count()).toBe(1);
+  });
+
+  it("keeps the location migration additive with pair and Thailand-bounds CHECK constraints", async () => {
+    const migration = readFileSync(
+      join(process.cwd(), "prisma/migrations/20261211100000_hospital_contact_location/migration.sql"),
+      "utf8",
+    );
+
+    expect(migration).toContain('ADD COLUMN "latitude" DECIMAL(9,6)');
+    expect(migration).toContain('ADD COLUMN "longitude" DECIMAL(9,6)');
+    expect(migration).not.toMatch(/\bUPDATE\s+"HospitalContact"/iu);
+    expect(migration).not.toMatch(/\bINSERT\s+INTO\s+"HospitalContact"/iu);
+
+    const hospital = await createHospital();
+    const insert = (latitude: string | null, longitude: string | null) =>
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "HospitalContact" ("id", "hospitalId", "latitude", "longitude", "updatedAt")
+        VALUES (${randomUUID()}::uuid, ${hospital.id}::uuid, ${latitude}::numeric, ${longitude}::numeric, CURRENT_TIMESTAMP)
+      `);
+
+    for (const [latitude, longitude, constraint] of [
+      ["13.756331", null, "HospitalContact_location_pair"],
+      [null, "100.501765", "HospitalContact_location_pair"],
+      ["100.501765", "13.756331", "HospitalContact_location_bounds"],
+      ["5.499999", "100", "HospitalContact_location_bounds"],
+      ["13", "105.700001", "HospitalContact_location_bounds"],
+    ] as const) {
+      await expect(insert(latitude, longitude)).rejects.toThrow(constraint);
+    }
+    expect(await prisma.hospitalContact.count({ where: { hospitalId: hospital.id } })).toBe(0);
+
+    await expect(insert("5.5", "97.3")).resolves.toBe(1);
+    const stored = await prisma.hospitalContact.findUniqueOrThrow({ where: { hospitalId: hospital.id } });
+    expect(stored.latitude?.toString()).toBe("5.5");
+    expect(stored.longitude?.toString()).toBe("97.3");
+  });
+
+  it("lets the Owner set, change and clear the location; refuses others; audits only the change kind", async () => {
+    const hospital = await createHospital();
+    const owner = await createOwner(hospital.id);
+    const member = await createOwner(hospital.id, { membershipType: MembershipType.MEMBER });
+    const patient = await createPatient();
+    const relationship = await createPatientRelationship(patient.profileId, hospital.id);
+    const pastedUrl = "https://www.google.com/maps/place/X/data=!3m1!4b1!8m2!3d13.7563314!4d100.5017649";
+
+    await expect(
+      updateHospitalContact(member.actor, desiredState(hospital.id, null, null, null, "13.75, 100.5")),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(
+      updateHospitalContact(owner.actor, desiredState(hospital.id, null, null, null, "https://maps.app.goo.gl/AbCdEf")),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+    expect(await prisma.hospitalContact.count({ where: { hospitalId: hospital.id } })).toBe(0);
+
+    const set = await updateHospitalContact(
+      owner.actor,
+      desiredState(hospital.id, null, "ถนนสุขภาพ", null, pastedUrl),
+    );
+    if (set.outcome !== "CREATED") throw new Error("Expected contact creation");
+    const bangkok = { latitude: 13.756331, longitude: 100.501765 };
+    expect(set.contact.location).toEqual(bangkok);
+    const row = await prisma.hospitalContact.findUniqueOrThrow({ where: { hospitalId: hospital.id } });
+    expect(row.latitude?.toString()).toBe("13.756331");
+    expect(row.longitude?.toString()).toBe("100.501765");
+
+    await expect(readHospitalContactForOwner(owner.actor, hospital.id)).resolves.toMatchObject({ location: bangkok });
+    await expect(readOwnPatientHospitalContact(patient.actor, relationship.id)).resolves.toEqual({
+      relationshipId: relationship.id,
+      availability: "AVAILABLE",
+      contact: {
+        hospital: { hospitalCode: hospital.hospitalCode, name: hospital.name },
+        addressText: "ถนนสุขภาพ",
+        phoneNumber: null,
+        location: bangkok,
+      },
+    });
+    await expect(listOwnPatientHospitalContacts(patient.actor)).resolves.toMatchObject([
+      { availability: "AVAILABLE", contact: { location: bangkok } },
+    ]);
+    const memberWork: ActorContext = {
+      ...member.actor,
+      hospitalMemberships: [{
+        hospitalId: hospital.id,
+        membershipType: MembershipType.MEMBER,
+        profession: null,
+        status: MembershipStatus.ACTIVE,
+        hospitalStatus: HospitalStatus.ACTIVE,
+      }],
+    };
+    await expect(listWorkHospitalContacts(memberWork, prisma)).resolves.toMatchObject([
+      { availability: "AVAILABLE", location: bangkok },
+    ]);
+
+    const noop = await updateHospitalContact(
+      owner.actor,
+      desiredState(hospital.id, set.contact.expectedUpdatedAt, "ถนนสุขภาพ", null, "13.756331, 100.501765"),
+    );
+    expect(noop.outcome).toBe("NOOP");
+
+    const changed = await updateHospitalContact(
+      owner.actor,
+      desiredState(hospital.id, set.contact.expectedUpdatedAt, "ถนนสุขภาพ", null, "14.000001, 100.5"),
+    );
+    if (changed.outcome !== "UPDATED") throw new Error("Expected location change");
+    expect(changed.contact.location).toEqual({ latitude: 14.000001, longitude: 100.5 });
+
+    const cleared = await updateHospitalContact(
+      owner.actor,
+      desiredState(hospital.id, changed.contact.expectedUpdatedAt, "ถนนสุขภาพ", null, null),
+    );
+    if (cleared.outcome !== "UPDATED") throw new Error("Expected location clear");
+    expect(cleared.contact.location).toBeNull();
+    expect(await prisma.hospitalContact.findUniqueOrThrow({ where: { hospitalId: hospital.id } })).toMatchObject({
+      latitude: null,
+      longitude: null,
+      addressText: "ถนนสุขภาพ",
+    });
+    await expect(readOwnPatientHospitalContact(patient.actor, relationship.id)).resolves.toMatchObject({
+      contact: { location: null },
+    });
+
+    // A location alone is a contact: clearing everything else keeps the row and its point.
+    const onlyLocation = await updateHospitalContact(
+      owner.actor,
+      desiredState(hospital.id, cleared.contact.expectedUpdatedAt, null, null, "13.75, 100.5"),
+    );
+    expect(onlyLocation).toMatchObject({ outcome: "UPDATED", contact: { addressText: null, location: { latitude: 13.75 } } });
+
+    const audits = await prisma.auditEvent.findMany({
+      where: { resourceType: "HospitalContact", resourceId: row.id },
+      select: { action: true, metadata: true },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(audits).toEqual([
+      { action: "hospital_contact.created", metadata: { hospitalId: hospital.id, locationChange: "SET" } },
+      { action: "hospital_contact.updated", metadata: { hospitalId: hospital.id, locationChange: "CHANGED" } },
+      { action: "hospital_contact.updated", metadata: { hospitalId: hospital.id, locationChange: "CLEARED" } },
+      { action: "hospital_contact.updated", metadata: { hospitalId: hospital.id, locationChange: "SET" } },
+    ]);
+    const auditText = JSON.stringify(audits);
+    expect(auditText).not.toContain("13.75");
+    expect(auditText).not.toContain("100.5");
+    expect(auditText).not.toContain("google");
   });
 
   it("rolls back Contact create and update when the PostgreSQL audit insert fails", async () => {
