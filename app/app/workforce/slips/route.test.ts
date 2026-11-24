@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import QRCode from "qrcode";
 
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { POST } from "./route";
 
-const { mockedActor, mockedIssueSlips } = vi.hoisted(() => ({
+const { mockedActor, mockedIssueSlips, brandedQr, realBrandedQr } = vi.hoisted(() => ({
   mockedActor: vi.fn(),
   mockedIssueSlips: vi.fn(),
+  brandedQr: vi.fn(),
+  realBrandedQr: { create: (() => "") as (typeof import("@/lib/qr/branded-qr"))["createBrandedQrSvgDataUrl"] },
 }));
 
 vi.mock("@/modules/auth/services/application-access-service", () => ({
@@ -16,6 +17,12 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 vi.mock("@/modules/workforce/services/workforce-service", () => ({
   issueWorkforceActivationSlips: mockedIssueSlips,
 }));
+// Real branded QR generation, observed so tests can check what is encoded and simulate a failure.
+vi.mock("@/lib/qr/branded-qr", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/qr/branded-qr")>();
+  realBrandedQr.create = actual.createBrandedQrSvgDataUrl;
+  return { ...actual, createBrandedQrSvgDataUrl: brandedQr };
+});
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const userA = "33333333-3333-4333-8333-333333333333";
@@ -44,6 +51,7 @@ function slipRequest(
 describe("activation slips route", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    brandedQr.mockImplementation(realBrandedQr.create);
     vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example");
     mockedActor.mockResolvedValue({ userId: "owner-1" });
     mockedIssueSlips.mockResolvedValue({
@@ -78,19 +86,21 @@ describe("activation slips route", () => {
     expect(html).toContain("สม*** &lt;ใจ***&gt;");
     expect(html).toContain("โรงพยาบาล &lt;ทดสอบ&gt;");
     expect(html).toContain("สแกน QR → กรอกเลขบัตรประชาชน → ตั้งรหัสผ่าน");
-    expect(html).toContain("data:image/png;base64,");
+    // The branded QR is an SVG data URL, which the page CSP (`img-src data:`) allows without changes.
+    expect(html).toContain('src="data:image/svg+xml;base64,');
+    expect(response.headers.get("content-security-policy")).toContain("img-src data:");
+    expect(brandedQr).toHaveBeenCalledWith(expect.any(String), { margin: 1, size: 300 });
     expect(html).toContain("ไม่สามารถออกใบเปิดใช้งานได้ 1 รายการ");
     // The plaintext token only lives inside the QR image; it is never printed as text.
     expect(html).not.toContain(secretToken);
   });
 
   it("directs users to status review when link issuance succeeds but the printable response fails", async () => {
-    const qr = vi.spyOn(QRCode, "toDataURL").mockRejectedValueOnce(new Error("QR generation failed"));
+    brandedQr.mockImplementationOnce(() => { throw new Error("QR generation failed"); });
 
     const response = await POST(slipRequest());
     const html = await response.text();
 
-    qr.mockRestore();
     expect(response.status).toBe(503);
     expect(mockedIssueSlips).toHaveBeenCalledOnce();
     expect(html).toContain("อาจออกลิงก์ใหม่แล้ว แต่แสดงใบไม่สำเร็จ");
@@ -130,7 +140,6 @@ describe("activation slips route", () => {
   });
 
   it("uses the configured QR destination behind proxies and ignores request/forwarded hosts", async () => {
-    const qr = vi.spyOn(QRCode, "toDataURL");
     const original = slipRequest();
     const response = await POST(new Request("https://hostile.example/app/workforce/slips", {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded",
@@ -138,8 +147,7 @@ describe("activation slips route", () => {
       body: await original.text(),
     }));
     expect(response.status).toBe(200);
-    expect(qr).toHaveBeenCalledWith(`https://demi.example/activate/workforce#${secretToken}`, expect.any(Object));
-    qr.mockRestore();
+    expect(brandedQr).toHaveBeenCalledWith(`https://demi.example/activate/workforce#${secretToken}`, expect.any(Object));
     const rejected = await POST(slipRequest(undefined, { origin: "https://evil.example", "sec-fetch-site": "same-origin" }));
     expect(rejected.status).toBe(403);
   });

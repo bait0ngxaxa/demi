@@ -1,6 +1,5 @@
 "use client";
 
-import QRCode from "qrcode";
 import {
   useCallback,
   useEffect,
@@ -13,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { createBrandedQrSvgDataUrl } from "@/lib/qr/branded-qr";
 import type { PatientActivationCandidateState } from "@/modules/patient-activation/transport/action-state";
 import {
   initialPatientActivationIssueActionState,
@@ -104,11 +104,9 @@ function ActivationPresentation({
 
     let active = true;
 
-    void QRCode.toDataURL(activationUrl, {
-      errorCorrectionLevel: "M",
-      margin: 2,
-      width: 240,
-    })
+    // Generated after the effect returns, so state is only set asynchronously and a stale run can be ignored.
+    void Promise.resolve()
+      .then(() => createBrandedQrSvgDataUrl(activationUrl, { margin: 2, size: 240 }))
       .then((dataUrl) => {
         if (active) {
           setQrDataUrl(dataUrl);

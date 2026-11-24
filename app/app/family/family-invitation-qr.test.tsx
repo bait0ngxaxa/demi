@@ -14,13 +14,17 @@ vi.mock("react", async (importOriginal) => ({
   useState: () => [harness.result, harness.setResult],
   useEffect: (effect: () => (() => void)) => { harness.effect = effect; },
 }));
-vi.mock("qrcode", () => ({ default: { toDataURL: harness.generate } }));
+vi.mock("@/lib/qr/branded-qr", () => ({ createBrandedQrSvgDataUrl: harness.generate }));
 
 import { FamilyInvitationQr } from "./family-invitation-qr";
 
 const link = `https://demi.example/app/family/invitations#${"a".repeat(43)}`;
 function render(invitationLink = link): string {
   return renderToStaticMarkup(<FamilyInvitationQr invitationLink={invitationLink} />);
+}
+// The QR is generated one microtask after the effect starts; let every pending callback settle.
+function flush(): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, 0); });
 }
 function startEffect(): () => void {
   if (!harness.effect) throw new Error("QR effect was not registered");
@@ -36,27 +40,24 @@ describe("Family invitation QR transient presentation", () => {
   afterEach(() => { harness.effect = undefined; });
 
   it("loads, encodes the exact link with approved settings and renders a safe alt", async () => {
-    harness.generate.mockResolvedValue("data:image/png;base64,current");
+    harness.generate.mockReturnValue("data:image/svg+xml;base64,current");
     expect(render()).toContain("กำลังสร้างคิวอาร์โค้ดคำเชิญ");
     const cleanup = startEffect();
-    await Promise.resolve();
-    expect(harness.generate).toHaveBeenCalledWith(link, {
-      errorCorrectionLevel: "M", margin: 4, width: 240,
-      color: { dark: "#000000ff", light: "#ffffffff" },
-    });
+    await flush();
+    expect(harness.generate).toHaveBeenCalledWith(link, { margin: 4, size: 240 });
     const markup = render();
     expect(markup).toContain('alt="คิวอาร์โค้ดคำเชิญผู้ดูแล DEMI"');
-    expect(markup).toContain('src="data:image/png;base64,current"');
+    expect(markup).toContain('src="data:image/svg+xml;base64,current"');
     expect(markup).not.toContain(link);
     expect(markup).not.toContain("a".repeat(43));
     cleanup();
   });
 
   it("sanitizes generation failure without exposing the error or URL", async () => {
-    harness.generate.mockRejectedValue(new Error(link));
+    harness.generate.mockImplementation(() => { throw new Error(link); });
     render();
     const cleanup = startEffect();
-    await Promise.resolve();
+    await flush();
     expect(render()).toContain("ไม่สามารถสร้างคิวอาร์โค้ดได้ กรุณาใช้ลิงก์คำเชิญแทน");
     expect(render()).not.toContain(link);
     cleanup();
@@ -73,9 +74,9 @@ describe("Family invitation QR transient presentation", () => {
     expect(render(next)).not.toContain("old-image");
     harness.generate.mockResolvedValueOnce("new-image");
     const cleanupNew = startEffect();
-    await Promise.resolve();
+    await flush();
     resolveOld("stale-image");
-    await Promise.resolve();
+    await flush();
     expect(render(next)).toContain('src="new-image"');
     expect(render(next)).not.toContain("stale-image");
     expect(harness.generate).toHaveBeenLastCalledWith(next, expect.objectContaining({ margin: 4 }));
@@ -90,7 +91,7 @@ describe("Family invitation QR transient presentation", () => {
     startEffect()();
     if (outcome === "resolve") resolve("discarded-image");
     else reject(new Error("discarded-error"));
-    await Promise.resolve();
+    await flush();
     expect(harness.setResult).not.toHaveBeenCalled();
   });
 });

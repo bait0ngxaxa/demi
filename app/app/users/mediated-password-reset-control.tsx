@@ -2,10 +2,11 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
-import QRCode from "qrcode";
 
 import { Button, buttonClassName } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
+import { createBrandedQrSvgDataUrl } from "@/lib/qr/branded-qr";
+import { createBrandedQrPngDataUrl } from "@/lib/qr/branded-qr-png.client";
 import type {
   MediatedPasswordResetIssueInput,
   MediatedPasswordResetMode,
@@ -29,22 +30,26 @@ function formatThaiDate(value: string): string {
 
 const qrFilename = "demi-password-reset-qr.png";
 const pngDataUrlPrefix = "data:image/png;base64,";
+const qrDisplaySize = 240;
+// The saved/shared file is larger than the on-screen code so it stays sharp when forwarded in chat apps.
+const qrFileSize = 720;
 
-type RecoveryQr = { dataUrl: string; shareFile: File | null };
+/** `displayUrl` is the crisp on-screen SVG; `dataUrl` is the PNG file that is saved or shared. */
+type RecoveryQr = { displayUrl: string; dataUrl: string; shareFile: File | null };
 
-function prepareRecoveryQr(dataUrl: string): RecoveryQr {
+function prepareRecoveryQr(displayUrl: string, dataUrl: string): RecoveryQr {
   if (!dataUrl.startsWith(pngDataUrlPrefix)) throw new Error("Expected a QR PNG data URL");
   const bytes = atob(dataUrl.slice(pngDataUrlPrefix.length));
   if (!bytes.startsWith("\x89PNG\r\n\x1a\n")) throw new Error("Expected a QR PNG signature");
   if (typeof navigator.share !== "function" || typeof navigator.canShare !== "function") {
-    return { dataUrl, shareFile: null };
+    return { displayUrl, dataUrl, shareFile: null };
   }
 
   try {
     const file = new File([Uint8Array.from(bytes, (byte) => byte.charCodeAt(0))], qrFilename, { type: "image/png" });
-    return { dataUrl, shareFile: navigator.canShare({ files: [file] }) ? file : null };
+    return { displayUrl, dataUrl, shareFile: navigator.canShare({ files: [file] }) ? file : null };
   } catch {
-    return { dataUrl, shareFile: null };
+    return { displayUrl, dataUrl, shareFile: null };
   }
 }
 
@@ -83,7 +88,7 @@ function RecoveryQrActions({ qr, children }: { qr: RecoveryQr | "ERROR" | null; 
   return (
     <div className="space-y-3">
       {ready ? (
-        <Image alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน" className="mx-auto h-auto w-60 max-w-full" height={240} src={qr.dataUrl} unoptimized width={240} />
+        <Image alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน" className="mx-auto h-auto w-60 max-w-full" height={qrDisplaySize} src={qr.displayUrl} unoptimized width={qrDisplaySize} />
       ) : null}
       <Button className="gap-2" disabled={!ready} loading={qr === null} onClick={downloadQr} size="compact">
         <svg aria-hidden="true" className="size-5 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -131,8 +136,10 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
   useEffect(() => {
     if (!open || issuedMode !== "ONLINE" || !handoffUrl) return;
     let active = true;
-    void QRCode.toDataURL(handoffUrl, { width: 240, margin: 2, errorCorrectionLevel: "M" })
-      .then((url) => { if (active) setQr(prepareRecoveryQr(url)); })
+    void createBrandedQrPngDataUrl(handoffUrl, { size: qrFileSize })
+      .then((pngUrl) => {
+        if (active) setQr(prepareRecoveryQr(createBrandedQrSvgDataUrl(handoffUrl, { margin: 2, size: qrDisplaySize }), pngUrl));
+      })
       .catch(() => { if (active) setQr("ERROR"); });
     return () => { active = false; };
   }, [handoffUrl, issuedMode, open]);

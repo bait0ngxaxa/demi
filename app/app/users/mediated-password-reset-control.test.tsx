@@ -6,7 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 const mocks = vi.hoisted(() => ({ issue: vi.fn(), qr: vi.fn(), locationReplace: vi.fn() }));
 vi.mock("@/modules/account-security/transport/server-actions", () => ({ issueMediatedPasswordResetAction: mocks.issue }));
-vi.mock("qrcode", () => ({ default: { toDataURL: mocks.qr } }));
+vi.mock("@/lib/qr/branded-qr-png.client", () => ({ createBrandedQrPngDataUrl: mocks.qr }));
 
 import { MediatedPasswordResetControl } from "./mediated-password-reset-control";
 
@@ -315,7 +315,10 @@ describe("ONLINE password recovery QR actions", () => {
     expect(download).toHaveBeenCalledOnce();
     expect(container.querySelector("a[download]")).toBeNull();
     expect(mocks.issue).toHaveBeenCalledOnce();
-    expect(mocks.qr).toHaveBeenCalledExactlyOnceWith(onlineResult.handoffUrl, { width: 240, margin: 2, errorCorrectionLevel: "M" });
+    expect(mocks.qr).toHaveBeenCalledExactlyOnceWith(onlineResult.handoffUrl, { size: 720 });
+    // On screen the code is the crisp branded SVG; only the saved/shared file is a PNG.
+    const shown = container.querySelector<HTMLImageElement>('img[alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน"]');
+    expect(shown?.getAttribute("src")).toMatch(/^data:image\/svg\+xml;base64,/);
   });
 
   it.each(["rejected", "invalid"] as const)("keeps link actions usable when the PNG is %s", async (outcome) => {
