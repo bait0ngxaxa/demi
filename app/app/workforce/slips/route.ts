@@ -1,6 +1,5 @@
-import QRCode from "qrcode";
-
 import { createWorkforceActivationUrlBuilder } from "@/lib/env/server";
+import { createBrandedQrSvgDataUrl } from "@/lib/qr/branded-qr";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { workforceActivationSlipRequestSchema } from "@/modules/workforce/schemas/workforce-schemas";
@@ -115,17 +114,12 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const actor = await getProtectedApplicationActor();
     const result = await issueWorkforceActivationSlips(actor, parsed.data);
-    const slips = await Promise.all(
-      result.slips.map(async (slip) => ({
-        maskedName: slip.maskedName,
-        hospitalName: slip.hospitalName,
-        expiresAt: slip.activationExpiresAt,
-        qrDataUrl: await QRCode.toDataURL(
-          urls.build(slip.activationToken),
-          { errorCorrectionLevel: "M", margin: 1, width: 300 },
-        ),
-      })),
-    );
+    const slips = result.slips.map((slip) => ({
+      maskedName: slip.maskedName,
+      hospitalName: slip.hospitalName,
+      expiresAt: slip.activationExpiresAt,
+      qrDataUrl: createBrandedQrSvgDataUrl(urls.build(slip.activationToken), { margin: 1, size: 300 }),
+    }));
 
     return new Response(renderActivationSlipsPage({ slips, failures: result.failures }), {
       status: 200,

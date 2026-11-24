@@ -2,10 +2,11 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
-import QRCode from "qrcode";
 
 import { Button, buttonClassName } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
+import { createBrandedQrSvgDataUrl } from "@/lib/qr/branded-qr";
+import { createBrandedQrPngDataUrl } from "@/lib/qr/branded-qr-png.client";
 import type {
   MediatedPasswordResetIssueInput,
   MediatedPasswordResetMode,
@@ -29,10 +30,19 @@ function formatThaiDate(value: string): string {
 
 const qrFilename = "demi-password-reset-qr.png";
 const pngDataUrlPrefix = "data:image/png;base64,";
+const qrDisplaySize = 240;
+// The saved/shared file is larger than the on-screen code so it stays sharp when forwarded in chat apps.
+const qrFileSize = 720;
 
-type RecoveryQr = { dataUrl: string; shareFile: File | null };
+/** The PNG file that is saved or shared. */
+type RecoveryQrFile = { dataUrl: string; shareFile: File | null };
+/**
+ * `displayUrl` is the on-screen SVG and does not depend on the PNG: if the browser cannot produce the file
+ * (`file: "ERROR"`), the code can still be scanned from the screen and only save/share are unavailable.
+ */
+type RecoveryQr = { displayUrl: string; file: RecoveryQrFile | "ERROR" | null };
 
-function prepareRecoveryQr(dataUrl: string): RecoveryQr {
+function prepareRecoveryQrFile(dataUrl: string): RecoveryQrFile {
   if (!dataUrl.startsWith(pngDataUrlPrefix)) throw new Error("Expected a QR PNG data URL");
   const bytes = atob(dataUrl.slice(pngDataUrlPrefix.length));
   if (!bytes.startsWith("\x89PNG\r\n\x1a\n")) throw new Error("Expected a QR PNG signature");
@@ -51,12 +61,14 @@ function prepareRecoveryQr(dataUrl: string): RecoveryQr {
 function RecoveryQrActions({ qr, children }: { qr: RecoveryQr | "ERROR" | null; children: ReactNode }): React.JSX.Element {
   const [sharing, setSharing] = useState(false);
   const [shareFailed, setShareFailed] = useState(false);
-  const ready = qr !== null && qr !== "ERROR";
+  const shown = qr !== null && qr !== "ERROR" ? qr : null;
+  const file = shown && shown.file !== null && shown.file !== "ERROR" ? shown.file : null;
+  const fileFailed = qr === "ERROR" || shown?.file === "ERROR";
 
   function downloadQr(event: React.MouseEvent<HTMLButtonElement>): void {
-    if (!ready) return;
+    if (!file) return;
     const link = document.createElement("a");
-    link.href = qr.dataUrl;
+    link.href = file.dataUrl;
     link.download = qrFilename;
     link.hidden = true;
     event.currentTarget.after(link);
@@ -68,11 +80,11 @@ function RecoveryQrActions({ qr, children }: { qr: RecoveryQr | "ERROR" | null; 
   }
 
   async function shareQr(): Promise<void> {
-    if (!ready || !qr.shareFile || sharing) return;
+    if (!file?.shareFile || sharing) return;
     setSharing(true);
     setShareFailed(false);
     try {
-      await navigator.share({ title: "QR Code สำหรับรีเซ็ตรหัสผ่าน DEMI", files: [qr.shareFile] });
+      await navigator.share({ title: "QR Code สำหรับรีเซ็ตรหัสผ่าน DEMI", files: [file.shareFile] });
     } catch (error: unknown) {
       if (!(error instanceof DOMException && error.name === "AbortError")) setShareFailed(true);
     } finally {
@@ -82,26 +94,29 @@ function RecoveryQrActions({ qr, children }: { qr: RecoveryQr | "ERROR" | null; 
 
   return (
     <div className="space-y-3">
-      {ready ? (
-        <Image alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน" className="mx-auto h-auto w-60 max-w-full" height={240} src={qr.dataUrl} unoptimized width={240} />
+      {shown ? (
+        <Image alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน" className="mx-auto h-auto w-60 max-w-full" height={qrDisplaySize} src={shown.displayUrl} unoptimized width={qrDisplaySize} />
       ) : null}
-      <Button className="gap-2" disabled={!ready} loading={qr === null} onClick={downloadQr} size="compact">
+      <Button className="gap-2" disabled={!file} loading={!file && !fileFailed} onClick={downloadQr} size="compact">
         <svg aria-hidden="true" className="size-5 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
           <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 16v4h14v-4" />
         </svg>
         บันทึกรูป QR Code
       </Button>
-      {ready ? (
+      {file ? (
         <p className="text-sm leading-6 text-text-muted">ไฟล์จะถูกบันทึกตามตำแหน่งดาวน์โหลดของเบราว์เซอร์</p>
       ) : null}
       {qr === "ERROR" ? (
         <p className="text-sm text-danger" role="alert">ไม่สามารถสร้างรูป QR Code ได้ กรุณาใช้ปุ่มคัดลอกลิงก์แทน</p>
       ) : null}
-      {ready ? (
+      {shown?.file === "ERROR" ? (
+        <p className="text-sm text-danger" role="alert">เบราว์เซอร์นี้บันทึกหรือแชร์รูป QR Code ไม่ได้ ให้เจ้าของบัญชีสแกนจากหน้าจอนี้ หรือใช้ปุ่มคัดลอกลิงก์แทน</p>
+      ) : null}
+      {shown ? (
         <p className="text-sm leading-6 text-text-muted">QR Code นี้ใช้สำหรับกู้คืนบัญชี โปรดส่งให้เจ้าของบัญชีเท่านั้น ห้ามเผยแพร่ในกลุ่มสาธารณะ และควรลบภาพเมื่อใช้งานเสร็จ</p>
       ) : null}
       {children}
-      {ready && qr.shareFile ? (
+      {file?.shareFile ? (
         <Button loading={sharing} onClick={() => void shareQr()} size="compact" variant="secondary">แชร์รูป QR Code</Button>
       ) : null}
       {shareFailed ? (
@@ -131,8 +146,17 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
   useEffect(() => {
     if (!open || issuedMode !== "ONLINE" || !handoffUrl) return;
     let active = true;
-    void QRCode.toDataURL(handoffUrl, { width: 240, margin: 2, errorCorrectionLevel: "M" })
-      .then((url) => { if (active) setQr(prepareRecoveryQr(url)); })
+    // The on-screen SVG comes first; the PNG file is best effort and never hides the code on screen.
+    void Promise.resolve()
+      .then(() => createBrandedQrSvgDataUrl(handoffUrl, { margin: 2, size: qrDisplaySize }))
+      .then(async (displayUrl) => {
+        if (!active) return;
+        setQr({ displayUrl, file: null });
+        const file = await createBrandedQrPngDataUrl(handoffUrl, { size: qrFileSize })
+          .then(prepareRecoveryQrFile)
+          .catch((): "ERROR" => "ERROR");
+        if (active) setQr({ displayUrl, file });
+      })
       .catch(() => { if (active) setQr("ERROR"); });
     return () => { active = false; };
   }, [handoffUrl, issuedMode, open]);

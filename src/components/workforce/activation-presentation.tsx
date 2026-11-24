@@ -1,12 +1,12 @@
 "use client";
 
-import QRCode from "qrcode";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { createBrandedQrSvgDataUrl } from "@/lib/qr/branded-qr";
 
 function formatDate(date: string | Date | null): string {
   if (!date) {
@@ -58,11 +58,9 @@ function ActivationPresentationContent({
 
   useEffect(() => {
     let active = true;
-    void QRCode.toDataURL(activationUrl, {
-      errorCorrectionLevel: "M",
-      margin: 2,
-      width: 280,
-    })
+    // Generated after the effect returns, so state is only set asynchronously and a stale run can be ignored.
+    void Promise.resolve()
+      .then(() => createBrandedQrSvgDataUrl(activationUrl, { margin: 2, size: 280 }))
       .then((dataUrl) => {
         if (active) {
           setQrDataUrl(dataUrl);

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
+
+import { createBrandedQrSvgDataUrl } from "@/lib/qr/branded-qr";
 
 type QrResult =
   | { invitationLink: string; status: "READY"; dataUrl: string }
@@ -18,12 +19,10 @@ export function FamilyInvitationQr({
     let active = true;
     async function generate(): Promise<void> {
       try {
-        const dataUrl = await QRCode.toDataURL(invitationLink, {
-          errorCorrectionLevel: "M",
-          margin: 4,
-          width: 240,
-          color: { dark: "#000000ff", light: "#ffffffff" },
-        });
+        // Generated after the effect returns, so state is only set asynchronously and a stale run can be ignored.
+        const dataUrl = await Promise.resolve().then(() =>
+          createBrandedQrSvgDataUrl(invitationLink, { margin: 4, size: 240 }),
+        );
         if (active) setResult({ invitationLink, status: "READY", dataUrl });
       } catch {
         if (active) setResult({ invitationLink, status: "ERROR" });

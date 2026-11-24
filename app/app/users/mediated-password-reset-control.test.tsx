@@ -6,7 +6,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 const mocks = vi.hoisted(() => ({ issue: vi.fn(), qr: vi.fn(), locationReplace: vi.fn() }));
 vi.mock("@/modules/account-security/transport/server-actions", () => ({ issueMediatedPasswordResetAction: mocks.issue }));
-vi.mock("qrcode", () => ({ default: { toDataURL: mocks.qr } }));
+vi.mock("@/lib/qr/branded-qr-png.client", () => ({ createBrandedQrPngDataUrl: mocks.qr }));
+
+import { createBrandedQrSvgDataUrl } from "@/lib/qr/branded-qr";
 
 import { MediatedPasswordResetControl } from "./mediated-password-reset-control";
 
@@ -315,17 +317,23 @@ describe("ONLINE password recovery QR actions", () => {
     expect(download).toHaveBeenCalledOnce();
     expect(container.querySelector("a[download]")).toBeNull();
     expect(mocks.issue).toHaveBeenCalledOnce();
-    expect(mocks.qr).toHaveBeenCalledExactlyOnceWith(onlineResult.handoffUrl, { width: 240, margin: 2, errorCorrectionLevel: "M" });
+    expect(mocks.qr).toHaveBeenCalledExactlyOnceWith(onlineResult.handoffUrl, { size: 720 });
+    // On screen the code is the crisp branded SVG; only the saved/shared file is a PNG.
+    const shown = container.querySelector<HTMLImageElement>('img[alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน"]');
+    expect(shown?.getAttribute("src")).toMatch(/^data:image\/svg\+xml;base64,/);
   });
 
-  it.each(["rejected", "invalid"] as const)("keeps link actions usable when the PNG is %s", async (outcome) => {
+  it.each(["rejected", "invalid"] as const)("keeps the on-screen QR and link actions usable when the PNG is %s", async (outcome) => {
     if (outcome === "rejected") mocks.qr.mockRejectedValue(new Error("QR generation failed"));
     else mocks.qr.mockResolvedValue("data:image/png;base64,AA==");
     await issueOnline();
 
     expect(getButton("บันทึกรูป QR Code").disabled).toBe(true);
-    expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("ไม่สามารถสร้างรูป QR Code ได้ กรุณาใช้ปุ่มคัดลอกลิงก์แทน");
+    expect(findButton("แชร์รูป QR Code")).toBeUndefined();
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      createBrandedQrSvgDataUrl(onlineResult.handoffUrl, { margin: 2, size: 240 }),
+    );
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("เบราว์เซอร์นี้บันทึกหรือแชร์รูป QR Code ไม่ได้ ให้เจ้าของบัญชีสแกนจากหน้าจอนี้ หรือใช้ปุ่มคัดลอกลิงก์แทน");
     await act(async () => getButton("คัดลอกลิงก์").click());
     expect(copy).toHaveBeenCalledExactlyOnceWith(onlineResult.handoffUrl);
   });
@@ -374,8 +382,12 @@ describe("ONLINE password recovery QR actions", () => {
     mocks.issue.mockResolvedValue({ ...onlineResult, handoffUrl: "https://demi.example/recover#synthetic-new-token" });
     await submitForm();
     await act(async () => oldQr.resolve(qrDataUrl));
+    // Only the new link's code is shown, and the old link's PNG never becomes the saved file.
     expect(getButton("บันทึกรูป QR Code").disabled).toBe(true);
-    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      createBrandedQrSvgDataUrl("https://demi.example/recover#synthetic-new-token", { margin: 2, size: 240 }),
+    );
     await act(async () => currentQr.resolve(qrDataUrl));
     expect(getButton("บันทึกรูป QR Code").disabled).toBe(false);
     expect(findButton("แชร์รูป QR Code")).toBeUndefined();
