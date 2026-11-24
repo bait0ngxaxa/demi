@@ -34,7 +34,8 @@ export type BrandedQrLayout = {
   excavation: QrModuleBox;
 };
 
-type BrandedQrSymbol = {
+/** The encoded symbol with the logo area already cleared; shared by the SVG and the canvas PNG. */
+export type BrandedQrSymbol = {
   layout: BrandedQrLayout;
   isDark: (row: number, column: number) => boolean;
 };
@@ -72,7 +73,7 @@ function insideBox(index: number, box: QrModuleBox): boolean {
   return index >= box.start && index < box.start + box.side;
 }
 
-function createBrandedQrSymbol(text: string): BrandedQrSymbol {
+export function createBrandedQrSymbol(text: string): BrandedQrSymbol {
   const qr = QRCode.create(text, { errorCorrectionLevel: BRANDED_QR_ERROR_CORRECTION_LEVEL });
   const layout = computeBrandedQrLayout(qr.modules.size);
   return {
@@ -102,7 +103,7 @@ function darkModulesPath(symbol: BrandedQrSymbol): string {
   return commands.join("");
 }
 
-function readMargin(options: BrandedQrOptions | undefined): number {
+export function readBrandedQrMargin(options: BrandedQrOptions | undefined): number {
   const margin = options?.margin ?? DEFAULT_MARGIN_MODULES;
   if (!Number.isInteger(margin) || margin < 0) throw new Error("QR margin must be a non-negative integer");
   return margin;
@@ -114,20 +115,24 @@ function readSize(options: BrandedQrOptions | undefined): number {
   return size;
 }
 
-/** Returns a self-contained SVG: no scripts and no external references, the logo is inlined. */
+/**
+ * Returns a self-contained SVG: no scripts and no external references, the logo is inlined.
+ * The logo uses `xlink:href` only: every current browser and older WebKit webviews read it, while adding
+ * SVG2 `href` as well would embed the logo bytes twice.
+ */
 export function createBrandedQrSvg(text: string, options?: BrandedQrOptions): string {
-  const margin = readMargin(options);
+  const margin = readBrandedQrMargin(options);
   const size = readSize(options);
   const symbol = createBrandedQrSymbol(text);
   const { moduleCount, logo, excavation } = symbol.layout;
   const viewSide = moduleCount + margin * 2;
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" role="img" width="${size}" height="${size}" viewBox="${-margin} ${-margin} ${viewSide} ${viewSide}" shape-rendering="crispEdges">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" role="img" width="${size}" height="${size}" viewBox="${-margin} ${-margin} ${viewSide} ${viewSide}" shape-rendering="crispEdges">`,
     `<rect x="${-margin}" y="${-margin}" width="${viewSide}" height="${viewSide}" fill="#fff"/>`,
     `<path fill="#000" d="${darkModulesPath(symbol)}"/>`,
     `<rect x="${excavation.start}" y="${excavation.start}" width="${excavation.side}" height="${excavation.side}" rx="1" fill="#fff" shape-rendering="geometricPrecision"/>`,
-    `<image x="${logo.start}" y="${logo.start}" width="${logo.side}" height="${logo.side}" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,${DEMI_QR_LOGO_PNG_BASE64}"/>`,
+    `<image x="${logo.start}" y="${logo.start}" width="${logo.side}" height="${logo.side}" preserveAspectRatio="xMidYMid meet" xlink:href="data:image/png;base64,${DEMI_QR_LOGO_PNG_BASE64}"/>`,
     `</svg>`,
   ].join("");
 }

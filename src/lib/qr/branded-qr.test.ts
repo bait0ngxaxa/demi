@@ -61,8 +61,9 @@ describe("createBrandedQrSvg", () => {
 
     expect(svg.match(/<image\b/g)).toHaveLength(1);
     expect(svg.match(/\bhref="/g)).toHaveLength(1);
-    expect(svg).toContain(`href="data:image/png;base64,${DEMI_QR_LOGO_PNG_BASE64}"`);
-    expect(svg).not.toMatch(/\bsrc=|xlink:|<script|<foreignObject|url\(|https?:\/\/(?!www\.w3\.org\/2000\/svg")/);
+    // xlink:href alone: read by current browsers and older WebKit webviews, without embedding the logo twice.
+    expect(svg).toContain(`xlink:href="data:image/png;base64,${DEMI_QR_LOGO_PNG_BASE64}"`);
+    expect(svg).not.toMatch(/\bsrc=|<script|<foreignObject|url\(|https?:\/\/(?!www\.w3\.org\/(2000\/svg|1999\/xlink)")/);
     expect(svg).toContain('shape-rendering="crispEdges"');
     expect(svg).toContain('role="img"');
   });
