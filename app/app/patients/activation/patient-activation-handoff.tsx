@@ -230,7 +230,7 @@ export function PatientActivationHandoff({
       return (
         <Alert className="mt-4" variant={closedResult.outcome === "HANDED_OVER" ? "success" : "warning"}>
           <p className="font-semibold">
-            {closedResult.outcome === "HANDED_OVER" ? "บันทึกว่าส่งต่อลิงก์แล้ว" : "ปิดลิงก์โดยยังไม่ได้ส่งมอบ"}
+            {closedResult.outcome === "HANDED_OVER" ? "ส่งต่อลิงก์แล้ว" : "ปิดลิงก์โดยยังไม่ได้ส่งมอบ"}
           </p>
           <p className="mt-1">ลิงก์เดิมแสดงซ้ำไม่ได้ หากต้องการลิงก์ใหม่ ให้ค้นหาผู้ป่วยอีกครั้งและเลือกออกลิงก์ใหม่</p>
         </Alert>
