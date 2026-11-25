@@ -12,8 +12,7 @@ const allowedFiles = new Map([
   ["app/app/workforce/[kind]/[relationshipId]/workforce-activation-control.tsx", "Workforce activation credential handoff"],
   ["app/app/users/mediated-password-reset-control.tsx", "Mediated password-reset credential handoff"],
   ["app/app/patients/activation/patient-activation-actions-workspace.tsx", "Patient activation credential handoff"],
-  ["src/components/workforce/activation-presentation.tsx", "Activation one-time result navigation"],
-  ["app/app/hospitals/network/child-owner-invitation-form.tsx", "Child owner activation credential handoff"],
+  ["src/components/credential-handoff/credential-handoff-dialog.tsx", "Credential hand-off: start activation on this device"],
 ]);
 
 function sourceFiles(directory: string): string[] {

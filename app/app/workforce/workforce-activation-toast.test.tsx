@@ -118,16 +118,20 @@ describe("workforce detail activation handoff", () => {
     expect(mocks.remoteAction).not.toHaveBeenCalled();
     await act(async () => button("ดำเนินการต่อ").click());
     expect(mocks.remoteAction).toHaveBeenCalledOnce();
-    expect(container.textContent).toContain(ACTIVATION_URL);
-    expect(container.textContent).toContain("ส*** บ***");
-    expect(container.textContent).toContain("ใช้ได้ครั้งเดียว · ห้ามส่งต่อ");
-    expect(container.textContent).toContain("ลิงก์หมดอายุ:");
-    expect(container.textContent).toContain("เสร็จแล้ว");
+    await act(async () => { await Promise.resolve(); });
+    const dialog = container.querySelector("dialog[open]");
+    expect(dialog?.querySelector("h2")?.textContent).toBe("ลิงก์เปิดใช้งานพร้อมส่งมอบ");
+    expect(dialog?.querySelector<HTMLInputElement>("input[readonly]")?.value).toBe(ACTIVATION_URL);
+    expect(dialog?.textContent).toContain("ส*** บ***");
+    expect(dialog?.textContent).toContain("ใช้ได้ครั้งเดียว · ห้ามส่งต่อ");
+    expect(dialog?.textContent).toContain("ลิงก์หมดอายุ");
+    expect(dialog?.textContent).toContain("ส่งมอบแล้ว");
+    expect(dialog?.textContent).not.toContain("เริ่มเปิดใช้งานบนเครื่องนี้");
     // PNG encoding finishes outside React. Flush each poll before asserting; keeping the
     // entire DOM wait inside act can hold the very update the assertion is waiting for.
     await vi.waitFor(async () => {
       await act(async () => { await Promise.resolve(); });
-      expect(container.querySelector('img[alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI"]'), `QR status: ${container.querySelector('[aria-live]')?.textContent ?? container.textContent?.slice(0, 400)}`).not.toBeNull();
+      expect(container.querySelector('img[alt="QR Code สำหรับเปิดใช้งาน DEMI"]'), `QR status: ${container.querySelector('[aria-live]')?.textContent ?? container.textContent?.slice(0, 400)}`).not.toBeNull();
     }, { timeout: 4_000 });
     expect(container.querySelector('[data-testid="activation-link"]')).toBeNull();
     expect(container.textContent).not.toContain("ออกลิงก์ใหม่</button>");
@@ -165,8 +169,8 @@ describe("workforce detail activation handoff", () => {
     expect(container.textContent).not.toContain(ACTIVATION_URL);
     expect(container.textContent).not.toContain("คัดลอกลิงก์");
     expect(container.textContent).not.toContain("แชร์ลิงก์");
-    expect(container.textContent).not.toContain("เสร็จแล้ว");
-    expect(container.querySelector('img[alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI"]')).toBeNull();
+    expect(container.textContent).not.toContain("ส่งมอบแล้ว");
+    expect(container.querySelector('img[alt="QR Code สำหรับเปิดใช้งาน DEMI"]')).toBeNull();
     expect(mocks.success).not.toHaveBeenCalled();
   });
 
@@ -211,13 +215,18 @@ describe("workforce detail activation handoff", () => {
   it("guards leaving the handoff and allows the explicit finish action", async () => {
     render(false);
     await act(async () => button("ออกลิงก์ใหม่").click());
+    await act(async () => { await Promise.resolve(); });
     const unload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(true);
 
-    await act(async () => button("เสร็จแล้ว").click());
+    await act(async () => button("ส่งมอบแล้ว").click());
+    expect(container.querySelector("dialog[open]")).toBeNull();
     expect(container.textContent).toContain("ออกลิงก์ใหม่");
     expect(container.textContent).toContain("มีลิงก์ที่ยังใช้ได้");
-    expect(container.textContent).not.toContain(ACTIVATION_URL);
+    expect(container.innerHTML).not.toContain(ACTIVATION_URL);
+    const released = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(released);
+    expect(released.defaultPrevented).toBe(false);
   });
 });

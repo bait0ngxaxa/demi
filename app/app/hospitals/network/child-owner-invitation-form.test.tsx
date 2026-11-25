@@ -167,10 +167,31 @@ describe("ChildOwnerInvitationForm task dialog", () => {
     expect(action.mock.calls[0]?.[1].get("givenName")).toBe("สมหญิง");
     expect(action.mock.calls[0]?.[1].get("familyName")).toBe("ผู้ดูแล");
     expect(action.mock.calls[0]?.[1].get("mode")).toBe("ASSISTED");
-    expect(container.querySelector("dialog")).toBeNull();
-    expect(container.textContent).toContain(activationUrl);
-    expect(container.textContent).toContain("ลิงก์นี้แสดงเพียงครั้งเดียว");
+    // The task dialog closes before the hand-off dialog opens: never two dialogs at once.
+    await act(async () => { await Promise.resolve(); });
+    const handoff = container.querySelectorAll("dialog");
+    expect(handoff).toHaveLength(1);
+    expect(handoff[0]?.querySelector("input[name='nationalId']")).toBeNull();
+    expect(handoff[0]?.querySelector<HTMLInputElement>("input[readonly]")?.value).toBe(activationUrl);
+    expect(handoff[0]?.textContent).toContain("ใช้ได้ครั้งเดียว · ห้ามส่งต่อ");
     expect(mocks.refresh).toHaveBeenCalledOnce();
+
+    // ASSISTED: starting on this device is a deliberate hand-over, so the leave warning does not interrupt it.
+    const assign = vi.fn();
+    const original = Object.getOwnPropertyDescriptor(window, "location");
+    Object.defineProperty(window, "location", { configurable: true, value: { ...window.location, href: window.location.href, assign } });
+    try {
+      const unloadBefore = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(unloadBefore);
+      expect(unloadBefore.defaultPrevented).toBe(true);
+      await act(async () => button("เริ่มเปิดใช้งานบนเครื่องนี้", handoff[0] as HTMLElement).click());
+      expect(assign).toHaveBeenCalledExactlyOnceWith(activationUrl);
+      const unloadAfter = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(unloadAfter);
+      expect(unloadAfter.defaultPrevented).toBe(false);
+    } finally {
+      if (original) Object.defineProperty(window, "location", original);
+    }
   });
 
   it("resends the exact nonce and invitee payload after an unknown outcome", async () => {

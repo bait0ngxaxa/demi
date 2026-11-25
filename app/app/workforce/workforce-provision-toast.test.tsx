@@ -210,10 +210,12 @@ describe("workforce three-step onboarding", () => {
     expect(mocks.remoteAction).toHaveBeenCalledOnce();
     expect(mocks.assistedAction).not.toHaveBeenCalled();
     expect(mocks.staffAction.mock.invocationCallOrder[0]).toBeLessThan(mocks.remoteAction.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER);
-    expect(container.textContent).toContain(ACTIVATION_URL);
-    expect(container.textContent).toContain("ส*** บ***");
-    expect(container.textContent).toContain("ใช้ได้ครั้งเดียว · ห้ามส่งต่อ");
-    expect(container.textContent).toContain("เสร็จแล้ว");
+    await act(async () => { await Promise.resolve(); });
+    const dialog = container.querySelector("dialog[open]");
+    expect(dialog?.querySelector<HTMLInputElement>("input[readonly]")?.value).toBe(ACTIVATION_URL);
+    expect(dialog?.textContent).toContain("ส*** บ***");
+    expect(dialog?.textContent).toContain("ใช้ได้ครั้งเดียว · ห้ามส่งต่อ");
+    expect(dialog?.textContent).toContain("ส่งมอบแล้ว");
     expect(window.location.search).not.toContain(TOKEN);
     expect(window.sessionStorage.length).toBe(0);
     expect([...mocks.success.mock.calls].flat().join(" ")).not.toContain(TOKEN);
@@ -233,8 +235,8 @@ describe("workforce three-step onboarding", () => {
     expect(container.textContent).not.toContain(ACTIVATION_URL);
     expect(container.textContent).not.toContain("คัดลอกลิงก์");
     expect(container.textContent).not.toContain("แชร์ลิงก์");
-    expect(container.textContent).not.toContain("เสร็จแล้ว");
-    expect(container.querySelector('img[alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI"]')).toBeNull();
+    expect(container.textContent).not.toContain("ส่งมอบแล้ว");
+    expect(container.querySelector('img[alt="QR Code สำหรับเปิดใช้งาน DEMI"]')).toBeNull();
   });
 
   it("does not issue any credential when the OWNER chooses ทำภายหลัง", async () => {
@@ -301,13 +303,15 @@ describe("workforce three-step onboarding", () => {
     expect(addAnother.getAttribute("aria-disabled")).toBeNull();
     const cancelledNavigation = new MouseEvent("click", { bubbles: true, cancelable: true });
     await act(async () => addAnother.dispatchEvent(cancelledNavigation));
-    expect(document.querySelector("dialog[open]")?.textContent).toContain("ออกจากหน้านี้หรือไม่");
-    await act(async () => button("อยู่หน้านี้").click());
+    expect(document.querySelector("dialog[open]")?.textContent).toContain("ยังไม่ได้ส่งมอบลิงก์");
+    expect(document.activeElement?.textContent).toBe("กลับไปที่ลิงก์");
+    await act(async () => button("กลับไปที่ลิงก์").click());
     expect(cancelledNavigation.defaultPrevented).toBe(true);
     expect(mocks.routerPush).not.toHaveBeenCalled();
+    expect(document.querySelector<HTMLInputElement>("dialog[open] input[readonly]")?.value).toBe(ACTIVATION_URL);
 
     await act(async () => addAnother.click());
-    await act(async () => button("ออกจากหน้า").click());
+    await act(async () => button("ปิดโดยไม่ส่งมอบ").click());
     expect(mocks.routerPush).toHaveBeenCalledWith(`/app/workforce/new?hospitalId=${HOSPITAL_ID}&step=1`);
     expect(document.querySelector("dialog[open]")).toBeNull();
   });

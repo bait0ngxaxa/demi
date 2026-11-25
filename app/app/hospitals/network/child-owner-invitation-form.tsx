@@ -125,20 +125,10 @@ export function InvitationResult({
     <div className="mt-4">
       <ActivationPresentation
         activationUrl={invitation.activationUrl}
+        assisted={invitation.activationMode === "ASSISTED"}
         expiresAt={invitation.activationExpiresAt}
         title={state.message}
       />
-      {invitation.activationMode === "ASSISTED" ? (
-        <Button
-          className="mt-3"
-          onClick={() => window.location.assign(invitation.activationUrl)}
-          size="compact"
-          type="button"
-        >
-          เริ่มเปิดใช้งานบนเครื่องนี้
-        </Button>
-      ) : null}
-      <p className="mt-3 text-sm leading-6 text-text-muted">ลิงก์นี้แสดงเพียงครั้งเดียว โปรดคัดลอกหรือให้สแกนก่อนออกจากหน้านี้</p>
     </div>
   );
 }

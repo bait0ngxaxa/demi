@@ -185,13 +185,23 @@ describe("Caregiver invitation lost-response recovery", () => {
 
     expect(mocks.reissueInvitation).toHaveBeenCalledOnce();
     expect(mocks.reissueInvitation.mock.calls[0]?.[1].get("invitationId")).toBe("invitation-1");
+    // The confirmation closes before the hand-off dialog opens: never two dialogs at once.
+    await act(async () => { await Promise.resolve(); });
+    const dialogs = container.querySelectorAll("dialog");
+    expect(dialogs).toHaveLength(1);
+    const handoff = dialogs[0];
+    expect(handoff?.querySelector("h2")?.textContent).toBe("คิวอาร์โค้ดคำเชิญ");
     const link = Array.from(container.querySelectorAll<HTMLInputElement>("input[readonly]")).map((input) => input.value);
     expect(link).toEqual([`https://canonical.example/app/family/invitations#${"b".repeat(43)}`]);
-    expect(container.textContent).toContain("คิวอาร์โค้ดคำเชิญ");
-    expect(container.textContent).toContain("ลิงก์ใช้ได้ถึง");
+    expect(handoff?.textContent).toContain("ลิงก์หมดอายุ");
+    expect(handoff?.textContent).toContain("บันทึกรูป QR Code");
+    expect(handoff?.textContent).toContain("ส่งให้เจ้าของบัญชีเท่านั้น ห้ามโพสต์ในกลุ่ม และลบรูปเมื่อใช้งานเสร็จ");
     expect(buttonByText("สร้างคิวอาร์โค้ดใหม่")).toBeDefined();
-    expect(container.querySelector("dialog[open]")).toBeNull();
-    expect(container.querySelector<HTMLInputElement>('input[readonly]')?.value).toContain("#" + "b".repeat(43));
+
+    await act(async () => dialogButtonByText("ส่งมอบแล้ว").click());
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(container.textContent).toContain("ส่งมอบลิงก์แล้ว");
+    expect(container.innerHTML).not.toContain("b".repeat(43));
   });
 
   it("requires confirmation to revoke the exact pending invitation and leaves cancel mutation-free", async () => {
