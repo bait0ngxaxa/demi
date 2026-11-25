@@ -196,8 +196,8 @@ describe("Patient activation search and link issuance", () => {
       expect(allNotifyText()).not.toContain(token);
       expect(allNotifyText()).not.toContain("สมชาย");
       expect(container.textContent).toContain("ลิงก์เปิดใช้งานพร้อมส่งต่อ");
-      expect(container.textContent).toContain(`https://canonical.example/activate/patient#${token}`);
-      expect(container.textContent).toContain(token);
+      expect(container.querySelector<HTMLInputElement>("dialog[open] input[readonly]")?.value).toBe(`https://canonical.example/activate/patient#${token}`);
+      expect(container.innerHTML).toContain(token);
 
       await act(async () => {
         root.render(
@@ -209,7 +209,7 @@ describe("Patient activation search and link issuance", () => {
         );
       });
       expect(mocks.notifySuccess).toHaveBeenCalledTimes(1);
-      expect(container.textContent).toContain(token);
+      expect(container.innerHTML).toContain(token);
     });
 
     it.each(["ALREADY_ISSUED", "ALREADY_ACTIVE", "RECONCILIATION_REQUIRED"])(
@@ -312,7 +312,7 @@ describe("Patient activation search and link issuance", () => {
       });
 
       expect(allNotifyText()).toBe("[[],[],[],[]]");
-      expect(container.textContent).not.toContain(token);
+      expect(container.innerHTML).not.toContain(token);
     });
   });
 
@@ -360,6 +360,28 @@ describe("Patient activation search and link issuance", () => {
       });
     }
 
+    it("reissues inside the same hand-off dialog and never shows the previous link again", async () => {
+      const nextToken = "next-one-time-secret-token";
+      mocks.issue.mockResolvedValueOnce(issuedResponse).mockResolvedValueOnce({
+        ...issuedResponse,
+        result: { ...issuedResponse.result, activationToken: nextToken, activationUrl: `https://canonical.example/activate/patient#${nextToken}` },
+      });
+      await issueFor();
+      await act(async () => { await Promise.resolve(); });
+      const dialog = container.querySelector("dialog[open]");
+      expect(dialog?.querySelector("h2")?.textContent).toBe("ลิงก์เปิดใช้งานพร้อมส่งต่อ");
+      expect(dialog?.textContent).toContain("การออกลิงก์ใหม่จะยกเลิกลิงก์นี้ทันที");
+
+      await act(async () => {
+        dialog!.querySelector<HTMLButtonElement>("form button[type=submit]")!.click();
+      });
+
+      expect(mocks.issue).toHaveBeenCalledTimes(2);
+      expect(container.querySelector("dialog[open]")).toBe(dialog);
+      expect(dialog?.querySelector<HTMLInputElement>("input[readonly]")?.value).toBe(`https://canonical.example/activate/patient#${nextToken}`);
+      expect(container.innerHTML).not.toContain(`#${token}`);
+    });
+
     it("blocks a new search while the issued link is unhandled, and releases it after handoff", async () => {
       mocks.issue.mockResolvedValue(issuedResponse);
       await issueFor();
@@ -371,12 +393,12 @@ describe("Patient activation search and link issuance", () => {
         container.querySelector("form")!.requestSubmit();
       });
       expect(mocks.find).not.toHaveBeenCalled();
-      expect(container.textContent).toContain(token);
+      expect(container.innerHTML).toContain(token);
 
       await act(async () => {
-        buttonByText("ส่งต่อลิงก์เรียบร้อยแล้ว").click();
+        buttonByText("ส่งมอบแล้ว").click();
       });
-      expect(container.textContent).not.toContain(token);
+      expect(container.innerHTML).not.toContain(token);
       expect(buttonByText("ค้นหา").disabled).toBe(false);
 
       mocks.find.mockResolvedValue({ status: "SUCCESS", candidates: [] });
@@ -445,7 +467,7 @@ describe("Patient activation search and link issuance", () => {
         resolveFind({ status: "SUCCESS", candidates: [] });
       });
 
-      expect(container.textContent).toContain(token);
+      expect(container.innerHTML).toContain(token);
       expect(container.textContent).not.toContain("ไม่พบผู้ป่วยตามข้อมูลค้นหา");
       expect(buttonByText("ค้นหา").disabled).toBe(true);
     });
@@ -468,7 +490,7 @@ describe("Patient activation search and link issuance", () => {
         rejectFind(new TypeError("Failed to fetch"));
       });
 
-      expect(container.textContent).toContain(token);
+      expect(container.innerHTML).toContain(token);
       expect(container.textContent).not.toContain("เชื่อมต่อระบบไม่สำเร็จ");
       expect(buttonByText("ค้นหา").disabled).toBe(true);
       expect(mocks.notifyError).not.toHaveBeenCalled();

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useId, useRef, useState, type FormEvent } from "react";
 import type { CaregiverRelationshipLabel, CaregiverResource } from "@prisma/client";
 
+import { CredentialHandoffDialog } from "@/components/credential-handoff/credential-handoff-dialog";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
@@ -47,7 +48,6 @@ import {
   initialFamilyMutationActionState,
 } from "@/modules/family/transport/action-state";
 
-import { FamilyInvitationQr } from "./family-invitation-qr";
 import { familyHealthSummaryHref } from "./members/family-health-summary-href";
 
 /** AF-5: what the Patient may choose to share in the one-step add. */
@@ -135,49 +135,33 @@ function InvitationLinkHandoff({
   expiresAt: string;
   title: string;
 }): React.JSX.Element {
-  const [copyStatus, setCopyStatus] = useState("");
-  const linkInputId = useId();
-
-  async function copyInvitationLink(): Promise<void> {
-    if (!navigator.clipboard?.writeText) {
-      setCopyStatus("คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกและคัดลอกจากช่องลิงก์");
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(invitationUrl);
-      setCopyStatus("คัดลอกลิงก์แล้ว");
-    } catch {
-      setCopyStatus("คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกและคัดลอกจากช่องลิงก์");
-    }
-  }
+  const [closed, setClosed] = useState<"HANDED_OVER" | "DISCARDED" | null>(null);
 
   return (
-    <Alert className="mt-5" variant="success">
-      <p className="font-semibold">{title}</p>
-      <p className="mt-1">ลิงก์ใช้ได้ถึง {formatFamilyManagementDate(expiresAt)}</p>
-      <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
-        <FamilyInvitationQr invitationLink={invitationUrl} />
-        <div className="min-w-0 flex-1 space-y-3">
-          <label className="block text-sm font-semibold" htmlFor={linkInputId}>
-            ลิงก์คำเชิญ
-          </label>
-          <input
-            autoComplete="off"
-            className="h-12 w-full rounded-control border border-border bg-surface px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-            id={linkInputId}
-            readOnly
-            spellCheck={false}
-            type="text"
-            value={invitationUrl}
-          />
-          <Button onClick={copyInvitationLink} type="button" variant="secondary">
-            คัดลอกลิงก์
-          </Button>
-          {copyStatus ? <p className="text-sm" role="status">{copyStatus}</p> : null}
-        </div>
-      </div>
-    </Alert>
+    <>
+      {closed === "HANDED_OVER" ? (
+        <Alert className="mt-5" variant="success">
+          <p className="font-semibold">ส่งมอบลิงก์แล้ว</p>
+          <p className="mt-1">ลิงก์นี้จะแสดงซ้ำไม่ได้</p>
+        </Alert>
+      ) : closed === "DISCARDED" ? (
+        <Alert className="mt-5" variant="warning">
+          <p className="font-semibold">ปิดลิงก์โดยยังไม่ได้ส่งมอบ</p>
+          <p className="mt-1">ลิงก์นี้จะแสดงซ้ำไม่ได้ หากต้องการส่งมอบ ให้สร้างคิวอาร์โค้ดใหม่จากรายการคำเชิญ</p>
+        </Alert>
+      ) : null}
+      <CredentialHandoffDialog
+        expiresAt={expiresAt}
+        link={{ label: "ลิงก์คำเชิญ", shareTitle: "ลิงก์คำเชิญผู้ดูแล DEMI" }}
+        onDiscard={() => setClosed("DISCARDED")}
+        onHandedOver={() => setClosed("HANDED_OVER")}
+        oneTimeNotice="ส่งให้ผู้ดูแลที่คุณเชิญเท่านั้น · ลิงก์นี้จะแสดงซ้ำไม่ได้"
+        open={closed === null}
+        qr={{ alt: "QR Code คำเชิญผู้ดูแล DEMI", fileName: "demi-family-invitation-qr.png", shareTitle: "QR Code คำเชิญผู้ดูแล DEMI" }}
+        title={title}
+        url={invitationUrl}
+      />
+    </>
   );
 }
 

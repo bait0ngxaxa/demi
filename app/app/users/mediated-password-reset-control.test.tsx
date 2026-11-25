@@ -202,12 +202,12 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     expect(mocks.issue.mock.calls[0]?.[0]).not.toHaveProperty("verificationMethod");
     expect(mocks.qr).toHaveBeenCalledWith(expect.stringContaining("/recover#"), expect.any(Object));
     expect(container.textContent).toContain("ลิงก์ใช้ได้ครั้งเดียว");
-    expect(container.querySelector('img[alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน"]')).not.toBeNull();
+    expect(container.querySelector('img[alt="QR Code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน"]')).not.toBeNull();
     expect(container.querySelector('input[readonly][value*="/recover#"]')).not.toBeNull();
     expect(container.textContent).toContain("คัดลอกลิงก์");
     expect(container.textContent).toContain("แชร์ลิงก์");
     expect(mocks.locationReplace).not.toHaveBeenCalled();
-    expect(container.querySelector("footer")?.textContent).toBe("เสร็จสิ้น");
+    expect(container.querySelector("footer")?.textContent).toBe("ส่งมอบแล้ว");
     expect(container.querySelector("form")).toBeNull();
     expect(document.activeElement).toBe(container.querySelector("header h2"));
     expect(copy).not.toHaveBeenCalled();
@@ -284,6 +284,45 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
   });
 });
 
+describe("ONLINE password recovery dismiss protection", () => {
+  it("asks before Escape or the close button drops a live link, and keeps the link when returning", async () => {
+    mocks.issue.mockResolvedValue(onlineResult);
+    await renderControl();
+    click("button");
+    await issueOnline();
+    const dialog = container.querySelector<HTMLDialogElement>("dialog");
+    if (!dialog) throw new Error("Missing dialog");
+    expect(dialog.querySelector("p")?.textContent).toContain("ผู้ใช้ตัวอย่าง · โรงพยาบาลตัวอย่าง");
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+
+    act(() => { dialog.dispatchEvent(new Event("cancel", { cancelable: true })); });
+    expect(container.querySelector("dialog")).toBe(dialog);
+    expect(dialog.textContent).toContain("ยังไม่ได้ส่งมอบลิงก์");
+    expect(dialog.querySelector("input[readonly]")).toBeNull();
+    expect(document.activeElement).toBe(getButton("กลับไปที่ลิงก์"));
+    act(() => getButton("กลับไปที่ลิงก์").click());
+    expect(dialog.querySelector<HTMLInputElement>("input[readonly]")?.value).toBe(onlineResult.handoffUrl);
+
+    click('button[aria-label="ปิดหน้าต่าง"]');
+    expect(dialog.textContent).toContain("ยังไม่ได้ส่งมอบลิงก์");
+    act(() => getButton("ปิดโดยไม่ส่งมอบ").click());
+    expect(container.querySelector("dialog")).toBeNull();
+    const released = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(released);
+    expect(released.defaultPrevented).toBe(false);
+  });
+
+  it("keeps the form step closable without confirmation before a link exists", async () => {
+    await renderControl();
+    click("button");
+    const dialog = container.querySelector<HTMLDialogElement>("dialog");
+    act(() => { dialog?.dispatchEvent(new Event("cancel", { cancelable: true })); });
+    expect(container.querySelector("dialog")).toBeNull();
+  });
+});
+
 describe("ONLINE password recovery QR actions", () => {
   beforeEach(async () => {
     mocks.issue.mockResolvedValue(onlineResult);
@@ -319,7 +358,7 @@ describe("ONLINE password recovery QR actions", () => {
     expect(mocks.issue).toHaveBeenCalledOnce();
     expect(mocks.qr).toHaveBeenCalledExactlyOnceWith(onlineResult.handoffUrl, { size: 720 });
     // On screen the code is the crisp branded SVG; only the saved/shared file is a PNG.
-    const shown = container.querySelector<HTMLImageElement>('img[alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน"]');
+    const shown = container.querySelector<HTMLImageElement>('img[alt="QR Code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน"]');
     expect(shown?.getAttribute("src")).toMatch(/^data:image\/svg\+xml;base64,/);
   });
 
@@ -333,7 +372,7 @@ describe("ONLINE password recovery QR actions", () => {
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
       createBrandedQrSvgDataUrl(onlineResult.handoffUrl, { margin: 2, size: 240 }),
     );
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("เบราว์เซอร์นี้บันทึกหรือแชร์รูป QR Code ไม่ได้ ให้เจ้าของบัญชีสแกนจากหน้าจอนี้ หรือใช้ปุ่มคัดลอกลิงก์แทน");
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("เบราว์เซอร์นี้บันทึกหรือแชร์รูป QR Code ไม่ได้ ให้สแกนจากหน้าจอนี้ หรือใช้ปุ่มคัดลอกลิงก์แทน");
     await act(async () => getButton("คัดลอกลิงก์").click());
     expect(copy).toHaveBeenCalledExactlyOnceWith(onlineResult.handoffUrl);
   });

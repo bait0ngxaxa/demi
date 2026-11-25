@@ -94,7 +94,7 @@ describe("Patient activation handoff presentation", () => {
     expect(markup).not.toContain("<form");
   });
 
-  it("uses the newly issued token for the fragment link presentation", () => {
+  it("keeps a newly issued one-time link out of server-rendered markup", () => {
     mockedUseMutationActionState.mockReturnValue([
       {
         status: "SUCCESS",
@@ -114,9 +114,8 @@ describe("Patient activation handoff presentation", () => {
 
     const markup = render(baseCandidate);
 
-    expect(markup).toContain("https://canonical.example/activate/patient#raw-token-is-ephemeral");
-    expect(markup).not.toContain("/activate/patient/raw-token-is-ephemeral");
-    expect((markup.match(/<form\b/gu) ?? []).length).toBe(1);
+    // The link is handed over only in the client hand-off dialog, which opens after hydration.
+    expect(markup).not.toContain("raw-token-is-ephemeral");
   });
 
   it("does not replay an unconfirmed one-time link issue and explains how to check status", () => {

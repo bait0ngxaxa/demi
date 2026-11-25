@@ -7,12 +7,12 @@ import {
   useState,
 } from "react";
 
+import { CredentialHandoffDialog } from "@/components/credential-handoff/credential-handoff-dialog";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import { createBrandedQrSvgDataUrl } from "@/lib/qr/branded-qr";
 import type { PatientActivationCandidateState } from "@/modules/patient-activation/transport/action-state";
 import {
   initialPatientActivationIssueActionState,
@@ -81,141 +81,52 @@ function ActivationPresentation({
   result,
   action,
   pending,
-  onHandled,
+  onClosed,
 }: {
-  onHandled: () => void;
+  onClosed: (outcome: "HANDED_OVER" | "DISCARDED") => void;
   result: Extract<
     Awaited<ReturnType<typeof issuePatientActivationAction>>,
     { status: "SUCCESS" }
   >["result"];
   action: (formData: FormData) => void;
   pending: boolean;
-}): React.JSX.Element {
-  const [copied, setCopied] = useState(false);
-  const [copyError, setCopyError] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [qrDataUrlFor, setQrDataUrlFor] = useState<string | null>(null);
+}): React.JSX.Element | null {
   const activationUrl = result.activationUrl;
-
-  useEffect(() => {
-    if (!activationUrl) {
-      return;
-    }
-
-    let active = true;
-
-    // Generated after the effect returns, so state is only set asynchronously and a stale run can be ignored.
-    void Promise.resolve()
-      .then(() => createBrandedQrSvgDataUrl(activationUrl, { margin: 2, size: 240 }))
-      .then((dataUrl) => {
-        if (active) {
-          setQrDataUrl(dataUrl);
-          setQrDataUrlFor(activationUrl);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setQrDataUrl(null);
-          setQrDataUrlFor(null);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [activationUrl]);
-
-  const visibleQrDataUrl = qrDataUrlFor === activationUrl ? qrDataUrl : null;
-
-  // The token exists only in this component; reloading or closing the tab loses a link that
-  // cannot be shown again, so ask before leaving while it is on screen.
-  useEffect(() => {
-    if (!activationUrl) {
-      return;
-    }
-
-    function warnBeforeUnload(event: BeforeUnloadEvent): void {
-      event.preventDefault();
-    }
-
-    window.addEventListener("beforeunload", warnBeforeUnload);
-    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [activationUrl]);
-
-  async function copyActivationLink(): Promise<void> {
-    if (!activationUrl) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(activationUrl);
-      setCopied(true);
-      setCopyError(false);
-    } catch {
-      setCopied(false);
-      setCopyError(true);
-    }
+  if (!activationUrl) {
+    return null;
   }
 
+  // A reissue keeps this dialog open: the new link and QR replace the old one in place, keyed by URL.
   return (
-    <Alert className="mt-4" variant="info">
-      <p className="font-semibold">ลิงก์เปิดใช้งานพร้อมส่งต่อ</p>
-      <p className="mt-1 text-muted">ส่งลิงก์หรือ QR นี้ให้ผู้ป่วยตั้งรหัสผ่านของตนเอง</p>
-      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="flex h-52 w-52 shrink-0 items-center justify-center rounded-control bg-surface p-2">
-          {visibleQrDataUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              alt="คิวอาร์โค้ดสำหรับเปิดใช้งานบัญชีผู้ป่วย DEMI"
-              className="h-full w-full"
-              src={visibleQrDataUrl}
-            />
-          ) : (
-            <span className="text-center text-xs text-muted">กำลังสร้างคิวอาร์โค้ด...</span>
-          )}
+    <CredentialHandoffDialog
+      busy={pending}
+      expiresAt={result.activationExpiresAt}
+      extraActions={
+        <div>
+          <IssueForm
+            action={action}
+            hospitalId={result.hospitalId}
+            label="ออกลิงก์ใหม่"
+            pending={pending}
+            reissue
+            userId={result.userId}
+          />
+          <p className="mt-2 text-sm leading-6 text-text-muted">การออกลิงก์ใหม่จะยกเลิกลิงก์นี้ทันที</p>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-strong">
-            ลิงก์เปิดใช้งาน
-          </p>
-          <p className="mt-2 break-all rounded-control border border-border bg-surface px-3 py-3 text-xs leading-5 text-text-muted">
-            {activationUrl ?? "กำลังเตรียมลิงก์..."}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              disabled={pending || !activationUrl}
-              onClick={() => void copyActivationLink()}
-              size="compact"
-              type="button"
-            >
-              {copied ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
-            </Button>
-            <Button disabled={pending} onClick={onHandled} size="compact" type="button" variant="secondary">
-              ส่งต่อลิงก์เรียบร้อยแล้ว
-            </Button>
-            <IssueForm
-              action={action}
-              hospitalId={result.hospitalId}
-              label="ออกลิงก์ใหม่"
-              pending={pending}
-              reissue
-              userId={result.userId}
-            />
-          </div>
-          <p className="mt-3 text-xs leading-5 text-muted">
-            การออกลิงก์ใหม่จะยกเลิกลิงก์นี้ทันที
-          </p>
-          {copyError ? (
-            <p className="mt-2 text-xs leading-5 text-danger" role="alert">
-              คัดลอกลิงก์อัตโนมัติไม่สำเร็จ กรุณาเลือกและคัดลอกลิงก์ด้วยตนเอง
-            </p>
-          ) : null}
-          <p className="mt-3 text-xs leading-5 text-muted">
-            ลิงก์หมดอายุ: {formatDate(result.activationExpiresAt)}
-          </p>
-        </div>
-      </div>
-    </Alert>
+      }
+      link={{ label: "ลิงก์เปิดใช้งาน", shareTitle: "ลิงก์เปิดใช้งานบัญชีผู้ป่วย DEMI" }}
+      onDiscard={() => onClosed("DISCARDED")}
+      onHandedOver={() => onClosed("HANDED_OVER")}
+      oneTimeNotice="ใช้ได้ครั้งเดียว · ส่งให้ผู้ป่วยตั้งรหัสผ่านของตนเอง"
+      open
+      qr={{
+        alt: "QR Code สำหรับเปิดใช้งานบัญชีผู้ป่วย DEMI",
+        fileName: "demi-patient-activation-qr.png",
+        shareTitle: "QR Code สำหรับเปิดใช้งานบัญชีผู้ป่วย DEMI",
+      }}
+      title="ลิงก์เปิดใช้งานพร้อมส่งต่อ"
+      url={activationUrl}
+    />
   );
 }
 
@@ -300,9 +211,9 @@ export function PatientActivationHandoff({
     [dispatchIssue],
   );
   const result = state.status === "SUCCESS" ? state.result : null;
-  const [handledResult, setHandledResult] = useState<object | null>(null);
+  const [closedResult, setClosedResult] = useState<{ result: object; outcome: "HANDED_OVER" | "DISCARDED" } | null>(null);
   const tokenAwaitingHandoff =
-    result?.outcome === "ISSUED" && Boolean(result.activationToken && result.activationUrl) && handledResult !== result;
+    result?.outcome === "ISSUED" && Boolean(result.activationToken && result.activationUrl) && closedResult?.result !== result;
   const guardActive = pending || unknownOutcome || tokenAwaitingHandoff;
   const guardCallback = useRef(onGuardChange);
   useEffect(() => {
@@ -315,15 +226,24 @@ export function PatientActivationHandoff({
 
   // Once the operator confirms the link was passed on, the token is dropped from the screen.
   function issuedLink(issued: NonNullable<typeof result>): React.JSX.Element {
-    if (handledResult === issued) {
+    if (closedResult?.result === issued) {
       return (
-        <Alert className="mt-4" variant="success">
-          <p className="font-semibold">บันทึกว่าส่งต่อลิงก์แล้ว</p>
-          <p className="mt-1 text-muted">ลิงก์เดิมแสดงซ้ำไม่ได้ หากต้องการลิงก์ใหม่ ให้ค้นหาผู้ป่วยอีกครั้งและเลือกออกลิงก์ใหม่</p>
+        <Alert className="mt-4" variant={closedResult.outcome === "HANDED_OVER" ? "success" : "warning"}>
+          <p className="font-semibold">
+            {closedResult.outcome === "HANDED_OVER" ? "บันทึกว่าส่งต่อลิงก์แล้ว" : "ปิดลิงก์โดยยังไม่ได้ส่งมอบ"}
+          </p>
+          <p className="mt-1">ลิงก์เดิมแสดงซ้ำไม่ได้ หากต้องการลิงก์ใหม่ ให้ค้นหาผู้ป่วยอีกครั้งและเลือกออกลิงก์ใหม่</p>
         </Alert>
       );
     }
-    return <ActivationPresentation action={action} onHandled={() => setHandledResult(issued)} pending={pending} result={issued} />;
+    return (
+      <ActivationPresentation
+        action={action}
+        onClosed={(outcome) => setClosedResult({ result: issued, outcome })}
+        pending={pending}
+        result={issued}
+      />
+    );
   }
   const errorMessage = state.status === "ERROR" ? state.message : null;
   const reconciliationRequired =
